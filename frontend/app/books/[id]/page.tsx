@@ -45,19 +45,70 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   const [added, setAdded]         = useState<Record<string, boolean>>({});
   const [saving, setSaving]       = useState(false);
 
-  const normalizeSentences = (arr: any) => {
-    return (Array.isArray(arr) ? arr : []).map((s: any) => ({
-      original: s.original || s.Original || "",
-      translation: s.translation || s.Translation || "",
-      isHeading: s.isHeading || s.IsHeading || false,
-      alignment: s.alignment || s.Alignment || "left",
-      indentation: s.indentation || s.Indentation || 0,
-      words: (s.words || s.Words || []).map((w: any) => ({
-        word: w.word || w.Word || "",
-        translation: w.translation || w.Translation || "",
-        type: w.type || w.Type || "default"
-      }))
-    }));
+  const normalizeSentences = (arr: any): AnalyzedSentence[] => {
+    const raw = Array.isArray(arr) ? arr : [];
+    const expanded: AnalyzedSentence[] = [];
+
+    raw.forEach((s: any) => {
+      let orig = (s.original || s.Original || "").trim();
+      let trans = (s.translation || s.Translation || "").trim();
+      let isHead = s.isHeading !== undefined ? s.isHeading : (s.IsHeading !== undefined ? s.IsHeading : false);
+      let align = s.alignment || s.Alignment || (isHead ? "center" : "left");
+      let words = s.words || s.Words || [];
+
+      // Eğer satır içinde başlık ile normal paragraf cümlesi birleşmişse (örn: "CHAPTER I THE BEGINNING It was a dark...")
+      if (!isHead && orig.length > 20) {
+        const match = orig.match(/^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\s+([0-9IVXLCDMivxlcdm]+|[A-Za-z]+)?\s*(-|:|–)?\s*([A-Z\s]{2,40}|[A-Za-z\s]{2,40})?(\.\s+|\s{2,}|\n)(.*)$/);
+        if (match && match[6] && match[6].trim().length > 15) {
+          const headingPart = orig.substring(0, orig.indexOf(match[6])).trim();
+          const bodyPart = match[6].trim();
+          if (headingPart.length > 0) {
+            expanded.push({
+              original: headingPart,
+              translation: headingPart,
+              isHeading: true,
+              alignment: "center",
+              indentation: 0,
+              words: headingPart.split(/\s+/).map((w: string) => ({ word: w, translation: w, type: "default" }))
+            });
+            orig = bodyPart;
+            if (trans.length > headingPart.length) {
+              trans = trans.replace(headingPart, "").trim();
+            }
+          }
+        }
+      }
+
+      // Ayrıca başlık tespiti kontrolü (Veritabanında isHeading false saklansa dahi):
+      if (!isHead && orig.length > 0) {
+        const upperCheck = orig.toUpperCase();
+        const startsWithHeadingWord = /^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\b/i.test(orig);
+        const isShortTitle = orig.length <= 65 && !orig.endsWith(".") && !orig.endsWith("!") && !orig.endsWith("?") && !orig.includes(",");
+        const isAllCaps = orig.length <= 80 && orig === upperCheck && /[A-Z]/.test(orig);
+
+        if (startsWithHeadingWord || (isShortTitle && (isAllCaps || orig.split(" ").length <= 8))) {
+          isHead = true;
+          align = "center";
+        }
+      }
+
+      const formattedWords = (Array.isArray(words) && words.length > 0 ? words : orig.split(/\s+/).map((w: string) => ({ word: w, translation: w, type: "default" }))).map((w: any) => ({
+        word: typeof w === 'string' ? w : (w.word || w.Word || ""),
+        translation: typeof w === 'string' ? w : (w.translation || w.Translation || ""),
+        type: typeof w === 'string' ? "default" : (w.type || w.Type || "default")
+      }));
+
+      expanded.push({
+        original: orig,
+        translation: trans || orig,
+        isHeading: isHead,
+        alignment: isHead ? "center" : (align || "left"),
+        indentation: s.indentation || s.Indentation || 0,
+        words: formattedWords
+      });
+    });
+
+    return expanded;
   };
 
   useEffect(() => {

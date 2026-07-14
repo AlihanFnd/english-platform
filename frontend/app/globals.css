@@ -550,20 +550,25 @@ body {
 }
 
 .bk-sent-block--heading {
-  margin-top: 1.25rem;
-  margin-bottom: 0.35rem;
+  margin-top: 1.85rem;
+  margin-bottom: 0.85rem;
+  width: 100%;
 }
 
 .bk-sent-en--heading {
-  background: rgba(0, 110, 47, 0.04);
+  background: rgba(0, 110, 47, 0.05);
+  padding: 0.6rem 1rem !important;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
 }
 
 .bk-sent-en--heading .bk-sent-words {
-  font-size: 1.35rem !important;
+  font-size: 1.45rem !important;
   font-weight: 800;
   color: var(--primary);
   line-height: 1.45;
-  letter-spacing: 0.015em;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .bk-sent-words {

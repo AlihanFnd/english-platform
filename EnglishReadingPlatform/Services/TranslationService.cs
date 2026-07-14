@@ -117,6 +117,16 @@ namespace EnglishReadingPlatform.Services
                 var cleanLine = Regex.Replace(line, @"\s+", " ").Trim();
                 if (string.IsNullOrEmpty(cleanLine)) continue;
 
+                // Eğer tek satır içine başlık ile normal cümle birleşmişse ayır: örn. "CHAPTER I THE BEGINNING It was a dark..."
+                var headingMatch = Regex.Match(cleanLine, @"^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\s+([0-9IVXLCDMivxlcdm]+|[A-Za-z]+)?\s*(-|:|–)?\s*([A-Z\s]{2,40}|[A-Za-z\s]{2,40})?(\.\s+|\s{2,}|\n)(.*)$");
+                if (headingMatch.Success && headingMatch.Groups[6].Success && headingMatch.Groups[6].Value.Trim().Length > 15)
+                {
+                    var headingPart = cleanLine.Substring(0, cleanLine.IndexOf(headingMatch.Groups[6].Value)).Trim();
+                    var bodyPart = headingMatch.Groups[6].Value.Trim();
+                    if (!string.IsNullOrEmpty(headingPart)) result.Add(headingPart);
+                    cleanLine = bodyPart;
+                }
+
                 var sents = Regex.Split(cleanLine, pattern);
                 foreach (var s in sents)
                 {
@@ -226,23 +236,27 @@ namespace EnglishReadingPlatform.Services
             var sentTask = Task.WhenAll(rawSentences.Select(s => TranslateSentenceAsync(s)));
             var sentTrs = sentTask.Result;
 
-            var sentencesData = rawSentences.Select((s, i) => new AnalyzedSentence
+            var sentencesData = rawSentences.Select((s, i) =>
             {
-                Index = i,
-                Original = s,
-                Translation = sentTrs[i],
-                IsHeading = s.Length < 60 && !s.EndsWith(".") && !s.EndsWith("!") && !s.EndsWith("?"),
-                Alignment = (s.Length < 60 && !s.EndsWith(".") && !s.EndsWith("!") && !s.EndsWith("?")) ? "center" : "left",
-                Indentation = 0,
-                Words = ExtractWords(s).Select(w => new AnalyzedWord
+                bool isHead = IsSentenceHeading(s);
+                return new AnalyzedSentence
                 {
-                    Word = w,
-                    Translation = w, // Çeviriyi anlık tıklama (lazy) bırakıyoruz, hız kazanmak için
-                    Type = "default"
-                }).ToList()
+                    Index = i,
+                    Original = s,
+                    Translation = sentTrs[i],
+                    IsHeading = isHead,
+                    Alignment = isHead ? "center" : "left",
+                    Indentation = 0,
+                    Words = ExtractWords(s).Select(w => new AnalyzedWord
+                    {
+                        Word = w,
+                        Translation = w, // Çeviriyi anlık tıklama (lazy) bırakıyoruz, hız kazanmak için
+                        Type = "default"
+                    }).ToList()
+                };
             }).ToList();
 
-            return sentencesData;
+            return NormalizeAndSeparateHeadings(sentencesData);
         }
 
         private async Task<List<AnalyzedSentence>> AnalyzeTextWithGeminiAsync(string text, string apiKey)
@@ -340,7 +354,7 @@ namespace EnglishReadingPlatform.Services
                                 Type = "default"
                             }).ToList();
                         }
-                        return result.Sentences;
+                        return NormalizeAndSeparateHeadings(result.Sentences);
                     }
                 }
                 catch (Exception ex)
@@ -351,6 +365,66 @@ namespace EnglishReadingPlatform.Services
             }
 
             throw lastException ?? new Exception("All Gemini models failed to analyze text.");
+        }
+
+        private static bool IsSentenceHeading(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            var trimmed = s.Trim();
+            if (Regex.IsMatch(trimmed, @"^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\b", RegexOptions.IgnoreCase))
+                return true;
+            if (trimmed.Length <= 75 && trimmed.ToUpperInvariant() == trimmed && Regex.IsMatch(trimmed, @"[A-Z]"))
+                return true;
+            if (trimmed.Length <= 55 && !trimmed.EndsWith(".") && !trimmed.EndsWith("!") && !trimmed.EndsWith("?") && !trimmed.Contains(","))
+                return true;
+            return false;
+        }
+
+        private List<AnalyzedSentence> NormalizeAndSeparateHeadings(List<AnalyzedSentence> input)
+        {
+            if (input == null || !input.Any()) return new List<AnalyzedSentence>();
+
+            var output = new List<AnalyzedSentence>();
+            foreach (var item in input)
+            {
+                var orig = (item.Original ?? "").Trim();
+                if (string.IsNullOrEmpty(orig)) continue;
+
+                // Eğer tek satır içine başlık ile normal paragraf cümlesi birleşmişse (örn: "CHAPTER I THE BEGINNING It was a dark...")
+                var headingMatch = Regex.Match(orig, @"^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\s+([0-9IVXLCDMivxlcdm]+|[A-Za-z]+)?\s*(-|:|–)?\s*([A-Z\s]{2,40}|[A-Za-z\s]{2,40})?(\.\s+|\s{2,}|\n)(.*)$");
+                if (!item.IsHeading && headingMatch.Success && headingMatch.Groups[6].Success && headingMatch.Groups[6].Value.Trim().Length > 15)
+                {
+                    var headingPart = orig.Substring(0, orig.IndexOf(headingMatch.Groups[6].Value)).Trim();
+                    var bodyPart = headingMatch.Groups[6].Value.Trim();
+                    if (!string.IsNullOrEmpty(headingPart))
+                    {
+                        output.Add(new AnalyzedSentence
+                        {
+                            Index = output.Count,
+                            Original = headingPart,
+                            Translation = headingPart,
+                            IsHeading = true,
+                            Alignment = "center",
+                            Indentation = 0,
+                            Words = ExtractWords(headingPart).Select(w => new AnalyzedWord { Word = w, Translation = w, Type = "default" }).ToList()
+                        });
+                    }
+                    orig = bodyPart;
+                    item.Original = bodyPart;
+                    item.Words = ExtractWords(bodyPart).Select(w => new AnalyzedWord { Word = w, Translation = w, Type = "default" }).ToList();
+                }
+
+                if (!item.IsHeading && IsSentenceHeading(orig))
+                {
+                    item.IsHeading = true;
+                    item.Alignment = "center";
+                }
+
+                item.Index = output.Count;
+                output.Add(item);
+            }
+
+            return output;
         }
     }
 }
