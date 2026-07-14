@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import AdminLayout from "../components/AdminLayout";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
 
@@ -269,59 +270,26 @@ export default function BooksPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white font-sans selection:bg-indigo-500/30">
-      {/* Sidebar with Premium Design */}
-      <aside className="fixed left-0 top-0 h-full w-64 bg-gray-900/60 backdrop-blur-md border-r border-gray-800 flex flex-col z-20">
-        <div className="p-6 border-b border-gray-800/80">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-lg">🛡️</div>
-            <div>
-              <p className="font-bold text-white text-sm tracking-wide">ADMIN PORTAL</p>
-              <p className="text-[10px] text-gray-400 font-semibold tracking-widest uppercase mt-0.5">Control Center</p>
-            </div>
-          </div>
-        </div>
-        <nav className="flex-1 p-4 space-y-1">
-          {[
-            { href: "/dashboard", label: "Dashboard", icon: "📊" },
-            { href: "/books", label: "Kitap Yönetimi", icon: "📚" },
-            { href: "/users", label: "Kullanıcı Yönetimi", icon: "👥" },
-            { href: "/feedbacks", label: "Geri Bildirimler", icon: "💬" },
-          ].map((item) => (
-            <a key={item.href} href={item.href} className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/40 hover:text-white transition-all duration-200">
-              <span className="text-lg">{item.icon}</span>
-              <span className="text-sm font-semibold tracking-wide">{item.label}</span>
-            </a>
-          ))}
-        </nav>
-        <div className="p-4 border-t border-gray-800/80">
-          <button onClick={() => { localStorage.clear(); router.replace("/"); }} className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-red-950/20 text-red-400 hover:bg-red-900/25 border border-red-900/30 transition-all duration-200 text-sm font-bold">
-            <span>🚪</span><span>Oturumu Kapat</span>
-          </button>
-        </div>
-      </aside>
+    <AdminLayout>
+      <div className="mb-8">
+        <h1 className="text-3xl font-black tracking-tight text-white bg-clip-text bg-gradient-to-r from-white to-gray-400">Kitap Yönetimi</h1>
+        <p className="text-gray-400 text-sm mt-1.5 font-medium">Pre-translation teknolojisi ve görsel sayfa seçimi ile kitap oluşturun</p>
+      </div>
 
-      {/* Main Content Area */}
-      <main className="ml-64 p-10 max-w-7xl mx-auto space-y-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800/50 pb-6">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-white bg-clip-text bg-gradient-to-r from-white to-gray-400">Kitap Yönetimi</h1>
-            <p className="text-gray-400 text-sm mt-1.5 font-medium">Pre-translation teknolojisi ve görsel sayfa seçimi ile kitap oluşturun</p>
-          </div>
+      {message && (
+        <div className={`p-4 rounded-xl border text-sm font-semibold mb-6 ${
+          message.type === "success" 
+            ? "bg-green-950/20 border-green-800/40 text-green-400" 
+            : "bg-red-950/20 border-red-800/40 text-red-400"
+        }`}>
+          {message.text}
         </div>
+      )}
 
-        {message && (
-          <div className={`p-4 rounded-xl border text-sm font-semibold animate-in fade-in slide-in-from-top duration-300 ${
-            message.type === "success" 
-              ? "bg-green-950/20 border-green-800/40 text-green-400" 
-              : "bg-red-950/20 border-red-800/40 text-red-400"
-          }`}>
-            {message.text}
-          </div>
-        )}
-
+      {/* Grid: Upload & Book List */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* PDF Yükleme Formu */}
-        <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-8 shadow-xl space-y-6">
+        <div className="lg:col-span-1 bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-6 shadow-xl space-y-6">
           <h2 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2">
             <span>📤</span> Yeni Kitap Yükle & Çevir
           </h2>
@@ -453,7 +421,7 @@ export default function BooksPage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </AdminLayout>
   );
 }
