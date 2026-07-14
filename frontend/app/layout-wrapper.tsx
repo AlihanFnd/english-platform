@@ -4,7 +4,7 @@ import React from 'react';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useActivityTracker } from './hooks/useActivityTracker';
 import FeedbackWidget from './components/FeedbackWidget';
 import { 
@@ -22,13 +22,15 @@ import {
   Flame,
   Trophy,
   Target,
-  ArrowLeft
+  ArrowLeft,
+  Home
 } from 'lucide-react';
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { user, logout, loading } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [showWelcome, setShowWelcome] = React.useState(false);
   const [showFeedbackTooltip, setShowFeedbackTooltip] = React.useState(false);
@@ -211,10 +213,24 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       {/* Mobile Header (Deep Navy) */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#1E293B] border-b border-outline-variant px-4 flex items-center justify-between z-20 shadow-md">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-primary/20 text-primary">
-            <BookOpen className="h-5 w-5" />
-          </div>
-          <span className="font-bold text-white text-md tracking-tight">Linguist Pro</span>
+          {pathname !== '/' ? (
+            <button 
+              onClick={() => router.back()} 
+              className="mr-1 p-1 text-white hover:text-primary transition-colors flex items-center justify-center cursor-pointer bg-transparent border-none"
+              title="Geri Git"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          ) : (
+            <div className="p-1.5 rounded-lg bg-primary/20 text-primary">
+              <BookOpen className="h-5 w-5" />
+            </div>
+          )}
+          
+          <Link href="/" className="flex items-center gap-1.5 text-white hover:text-primary transition-colors">
+            {pathname !== '/' && <Home className="h-4 w-4" />}
+            <span className="font-bold text-md tracking-tight">Linguist Pro</span>
+          </Link>
         </div>
         <div className="flex items-center gap-2">
           {/* Mobile Theme Toggle Button */}
@@ -316,41 +332,41 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       {/* Welcome Tour Modal */}
       {showWelcome && (
         <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-300">
-          <div className="w-full max-w-lg bg-surface border border-primary/30 rounded-3xl p-8 shadow-2xl relative text-center space-y-6 animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center text-3xl mx-auto animate-bounce">
+          <div className="w-full max-w-md bg-surface border border-outline-variant rounded-3xl p-6 md:p-8 shadow-2xl relative flex flex-col space-y-5 animate-in zoom-in-95 duration-300">
+            <div className="w-14 h-14 bg-primary/10 text-primary rounded-2xl flex items-center justify-center text-2xl mx-auto animate-bounce shrink-0">
               🚀
             </div>
 
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-primary tracking-tight">
+            <div className="space-y-1 text-center">
+              <h2 className="text-xl font-black text-primary tracking-tight">
                 BeelinguaAI'a Hoş Geldiniz!
               </h2>
-              <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider">
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">
                 İlk Adım Kılavuzu
               </p>
             </div>
 
-            <div className="text-sm text-on-surface-variant leading-relaxed space-y-4 text-left bg-surface-container/60 p-5 rounded-2xl border border-outline-variant">
-              <div className="flex items-start gap-3">
-                <span className="text-lg">📚</span>
+            <div className="text-xs text-on-surface-variant leading-relaxed space-y-3.5 text-left bg-surface-container/60 p-4.5 rounded-2xl border border-outline-variant max-h-[300px] overflow-y-auto">
+              <div className="flex items-start gap-2.5">
+                <span className="text-md shrink-0">📚</span>
                 <p>
                   Kitap okumaya başlamak için sol taraftaki menüde yer alan <strong>"Kitaplık"</strong> sekmesini kullanabilirsiniz.
                 </p>
               </div>
-              <div className="flex items-start gap-3">
-                <span className="text-lg">🖱️</span>
+              <div className="flex items-start gap-2.5">
+                <span className="text-md shrink-0">🖱️</span>
                 <p>
                   Okuma yaparken bilmediğiniz herhangi bir kelimeye tıklayarak <strong>anında Türkçe çevirisini</strong> ve dil bilgisini görebilirsiniz.
                 </p>
               </div>
-              <div className="flex items-start gap-3">
-                <span className="text-lg">🔊</span>
+              <div className="flex items-start gap-2.5">
+                <span className="text-md shrink-0">🔊</span>
                 <p>
                   Cümlelerin veya kelimelerin yanındaki <strong>ses butonlarına</strong> basarak doğru İngilizce telaffuzlarını dinleyebilirsiniz.
                 </p>
               </div>
-              <div className="flex items-start gap-3">
-                <span className="text-lg">⭐</span>
+              <div className="flex items-start gap-2.5">
+                <span className="text-md shrink-0">⭐</span>
                 <p>
                   Kelimeleri <strong>"Bilinmeyen Kelimelerime Ekle"</strong> butonuyla kendi kelime listenize kaydederek daha sonra çalışabilirsiniz.
                 </p>
@@ -359,7 +375,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
             <button
               onClick={handleCloseWelcome}
-              className="w-full bg-primary hover:bg-primary/90 text-on-primary py-3.5 rounded-2xl font-bold text-sm shadow-lg shadow-primary/35 hover:shadow-primary/50 transition-all bouncy-btn cursor-pointer"
+              className="w-full bg-primary hover:bg-primary/90 text-on-primary py-3 rounded-2xl font-bold text-sm shadow-md shadow-primary/25 transition-all bouncy-btn cursor-pointer shrink-0"
             >
               Harika, Başlayalım!
             </button>
