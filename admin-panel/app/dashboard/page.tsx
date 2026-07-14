@@ -29,23 +29,41 @@ interface Stats {
   recentUsers: Array<{ id: number; username: string; email: string; createdAt: string }>;
 }
 
+interface ActivityLog {
+  id: number;
+  username: string;
+  activityType: string;
+  details: string;
+  durationSeconds: number;
+  timestamp: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const token = useAdminAuth();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) return;
 
-    async function loadStats() {
+    async function loadDashboardData() {
       try {
-        const res = await fetch(`${API}/api/admin/stats`, {
+        const statsRes = await fetch(`${API}/api/admin/stats`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.ok) {
-          const data = await res.json();
+        if (statsRes.ok) {
+          const data = await statsRes.json();
           setStats(data);
+        }
+
+        const activitiesRes = await fetch(`${API}/api/activity/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (activitiesRes.ok) {
+          const actData = await activitiesRes.json();
+          setActivities(actData);
         }
       } catch (err) {
         console.error(err);
@@ -54,7 +72,7 @@ export default function DashboardPage() {
       }
     }
 
-    loadStats();
+    loadDashboardData();
   }, [token]);
 
   if (!token || loading) {
@@ -124,33 +142,95 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Recent Registered Users */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">🆕 Son Kayıt Olan Öğrenciler</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 border-b border-gray-800">
-                  <th className="pb-3 font-medium">Kullanıcı Adı</th>
-                  <th className="pb-3 font-medium">E-Posta</th>
-                  <th className="pb-3 font-medium">Kayıt Tarihi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {stats?.recentUsers.map((u) => (
-                  <tr key={u.id} className="text-gray-300">
-                    <td className="py-3 font-medium">{u.username}</td>
-                    <td className="py-3 text-gray-400">{u.email}</td>
-                    <td className="py-3 text-gray-400">{new Date(u.createdAt).toLocaleDateString("tr-TR")}</td>
+        {/* Tables Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Recent Registered Users */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 lg:col-span-1">
+            <h2 className="text-lg font-semibold mb-4">🆕 Son Kayıt Olan Öğrenciler</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-800">
+                    <th className="pb-3 font-medium">Kullanıcı Adı</th>
+                    <th className="pb-3 font-medium">E-Posta</th>
                   </tr>
-                ))}
-                {(!stats || stats.recentUsers.length === 0) && (
-                  <tr>
-                    <td colSpan={3} className="py-8 text-center text-gray-600">Henüz kayıtlı öğrenci yok.</td>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {stats?.recentUsers.map((u) => (
+                    <tr key={u.id} className="text-gray-300">
+                      <td className="py-3 font-medium">{u.username}</td>
+                      <td className="py-3 text-gray-400">{u.email}</td>
+                    </tr>
+                  ))}
+                  {(!stats || stats.recentUsers.length === 0) && (
+                    <tr>
+                      <td colSpan={2} className="py-8 text-center text-gray-600">Henüz kayıtlı öğrenci yok.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* User Activity Tracker */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 lg:col-span-2">
+            <h2 className="text-lg font-semibold mb-4">⏱️ Canlı Kullanıcı Aktiviteleri & Çalışma Süreleri</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-800">
+                    <th className="pb-3 font-medium">Öğrenci</th>
+                    <th className="pb-3 font-medium">Aktivite</th>
+                    <th className="pb-3 font-medium">Detay</th>
+                    <th className="pb-3 font-medium">Harcanan Süre</th>
+                    <th className="pb-3 font-medium">Son Sinyal</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {activities.map((a) => {
+                    // Format duration nicely
+                    let durationText = `${a.durationSeconds} sn`;
+                    if (a.durationSeconds >= 60) {
+                      const mins = Math.floor(a.durationSeconds / 60);
+                      const secs = a.durationSeconds % 60;
+                      durationText = secs > 0 ? `${mins} dk ${secs} sn` : `${mins} dk`;
+                    }
+
+                    // Format activity type badge
+                    let typeBadge = a.activityType;
+                    if (a.activityType === "ReadBook") typeBadge = "📖 Okuma";
+                    else if (a.activityType === "TakeQuiz") typeBadge = "📝 Sınav";
+                    else if (a.activityType === "PageView") typeBadge = "📄 Sayfa";
+                    else if (a.activityType === "AuthView") typeBadge = "🔑 Giriş";
+
+                    return (
+                      <tr key={a.id} className="text-gray-300">
+                        <td className="py-3 font-medium text-white">{a.username}</td>
+                        <td className="py-3">
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            a.activityType === "ReadBook" ? "bg-blue-900/40 text-blue-300 border border-blue-700/50" :
+                            a.activityType === "TakeQuiz" ? "bg-amber-900/40 text-amber-300 border border-amber-700/50" :
+                            "bg-gray-800 text-gray-400"
+                          }`}>
+                            {typeBadge}
+                          </span>
+                        </td>
+                        <td className="py-3 text-gray-400 max-w-[200px] truncate" title={a.details}>{a.details}</td>
+                        <td className="py-3 font-semibold text-emerald-400">{durationText}</td>
+                        <td className="py-3 text-gray-500 text-xs">
+                          {new Date(a.timestamp).toLocaleTimeString("tr-TR", { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {activities.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-gray-600">Henüz bir aktivite kaydı bulunmuyor.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </main>
