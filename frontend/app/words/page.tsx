@@ -25,6 +25,7 @@ export default function WordsPage() {
 
   // Flashcard flipping state - stores set of flipped IDs
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
+  const flipLockRef = useRef<{ [key: number]: boolean }>({});
 
   // Study / Test Mode states
   const [studyMode, setStudyMode] = useState(false);
@@ -125,6 +126,13 @@ export default function WordsPage() {
 
   const toggleFlip = (id: number) => {
     if (editingId === id) return;
+    if (flipLockRef.current[id]) return;
+
+    flipLockRef.current[id] = true;
+    setTimeout(() => {
+      flipLockRef.current[id] = false;
+    }, 600);
+
     setFlippedCards(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -309,6 +317,7 @@ export default function WordsPage() {
                   return (
                     <div
                       key={item.id}
+                      onClick={() => !isEditing && toggleFlip(item.id)}
                       className="h-56 cursor-pointer relative select-none perspective-1000 group"
                     >
                       <div
@@ -317,12 +326,7 @@ export default function WordsPage() {
                         }`}
                       >
                         {/* FRONT SIDE (English) */}
-                        <div 
-                          onClick={() => !isEditing && toggleFlip(item.id)}
-                          className={`absolute inset-0 backface-hidden glass-card rounded-2xl p-6 flex flex-col justify-between border border-outline-variant/60 group-hover:border-primary/40 transition-all shadow-sm hover:shadow-md bg-surface/90 ${
-                            isFlipped ? 'pointer-events-none' : 'pointer-events-auto'
-                          }`}
-                        >
+                        <div className="absolute inset-0 backface-hidden glass-card rounded-2xl p-6 flex flex-col justify-between border border-outline-variant/60 group-hover:border-primary/40 transition-all shadow-sm hover:shadow-md bg-surface/90">
                           <div className="flex justify-between items-start">
                             <span className="text-[10px] font-bold text-primary tracking-wider bg-primary/10 px-2.5 py-1 rounded-lg">
                               EN
@@ -386,12 +390,7 @@ export default function WordsPage() {
                         </div>
 
                         {/* BACK SIDE (Turkish Translation) */}
-                        <div 
-                          onClick={() => !isEditing && toggleFlip(item.id)}
-                          className={`absolute inset-0 backface-hidden rotate-y-180 glass-card rounded-2xl p-6 flex flex-col justify-between border border-primary/30 bg-surface/95 shadow-md ${
-                            isFlipped ? 'pointer-events-auto' : 'pointer-events-none'
-                          }`}
-                        >
+                        <div className="absolute inset-0 backface-hidden rotate-y-180 glass-card rounded-2xl p-6 flex flex-col justify-between border border-primary/30 bg-surface/95 shadow-md">
                           <div className="flex justify-between items-start">
                             <span className="text-[10px] font-bold text-primary tracking-wider bg-primary/10 px-2.5 py-1 rounded-lg">
                               TR
