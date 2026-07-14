@@ -17,6 +17,7 @@ namespace EnglishReadingPlatform.Models
         public ICollection<WordListItem> WordListItems { get; set; } = new List<WordListItem>();
         public ICollection<GroupMember> GroupMemberships { get; set; } = new List<GroupMember>();
         public ICollection<QuizResult> QuizResults { get; set; } = new List<QuizResult>();
+        public ICollection<UserActivityLog> ActivityLogs { get; set; } = new List<UserActivityLog>();
     }
 
     // ─── Kitap ────────────────────────────────────────────────
@@ -167,5 +168,17 @@ namespace EnglishReadingPlatform.Models
         
         // Cümle cümle ve kelime kelime analiz/çeviri JSON verisi
         [Required] public string SentencesJson { get; set; } = "[]";
+    }
+
+    // ─── Kullanıcı Aktivite Kaydı ──────────────────────────────
+    public class UserActivityLog
+    {
+        [Key] public int Id { get; set; }
+        public int UserId { get; set; }
+        [ForeignKey("UserId")] public User User { get; set; } = null!;
+        [Required, MaxLength(50)] public string ActivityType { get; set; } = ""; // Login, Logout, PageView, Read, Quiz
+        [MaxLength(200)] public string Details { get; set; } = ""; // Hangi kitap, hangi bölüm vb.
+        public int DurationSeconds { get; set; } = 0; // Bu aktivitede geçirilen süre
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 }

@@ -257,4 +257,7 @@ export const api = {
   
   saveOcrRecord: (text: string) =>
     apiRequest<OcrRecord>('/dashboard/ocr', 'POST', { text }),
+
+  logActivity: (activityType: string, details: string, durationSeconds: number) =>
+    apiRequest<{ success: boolean }>('/activity/log', 'POST', { activityType, details, durationSeconds }),
 };

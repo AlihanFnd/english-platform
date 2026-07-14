@@ -20,6 +20,7 @@ namespace EnglishReadingPlatform.Data
         public DbSet<GroupBookAssignment> GroupBookAssignments => Set<GroupBookAssignment>();
         public DbSet<OcrRecord> OcrRecords => Set<OcrRecord>();
         public DbSet<BookPage> BookPages => Set<BookPage>();
+        public DbSet<UserActivityLog> UserActivityLogs => Set<UserActivityLog>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -5,6 +5,7 @@ import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useActivityTracker } from './hooks/useActivityTracker';
 import { 
   BookOpen, 
   GraduationCap, 
@@ -28,6 +29,9 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  // Initialize background activity tracking
+  useActivityTracker();
 
   const isAuthPage = pathname === '/login' || pathname === '/register';
 
