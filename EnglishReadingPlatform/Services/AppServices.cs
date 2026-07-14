@@ -9,10 +9,12 @@ namespace EnglishReadingPlatform.Services
     public class JwtService
     {
         private readonly IConfiguration _config;
+        private readonly TokenSecurityService _tokenSecurity;
 
-        public JwtService(IConfiguration config)
+        public JwtService(IConfiguration config, TokenSecurityService tokenSecurity)
         {
             _config = config;
+            _tokenSecurity = tokenSecurity;
         }
 
         public string GenerateToken(User user)
@@ -20,20 +22,25 @@ namespace EnglishReadingPlatform.Services
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            var now = DateTime.UtcNow;
+            var jti = Guid.NewGuid().ToString();
+            var iat = new DateTimeOffset(now).ToUnixTimeSeconds().ToString();
+
             var claims = new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role),
-                // Admin paneli için ek güvenlik claim'i
-                new Claim("account_type", user.Role == "admin" ? "admin" : "user")
+                new Claim("account_type", user.Role == "admin" ? "admin" : "user"),
+                new Claim(JwtRegisteredClaimNames.Jti, jti),
+                new Claim(JwtRegisteredClaimNames.Iat, iat, ClaimValueTypes.Integer64)
             };
 
-            // Güvenlik: admin oturumları 2 saat, normal kullanıcılar 7 gün
+            // Güvenlik: Admin tokenları 1 saat, normal kullanıcılar 24 saat
             var expiry = user.Role == "admin"
-                ? DateTime.UtcNow.AddHours(2)
-                : DateTime.UtcNow.AddDays(7);
+                ? now.AddHours(1)
+                : now.AddHours(24);
 
             var token = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"],
@@ -62,7 +69,20 @@ namespace EnglishReadingPlatform.Services
                     ValidAudience = _config["Jwt:Audience"],
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
-                }, out _);
+                }, out var validatedToken);
+
+                // Check revocation
+                var jtiClaim = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+                var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(userIdClaim, out int userId))
+                {
+                    var iat = validatedToken.ValidFrom;
+                    if (_tokenSecurity.IsTokenRevoked(jtiClaim ?? token, userId, iat))
+                    {
+                        return null; // Token revoked!
+                    }
+                }
+
                 return principal;
             }
             catch

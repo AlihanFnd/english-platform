@@ -28,7 +28,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.Zero
         };
 
-        // Cookie'den token okuma (Fallback)
+        // Cookie'den token okuma (Fallback) ve Revokasyon (Suistimal Engelleme) Kontrolü
         opt.Events = new JwtBearerEvents
         {
             OnMessageReceived = ctx =>
@@ -37,6 +37,28 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 if (!string.IsNullOrEmpty(token))
                     ctx.Token = token;
                 return Task.CompletedTask;
+            },
+            OnTokenValidated = async ctx =>
+            {
+                var tokenSecurity = ctx.HttpContext.RequestServices.GetRequiredService<TokenSecurityService>();
+                var principal = ctx.Principal;
+                if (principal != null)
+                {
+                    var jti = principal.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
+                    var userIdStr = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    var iatStr = principal.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat)?.Value;
+
+                    if (int.TryParse(userIdStr, out int userId) && long.TryParse(iatStr, out long iatSec))
+                    {
+                        var issuedAt = DateTimeOffset.FromUnixTimeSeconds(iatSec).UtcDateTime;
+                        if (tokenSecurity.IsTokenRevoked(jti ?? ctx.SecurityToken?.ToString(), userId, issuedAt))
+                        {
+                            ctx.Fail("Bu token iptal edildi veya suistimal tespiti nedeniyle geçersiz kılındı.");
+                            return;
+                        }
+                    }
+                }
+                await Task.CompletedTask;
             }
         };
     });
@@ -52,6 +74,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddControllers();
 
 // ─── Servisler ────────────────────────────────────────────────
+builder.Services.AddSingleton<TokenSecurityService>();
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddScoped<QuizGeneratorService>();
 builder.Services.AddScoped<PdfService>();

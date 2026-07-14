@@ -250,17 +250,24 @@ namespace EnglishReadingPlatform.Controllers
     public class TranslateController : ControllerBase
     {
         private readonly TranslationService _transService;
+        private readonly TokenSecurityService _tokenSecurity;
 
-        public TranslateController(TranslationService transService)
+        public TranslateController(TranslationService transService, TokenSecurityService tokenSecurity)
         {
             _transService = transService;
+            _tokenSecurity = tokenSecurity;
         }
+
+        private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         public record TReq(string Text);
 
         [HttpPost("word")]
         public async Task<IActionResult> Word([FromBody] TReq req)
         {
+            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_trans", 100))
+                return StatusCode(429, new { error = "Dakika başına çeviri limitini aştınız." });
+
             if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "" });
             var r = await _transService.TranslateWordAsync(req.Text.Trim());
             return Ok(new { translation = r.Tr, type = r.Type });
@@ -269,6 +276,9 @@ namespace EnglishReadingPlatform.Controllers
         [HttpPost("sentence")]
         public async Task<IActionResult> Sentence([FromBody] TReq req)
         {
+            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_trans", 100))
+                return StatusCode(429, new { error = "Dakika başına çeviri limitini aştınız." });
+
             if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "" });
             var tr = await _transService.TranslateSentenceAsync(req.Text.Trim());
             return Ok(new { translation = tr });
@@ -277,6 +287,9 @@ namespace EnglishReadingPlatform.Controllers
         [HttpPost("analyze")]
         public async Task<IActionResult> Analyze([FromBody] TReq req)
         {
+            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_analyze", 20))
+                return StatusCode(429, new { error = "Dakika başına yapay zeka analiz limitini aştınız. Lütfen biraz bekleyip tekrar deneyin." });
+
             if (string.IsNullOrWhiteSpace(req.Text)) return BadRequest(new { error = "Metin boş." });
             try
             {

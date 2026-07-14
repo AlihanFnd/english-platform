@@ -16,12 +16,14 @@ namespace EnglishReadingPlatform.Controllers
         private readonly AppDbContext _db;
         private readonly QuizGeneratorService _quizGen;
         private readonly TranslationService _transService;
+        private readonly TokenSecurityService _tokenSecurity;
 
-        public BooksController(AppDbContext db, QuizGeneratorService quizGen, TranslationService transService)
+        public BooksController(AppDbContext db, QuizGeneratorService quizGen, TranslationService transService, TokenSecurityService tokenSecurity)
         {
             _db = db;
             _quizGen = quizGen;
             _transService = transService;
+            _tokenSecurity = tokenSecurity;
         }
 
         private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -85,6 +87,11 @@ namespace EnglishReadingPlatform.Controllers
         [HttpGet("{id}/read")]
         public async Task<IActionResult> Read(int id, [FromQuery] int chapter = 1, [FromQuery] int page = 1, [FromQuery] bool reanalyze = false)
         {
+            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_read", 60))
+            {
+                return StatusCode(429, new { error = "Sayfa okuma limitini aştınız. Lütfen birkaç saniye bekleyin." });
+            }
+
             var book = await _db.Books
                 .Include(b => b.Chapters)
                 .Include(b => b.Pages)

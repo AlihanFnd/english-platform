@@ -12,11 +12,15 @@ namespace EnglishReadingPlatform.Controllers
     {
         private readonly AppDbContext _db;
         private readonly JwtService _jwt;
+        private readonly TokenSecurityService _tokenSecurity;
+        private readonly IWebHostEnvironment _env;
 
-        public AuthController(AppDbContext db, JwtService jwt)
+        public AuthController(AppDbContext db, JwtService jwt, TokenSecurityService tokenSecurity, IWebHostEnvironment env)
         {
             _db = db;
             _jwt = jwt;
+            _tokenSecurity = tokenSecurity;
+            _env = env;
         }
 
         public class LoginRequest
@@ -37,6 +41,12 @@ namespace EnglishReadingPlatform.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown_ip";
+            if (_tokenSecurity.IsRateLimitExceeded($"login_{ip}", 10))
+            {
+                return StatusCode(429, new { error = "Çok fazla başarısız giriş denemesi. Lütfen 1 dakika bekleyip tekrar deneyin." });
+            }
+
             if (req == null || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             {
                 return BadRequest(new { error = "Email ve şifre zorunludur." });
@@ -50,13 +60,13 @@ namespace EnglishReadingPlatform.Controllers
 
             var token = _jwt.GenerateToken(user);
             
-            // Set cookie for convenience, but also return in body
+            // Set secure cookie
             Response.Cookies.Append("jwt_token", token, new CookieOptions
             {
                 HttpOnly = true,
-                Secure = false,
+                Secure = !_env.IsDevelopment(),
                 SameSite = SameSiteMode.Lax,
-                Expires = DateTimeOffset.UtcNow.AddDays(7)
+                Expires = user.Role == "admin" ? DateTimeOffset.UtcNow.AddHours(1) : DateTimeOffset.UtcNow.AddHours(24)
             });
 
             return Ok(new { 
@@ -74,6 +84,12 @@ namespace EnglishReadingPlatform.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest req)
         {
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown_ip";
+            if (_tokenSecurity.IsRateLimitExceeded($"register_{ip}", 5))
+            {
+                return StatusCode(429, new { error = "Çok fazla kayıt isteği. Lütfen biraz bekleyin." });
+            }
+
             if (req == null || string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             {
                 return BadRequest(new { error = "Tüm alanlar zorunludur." });
@@ -106,9 +122,9 @@ namespace EnglishReadingPlatform.Controllers
             Response.Cookies.Append("jwt_token", token, new CookieOptions
             {
                 HttpOnly = true,
-                Secure = false,
+                Secure = !_env.IsDevelopment(),
                 SameSite = SameSiteMode.Lax,
-                Expires = DateTimeOffset.UtcNow.AddDays(7)
+                Expires = DateTimeOffset.UtcNow.AddHours(24)
             });
 
             return Ok(new { 
@@ -126,8 +142,21 @@ namespace EnglishReadingPlatform.Controllers
         [HttpPost("logout")]
         public IActionResult Logout()
         {
-            Response.Cookies.Delete("jwt_token");
-            return Ok(new { message = "Başarıyla çıkış yapıldı." });
+            var authHeader = Request.Headers["Authorization"].ToString();
+            var tokenStr = Request.Cookies["jwt_token"];
+            if (string.IsNullOrEmpty(tokenStr) && !string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                tokenStr = authHeader.Substring("Bearer ".Length).Trim();
+            }
+
+            if (!string.IsNullOrEmpty(tokenStr))
+            {
+                // Kalıcı olarak blacklist'e al (suistimali önlemek için 24 saat koru)
+                _tokenSecurity.RevokeToken(tokenStr, DateTime.UtcNow.AddHours(24));
+            }
+
+            Response.Cookies.Delete("jwt_token", new CookieOptions { HttpOnly = true, Secure = !_env.IsDevelopment(), SameSite = SameSiteMode.Lax });
+            return Ok(new { message = "Başarıyla çıkış yapıldı ve token iptal edildi." });
         }
 
         // GET /api/auth/me
