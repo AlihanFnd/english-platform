@@ -6,6 +6,7 @@ import { useTheme } from './context/ThemeContext';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useActivityTracker } from './hooks/useActivityTracker';
+import FeedbackWidget from './components/FeedbackWidget';
 import { 
   BookOpen, 
   GraduationCap, 
@@ -29,9 +30,24 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [showWelcome, setShowWelcome] = React.useState(false);
 
   // Initialize background activity tracking
   useActivityTracker();
+
+  React.useEffect(() => {
+    if (user && !loading) {
+      const tourSeen = localStorage.getItem('welcome_tour_seen');
+      if (!tourSeen) {
+        setShowWelcome(true);
+      }
+    }
+  }, [user, loading]);
+
+  const handleCloseWelcome = () => {
+    localStorage.setItem('welcome_tour_seen', 'true');
+    setShowWelcome(false);
+  };
 
   const isAuthPage = pathname === '/login' || pathname === '/register';
 
@@ -288,6 +304,63 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       <main className="flex-1 p-6 md:p-10 pt-24 md:pt-24 overflow-y-auto max-w-[1440px] mx-auto w-full z-10 relative">
         {children}
       </main>
+
+      {/* Floating Feedback Bubble */}
+      <FeedbackWidget />
+
+      {/* Welcome Tour Modal */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-55 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="w-full max-w-lg bg-surface border border-primary/30 rounded-3xl p-8 shadow-2xl relative text-center space-y-6 animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center text-3xl mx-auto animate-bounce">
+              🚀
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-2xl font-black text-primary tracking-tight">
+                BeelinguaAI'a Hoş Geldiniz!
+              </h2>
+              <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider">
+                İlk Adım Kılavuzu
+              </p>
+            </div>
+
+            <div className="text-sm text-on-surface-variant leading-relaxed space-y-4 text-left bg-surface-container/60 p-5 rounded-2xl border border-outline-variant">
+              <div className="flex items-start gap-3">
+                <span className="text-lg">📚</span>
+                <p>
+                  Kitap okumaya başlamak için sol taraftaki menüde yer alan <strong>"Kitaplık"</strong> sekmesini kullanabilirsiniz.
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-lg">🖱️</span>
+                <p>
+                  Okuma yaparken bilmediğiniz herhangi bir kelimeye tıklayarak <strong>anında Türkçe çevirisini</strong> ve dil bilgisini görebilirsiniz.
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-lg">🔊</span>
+                <p>
+                  Cümlelerin veya kelimelerin yanındaki <strong>ses butonlarına</strong> basarak doğru İngilizce telaffuzlarını dinleyebilirsiniz.
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-lg">⭐</span>
+                <p>
+                  Kelimeleri <strong>"Bilinmeyen Kelimelerime Ekle"</strong> butonuyla kendi kelime listenize kaydederek daha sonra çalışabilirsiniz.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleCloseWelcome}
+              className="w-full bg-primary hover:bg-primary/90 text-on-primary py-3.5 rounded-2xl font-bold text-sm shadow-lg shadow-primary/35 hover:shadow-primary/50 transition-all bouncy-btn cursor-pointer"
+            >
+              Harika, Başlayalım!
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

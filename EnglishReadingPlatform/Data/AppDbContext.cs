@@ -21,6 +21,7 @@ namespace EnglishReadingPlatform.Data
         public DbSet<OcrRecord> OcrRecords => Set<OcrRecord>();
         public DbSet<BookPage> BookPages => Set<BookPage>();
         public DbSet<UserActivityLog> UserActivityLogs => Set<UserActivityLog>();
+        public DbSet<Feedback> Feedbacks => Set<Feedback>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

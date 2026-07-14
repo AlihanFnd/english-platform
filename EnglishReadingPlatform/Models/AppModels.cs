@@ -181,4 +181,14 @@ namespace EnglishReadingPlatform.Models
         public int DurationSeconds { get; set; } = 0; // Bu aktivitede geçirilen süre
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
+
+    // ─── Kullanıcı Geri Bildirimi ──────────────────────────────
+    public class Feedback
+    {
+        [Key] public int Id { get; set; }
+        public int UserId { get; set; }
+        [ForeignKey("UserId")] public User User { get; set; } = null!;
+        [Required, MaxLength(1000)] public string Message { get; set; } = "";
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
 }

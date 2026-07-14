@@ -101,6 +101,7 @@ export default function DashboardPage() {
             { href: "/dashboard", label: "Dashboard", icon: "📊" },
             { href: "/books", label: "Kitap Yönetimi", icon: "📚" },
             { href: "/users", label: "Kullanıcı Yönetimi", icon: "👥" },
+            { href: "/feedbacks", label: "Geri Bildirimler", icon: "💬" },
           ].map((item) => (
             <a key={item.href} href={item.href} className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors">
               <span>{item.icon}</span><span className="text-sm font-medium">{item.label}</span>

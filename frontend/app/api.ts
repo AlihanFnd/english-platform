@@ -260,4 +260,7 @@ export const api = {
 
   logActivity: (activityType: string, details: string, durationSeconds: number) =>
     apiRequest<{ success: boolean }>('/activity/log', 'POST', { activityType, details, durationSeconds }),
+
+  submitFeedback: (message: string) =>
+    apiRequest<{ success: boolean }>('/feedback', 'POST', { message }),
 };

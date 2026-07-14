@@ -134,6 +134,18 @@ export default function OcrPage() {
     }
   };
 
+  const handleWordClick = async (w: AnalyzedWord, originalSentence: string) => {
+    const isKalip = w.word.trim().includes(' ') || w.type === 'kalıp';
+    setSelectedWord({ word: w.word, translation: 'Çevriliyor...', type: isKalip ? 'kalıp' : (w.type || 'default') });
+    setSelectedWordContext(originalSentence);
+    try {
+      const res = await api.translateWord(w.word);
+      setSelectedWord({ word: w.word, translation: res.translation, type: isKalip ? 'kalıp' : res.type });
+    } catch (e) {
+      setSelectedWord({ word: w.word, translation: 'Çevrilemedi', type: isKalip ? 'kalıp' : 'default' });
+    }
+  };
+
   const handleSaveWord = async () => {
     if (!selectedWord) return;
     setSavingWord(true);
@@ -261,10 +273,7 @@ export default function OcrPage() {
                       {sent.words.map((w, wIdx) => (
                         <span
                           key={wIdx}
-                          onClick={() => {
-                            setSelectedWord(w);
-                            setSelectedWordContext(sent.original);
-                          }}
+                          onClick={() => handleWordClick(w, sent.original)}
                           className={`cursor-pointer transition-all duration-150 inline-block px-1 pb-0.5 rounded ${getWordTypeColorClass(
                             w.type
                           )}`}
@@ -322,7 +331,16 @@ export default function OcrPage() {
               <span className="text-[10px] font-bold uppercase tracking-widest text-primary px-2 py-0.5 rounded bg-primary/10">
                 {selectedWord.type || 'kelime'}
               </span>
-              <h4 className="text-2xl font-black text-on-surface mt-1.5">{selectedWord.word}</h4>
+              <div className="flex items-center gap-2 mt-1.5">
+                <h4 className="text-2xl font-black text-on-surface">{selectedWord.word}</h4>
+                <button
+                  onClick={() => speak(selectedWord.word)}
+                  className="p-1 rounded bg-surface-container hover:bg-primary/20 text-on-surface-variant hover:text-primary transition-all cursor-pointer"
+                  title="Sesli Oku"
+                >
+                  <Volume2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <button
               onClick={() => setSelectedWord(null)}

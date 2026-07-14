@@ -322,7 +322,16 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
           <div className="bk-wp-top">
             <div>
               <span className="bk-wp-type">{selWord.type || 'kelime'}</span>
-              <p className="bk-wp-word">{selWord.word}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <p className="bk-wp-word" style={{ margin: 0 }}>{selWord.word}</p>
+                <button
+                  onClick={() => speak(selWord.word)}
+                  style={{ background: 'rgba(99, 102, 241, 0.1)', border: 'none', cursor: 'pointer', display: 'inline-flex', padding: '4px', borderRadius: '6px', color: '#6366f1' }}
+                  title="Sesli Oku"
+                >
+                  <Volume2 size={14} />
+                </button>
+              </div>
               <p className="bk-wp-tr">{selWord.translation}</p>
             </div>
             <button className="bk-wp-x" onClick={() => setSelWord(null)}><X size={15}/></button>

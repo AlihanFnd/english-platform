@@ -286,6 +286,7 @@ export default function BooksPage() {
             { href: "/dashboard", label: "Dashboard", icon: "📊" },
             { href: "/books", label: "Kitap Yönetimi", icon: "📚" },
             { href: "/users", label: "Kullanıcı Yönetimi", icon: "👥" },
+            { href: "/feedbacks", label: "Geri Bildirimler", icon: "💬" },
           ].map((item) => (
             <a key={item.href} href={item.href} className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/40 hover:text-white transition-all duration-200">
               <span className="text-lg">{item.icon}</span>
