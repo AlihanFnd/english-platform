@@ -131,7 +131,7 @@ export default function WordsPage() {
     flipLockRef.current[id] = true;
     setTimeout(() => {
       flipLockRef.current[id] = false;
-    }, 600);
+    }, 150);
 
     setFlippedCards(prev => {
       const next = new Set(prev);
@@ -318,15 +318,15 @@ export default function WordsPage() {
                     <div
                       key={item.id}
                       onClick={() => !isEditing && toggleFlip(item.id)}
-                      className="h-56 cursor-pointer relative select-none perspective-1000 group"
+                      className={`h-56 cursor-pointer select-none glass-card rounded-2xl p-6 flex flex-col justify-between border transition-all shadow-sm hover:shadow-md group ${
+                        isFlipped 
+                          ? 'border-primary/40 bg-surface/95' 
+                          : 'border-outline-variant/60 group-hover:border-primary/40 bg-surface/90'
+                      }`}
                     >
-                      <div
-                        className={`w-full h-full transition-transform duration-500 transform-style-3d relative ${
-                          isFlipped ? 'rotate-y-180' : ''
-                        }`}
-                      >
-                        {/* FRONT SIDE (English) */}
-                        <div className="absolute inset-0 backface-hidden glass-card rounded-2xl p-6 flex flex-col justify-between border border-outline-variant/60 group-hover:border-primary/40 transition-all shadow-sm hover:shadow-md bg-surface/90">
+                      {!isFlipped ? (
+                        /* FRONT SIDE (English) */
+                        <>
                           <div className="flex justify-between items-start">
                             <span className="text-[10px] font-bold text-primary tracking-wider bg-primary/10 px-2.5 py-1 rounded-lg">
                               EN
@@ -387,10 +387,10 @@ export default function WordsPage() {
                               ANLAMI GÖSTER &rarr;
                             </div>
                           )}
-                        </div>
-
-                        {/* BACK SIDE (Turkish Translation) */}
-                        <div className="absolute inset-0 backface-hidden rotate-y-180 glass-card rounded-2xl p-6 flex flex-col justify-between border border-primary/30 bg-surface/95 shadow-md">
+                        </>
+                      ) : (
+                        /* BACK SIDE (Turkish Translation) */
+                        <>
                           <div className="flex justify-between items-start">
                             <span className="text-[10px] font-bold text-primary tracking-wider bg-primary/10 px-2.5 py-1 rounded-lg">
                               TR
@@ -438,11 +438,11 @@ export default function WordsPage() {
                             </div>
                           ) : (
                             <div className="text-center text-[10px] text-primary font-bold uppercase tracking-widest group-hover:scale-105 transition-transform">
-                              KELİMEYE DÖN &larr;
+                              &larr; KELİMEYE DÖN
                             </div>
                           )}
-                        </div>
-                      </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}
