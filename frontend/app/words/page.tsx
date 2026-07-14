@@ -309,7 +309,6 @@ export default function WordsPage() {
                   return (
                     <div
                       key={item.id}
-                      onClick={() => toggleFlip(item.id)}
                       className="h-56 cursor-pointer relative select-none perspective-1000 group"
                     >
                       <div
@@ -318,7 +317,12 @@ export default function WordsPage() {
                         }`}
                       >
                         {/* FRONT SIDE (English) */}
-                        <div className="absolute inset-0 backface-hidden glass-card rounded-2xl p-6 flex flex-col justify-between border border-outline-variant/60 group-hover:border-primary/40 transition-all shadow-sm hover:shadow-md bg-surface/90">
+                        <div 
+                          onClick={() => !isEditing && toggleFlip(item.id)}
+                          className={`absolute inset-0 backface-hidden glass-card rounded-2xl p-6 flex flex-col justify-between border border-outline-variant/60 group-hover:border-primary/40 transition-all shadow-sm hover:shadow-md bg-surface/90 ${
+                            isFlipped ? 'pointer-events-none' : 'pointer-events-auto'
+                          }`}
+                        >
                           <div className="flex justify-between items-start">
                             <span className="text-[10px] font-bold text-primary tracking-wider bg-primary/10 px-2.5 py-1 rounded-lg">
                               EN
@@ -382,7 +386,12 @@ export default function WordsPage() {
                         </div>
 
                         {/* BACK SIDE (Turkish Translation) */}
-                        <div className="absolute inset-0 backface-hidden rotate-y-180 glass-card rounded-2xl p-6 flex flex-col justify-between border border-primary/30 bg-surface/95 shadow-md">
+                        <div 
+                          onClick={() => !isEditing && toggleFlip(item.id)}
+                          className={`absolute inset-0 backface-hidden rotate-y-180 glass-card rounded-2xl p-6 flex flex-col justify-between border border-primary/30 bg-surface/95 shadow-md ${
+                            isFlipped ? 'pointer-events-auto' : 'pointer-events-none'
+                          }`}
+                        >
                           <div className="flex justify-between items-start">
                             <span className="text-[10px] font-bold text-primary tracking-wider bg-primary/10 px-2.5 py-1 rounded-lg">
                               TR
