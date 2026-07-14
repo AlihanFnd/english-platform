@@ -261,8 +261,8 @@ namespace EnglishReadingPlatform.Services
 
         private async Task<List<AnalyzedSentence>> AnalyzeTextWithGeminiAsync(string text, string apiKey)
         {
-            // Try valid GA models in order (gemini-1.5-flash -> gemini-2.0-flash)
-            var models = new[] { "gemini-1.5-flash", "gemini-2.0-flash" };
+            // Try valid active models in order (gemini-2.5-flash -> gemini-2.0-flash -> gemini-1.5-flash)
+            var models = new[] { "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash" };
             Exception? lastException = null;
 
             var prompt = "You are an assistant for an English Reading Platform. " +
