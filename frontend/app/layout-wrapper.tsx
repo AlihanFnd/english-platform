@@ -94,7 +94,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       {/* Sidebar - Desktop (Deep Navy #1E293B) */}
       <aside className="hidden md:flex flex-col w-[280px] bg-[#1E293B] text-white/70 py-6 px-4 z-50 shadow-2xl border-r border-outline-variant relative">
         <div className="px-4 mb-10">
-          <h1 className="font-display-lg text-[28px] text-primary tracking-tight leading-tight font-extrabold">Linguist Pro</h1>
+          <h1 className="font-display-lg text-[28px] text-primary tracking-tight leading-tight font-extrabold">Linguza</h1>
           <p className="text-white/60 font-label-sm mt-1">Seçkin Rütbe • Seviye 4</p>
         </div>
 
@@ -229,7 +229,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           
           <Link href="/" className="flex items-center gap-1.5 text-white hover:text-primary transition-colors">
             {pathname !== '/' && <Home className="h-4 w-4" />}
-            <span className="font-bold text-md tracking-tight">Linguist Pro</span>
+            <span className="font-bold text-md tracking-tight">Linguza</span>
           </Link>
         </div>
         <div className="flex items-center gap-2">
@@ -339,7 +339,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
             <div className="space-y-1 text-center">
               <h2 className="text-xl font-black text-primary tracking-tight">
-                BeelinguaAI'a Hoş Geldiniz!
+                Linguza'ya Hoş Geldiniz!
               </h2>
               <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">
                 İlk Adım Kılavuzu

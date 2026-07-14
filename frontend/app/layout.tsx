@@ -5,7 +5,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import LayoutWrapper from "./layout-wrapper";
 
 export const metadata: Metadata = {
-  title: "BeelinguaAI - İngilizce Çeviri ve Okuma Platformu",
+  title: "Linguza - İngilizce Çeviri ve Okuma Platformu",
   description: "AI destekli okuma, anlık kelime çevirisi ve sınıf yönetim platformu",
 };
 

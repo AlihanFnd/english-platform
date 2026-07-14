@@ -66,7 +66,7 @@ export default function LoginPage() {
             {isLogin ? 'Hesabınıza Giriş Yapın' : 'Yeni Hesap Oluşturun'}
           </h2>
           <p className="mt-2 text-sm text-slate-400">
-            {isLogin ? 'BeelinguaAI okuma ve çeviri dünyasına katılın' : 'Kaydolun ve hemen öğrenmeye başlayın'}
+            {isLogin ? 'Linguza okuma ve çeviri dünyasına katılın' : 'Kaydolun ve hemen öğrenmeye başlayın'}
           </p>
         </div>
 
