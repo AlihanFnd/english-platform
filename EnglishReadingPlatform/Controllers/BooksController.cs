@@ -83,7 +83,7 @@ namespace EnglishReadingPlatform.Controllers
 
         // GET /api/books/{id}/read?chapter=1&page=1
         [HttpGet("{id}/read")]
-        public async Task<IActionResult> Read(int id, [FromQuery] int chapter = 1, [FromQuery] int page = 1)
+        public async Task<IActionResult> Read(int id, [FromQuery] int chapter = 1, [FromQuery] int page = 1, [FromQuery] bool reanalyze = false)
         {
             var book = await _db.Books
                 .Include(b => b.Chapters)
@@ -124,8 +124,8 @@ namespace EnglishReadingPlatform.Controllers
                     progress.LastRead = DateTime.UtcNow;
                 }
 
-                // JIT (Just-In-Time) Translation
-                if (string.IsNullOrWhiteSpace(currentPage.SentencesJson) || currentPage.SentencesJson == "[]")
+                // JIT (Just-In-Time) Translation or Forced Re-analysis
+                if (reanalyze || string.IsNullOrWhiteSpace(currentPage.SentencesJson) || currentPage.SentencesJson == "[]")
                 {
                     var sentencesData = await _transService.AnalyzeTextAsync(currentPage.Content);
                     if (sentencesData.Any())

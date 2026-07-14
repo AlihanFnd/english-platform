@@ -45,24 +45,25 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   const [added, setAdded]         = useState<Record<string, boolean>>({});
   const [saving, setSaving]       = useState(false);
 
+  const normalizeSentences = (arr: any) => {
+    return (Array.isArray(arr) ? arr : []).map((s: any) => ({
+      original: s.original || s.Original || "",
+      translation: s.translation || s.Translation || "",
+      isHeading: s.isHeading || s.IsHeading || false,
+      alignment: s.alignment || s.Alignment || "left",
+      indentation: s.indentation || s.Indentation || 0,
+      words: (s.words || s.Words || []).map((w: any) => ({
+        word: w.word || w.Word || "",
+        translation: w.translation || w.Translation || "",
+        type: w.type || w.Type || "default"
+      }))
+    }));
+  };
+
   useEffect(() => {
     (async () => {
       setLoading(true); setError(''); setSentences([]); setOpenTr(null); setSelWord(null);
       try {
-        const normalizeSentences = (arr: any) => {
-          return (Array.isArray(arr) ? arr : []).map((s: any) => ({
-            original: s.original || s.Original || "",
-            translation: s.translation || s.Translation || "",
-            isHeading: s.isHeading || s.IsHeading || false,
-            alignment: s.alignment || s.Alignment || "left",
-            indentation: s.indentation || s.Indentation || 0,
-            words: (s.words || s.Words || []).map((w: any) => ({
-              word: w.word || w.Word || "",
-              translation: w.translation || w.Translation || "",
-              type: w.type || w.Type || "default"
-            }))
-          }));
-        };
 
         const pd = await api.readPage(bookId, currentPage);
         if (pd.hasPages) {
@@ -97,6 +98,26 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
       document.body.classList.remove('reader-fullscreen-active');
     };
   }, [isFullscreen]);
+
+  const handleReanalyze = async () => {
+    if (analyzing || loading) return;
+    setAnalyzing(true);
+    try {
+      if (hasPages) {
+        const pd = await api.readPage(bookId, currentPage, true);
+        if (pd.currentPage?.sentencesJson && pd.currentPage.sentencesJson !== "[]") {
+          setSentences(normalizeSentences(JSON.parse(pd.currentPage.sentencesJson)));
+        }
+      } else if (chapter?.content) {
+        const a = await api.analyzeText(chapter.content);
+        setSentences(normalizeSentences(a.sentences));
+      }
+    } catch (e: unknown) {
+      setError((e as Error).message || 'Yeniden analiz yapılamadı.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const speak = (t: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -214,6 +235,14 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            onClick={handleReanalyze} 
+            disabled={analyzing}
+            className="bk-quiz bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 cursor-pointer"
+            title="Eski önbelleği temizleyip başlıkları alt alta ve doğru şekilde yeniden analiz et"
+          >
+            🔄 {analyzing ? 'Yenileniyor...' : 'Başlıkları Yeniden Çevir & Düzenle'}
+          </button>
           {!hasPages && chapter && (
             <Link href={`/books/${bookId}/quiz?chapterId=${chapter.id}`} className="bk-quiz">
               <HelpCircle size={13}/> Quiz

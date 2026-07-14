@@ -247,19 +247,20 @@ namespace EnglishReadingPlatform.Services
 
             var prompt = "You are an assistant for an English Reading Platform. " +
                          "Analyze the following English text. Do the following:\n" +
-                         "1. Correct any word merging or OCR/spacing errors in the text (e.g., 'helloworld' to 'hello world', 'tobe' to 'to be'). Make sure not to change the meaning, only fix the words that are joined incorrectly due to parsing issues.\n" +
-                         "2. Split the corrected text into proper sentences.\n" +
-                         "3. Translate each sentence into Turkish.\n" +
-                         "4. CRITICAL: Analyze the visual layout of each line in the original source text:\n" +
-                         "   - If a line is centered, set 'alignment' to 'center'. If it is right-aligned, set it to 'right'. Otherwise, 'left'.\n" +
-                         "   - If a line has leading spacing (indentation), count the number of leading spaces or tabs and set 'indentation' to that count (number of spaces).\n" +
-                         "   - If there is a title, heading, or header at the very top of the text (or anywhere else) separated from the body text, treat it as a separate, independent sentence/block. Do NOT merge it with the paragraph/sentence below it. Keep the title/heading as its own separate sentence in the list, set 'isHeading' to true, and set 'alignment' to 'center'.\n\n" +
+                         "1. Correct any word merging or OCR/spacing errors in the text (e.g., 'helloworld' to 'hello world'). Make sure not to change the meaning.\n" +
+                         "2. CRITICAL RULE ON HEADINGS, TITLES AND LINE BREAKS: Every single line of text separated by a newline (\\n or \\r) that is a title, chapter number (e.g., 'CHAPTER I', 'CHAPTER 1'), subtitle, author name, or standalone heading MUST BE A SEPARATE INDEPENDENT ITEM in the JSON array! DO NOT EVER MERGE MULTIPLE HEADINGS TOGETHER or merge a heading into the paragraph below it! For example, if 'CHAPTER I' and 'THE BEGINNING' are on two separate lines one above the other, produce TWO SEPARATE items in the list, both with 'isHeading': true and 'alignment': 'center'.\n" +
+                         "3. Split the remaining body paragraphs into proper sentences.\n" +
+                         "4. Translate each item into Turkish.\n" +
+                         "5. VISUAL LAYOUT & HEADING DETECTION:\n" +
+                         "   - If an item is a chapter number, title, subtitle, or header, set 'isHeading' to true AND set 'alignment' to 'center'.\n" +
+                         "   - If a line is centered in the source, set 'alignment' to 'center'. If right-aligned, set 'right'. Otherwise, 'left'.\n" +
+                         "   - If a line has leading spacing (indentation), count the spaces/tabs and set 'indentation' to that count.\n\n" +
                          "Return a JSON object conforming exactly to this JSON schema:\n" +
                          "{\n" +
                          "  \"sentences\": [\n" +
                          "    {\n" +
-                         "      \"original\": \"(original sentence)\",\n" +
-                         "      \"translation\": \"(turkish translation of the sentence)\",\n" +
+                         "      \"original\": \"(original item or sentence)\",\n" +
+                         "      \"translation\": \"(turkish translation)\",\n" +
                          "      \"isHeading\": false,\n" +
                          "      \"alignment\": \"left\",\n" +
                          "      \"indentation\": 0\n" +
