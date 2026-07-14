@@ -59,7 +59,9 @@ builder.Services.AddScoped<TranslationService>();
 builder.Services.AddHttpClient();
 
 // ─── CORS Configuration for Next.js & Admin Panel ────────────
-var allowedOrigins = builder.Configuration["CorsOrigins"]?.Split(',') 
+var corsOriginsEnv = Environment.GetEnvironmentVariable("CorsOrigins") 
+                     ?? builder.Configuration["CorsOrigins"];
+var allowedOrigins = corsOriginsEnv?.Split(',') 
                      ?? new[] { "http://localhost:3000", "http://localhost:3001" };
 
 builder.Services.AddCors(opt =>
