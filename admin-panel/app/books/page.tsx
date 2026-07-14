@@ -286,141 +286,138 @@ export default function BooksPage() {
         </div>
       )}
 
-      {/* Grid: Upload & Book List */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* PDF Yükleme Formu */}
-        <div className="lg:col-span-1 bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-6 shadow-xl space-y-6">
-          <h2 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2">
-            <span>📤</span> Yeni Kitap Yükle & Çevir
-          </h2>
-          
-          <form onSubmit={handleUpload} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Kitap Başlığı *</label>
-                <input id="book-title" required value={title} onChange={e => setTitle(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
-                  placeholder="Örn: Tom Sawyer'ın Maceraları" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Yazar</label>
-                <input id="book-author" value={author} onChange={e => setAuthor(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
-                  placeholder="Yazar adı" />
-              </div>
-            </div>
-
+      {/* PDF Yükleme Formu */}
+      <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-8 shadow-xl space-y-6">
+        <h2 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2">
+          <span>📤</span> Yeni Kitap Yükle & Çevir
+        </h2>
+        
+        <form onSubmit={handleUpload} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Açıklama</label>
-              <textarea id="book-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 resize-none"
-                placeholder="Kitap hakkında kısa açıklama..." />
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Kitap Başlığı *</label>
+              <input id="book-title" required value={title} onChange={e => setTitle(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
+                placeholder="Örn: Tom Sawyer'ın Maceraları" />
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Dil</label>
-                <select id="book-language" value={language} onChange={e => setLanguage(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all">
-                  <option value="en">İngilizce</option>
-                  <option value="tr">Türkçe</option>
-                  <option value="de">Almanca</option>
-                  <option value="fr">Fransızca</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">PDF veya Word Dosyası * (Max 50MB)</label>
-                <input id="book-pdf" type="file" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required
-                  onChange={e => setPdfFile(e.target.files?.[0] || null)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-gray-300 text-sm focus:outline-none focus:border-indigo-500 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-bold file:hover:bg-indigo-500 file:cursor-pointer transition-all" />
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Yazar</label>
+              <input id="book-author" value={author} onChange={e => setAuthor(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
+                placeholder="Yazar adı" />
             </div>
+          </div>
 
-            {/* PDF Sayfa Önizleme Grid */}
-            {pdfDoc && (
-              <div className="border border-gray-800 bg-gray-950/20 backdrop-blur-sm rounded-2xl p-6 space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
-                  <div>
-                    <h3 className="font-bold text-sm text-white">Sayfa Seçimi</h3>
-                    <p className="text-xs text-gray-400 mt-1">Seçilen sayfalar pre-translation sırasıyla sisteme kaydedilecektir. ({selectedPages.length} / {totalPages} sayfa seçildi)</p>
-                  </div>
-                  <div className="flex gap-2.5">
-                    <button type="button" onClick={selectAllPages} className="px-3.5 py-2 bg-gray-800 hover:bg-gray-700/80 text-xs font-bold rounded-xl transition-all">Tümünü Seç</button>
-                    <button type="button" onClick={clearPageSelection} className="px-3.5 py-2 bg-gray-800 hover:bg-gray-700/80 text-xs font-bold rounded-xl transition-all text-red-400">Tümünü Kaldır</button>
-                  </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Açıklama</label>
+            <textarea id="book-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 resize-none"
+              placeholder="Kitap hakkında kısa açıklama..." />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Dil</label>
+              <select id="book-language" value={language} onChange={e => setLanguage(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all">
+                <option value="en">İngilizce</option>
+                <option value="tr">Türkçe</option>
+                <option value="de">Almanca</option>
+                <option value="fr">Fransızca</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">PDF veya Word Dosyası * (Max 50MB)</label>
+              <input id="book-pdf" type="file" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required
+                onChange={e => setPdfFile(e.target.files?.[0] || null)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-gray-300 text-sm focus:outline-none focus:border-indigo-500 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-bold file:hover:bg-indigo-500 file:cursor-pointer transition-all" />
+            </div>
+          </div>
+
+          {/* PDF Sayfa Önizleme Grid */}
+          {pdfDoc && (
+            <div className="border border-gray-800 bg-gray-950/20 backdrop-blur-sm rounded-2xl p-6 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+                <div>
+                  <h3 className="font-bold text-sm text-white">Sayfa Seçimi</h3>
+                  <p className="text-xs text-gray-400 mt-1">Seçilen sayfalar pre-translation sırasıyla sisteme kaydedilecektir. ({selectedPages.length} / {totalPages} sayfa seçildi)</p>
                 </div>
-
-                {loadingPreview ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 max-h-[420px] overflow-y-auto pr-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                      <PdfThumbnail 
-                        key={pageNum}
-                        pdfDoc={pdfDoc}
-                        pageNumber={pageNum}
-                        isSelected={selectedPages.includes(pageNum)}
-                        onToggle={() => togglePageSelection(pageNum)}
-                      />
-                    ))}
-                  </div>
-                )}
+                <div className="flex gap-2.5">
+                  <button type="button" onClick={selectAllPages} className="px-3.5 py-2 bg-gray-800 hover:bg-gray-700/80 text-xs font-bold rounded-xl transition-all">Tümünü Seç</button>
+                  <button type="button" onClick={clearPageSelection} className="px-3.5 py-2 bg-gray-800 hover:bg-gray-700/80 text-xs font-bold rounded-xl transition-all text-red-400">Tümünü Kaldır</button>
+                </div>
               </div>
-            )}
 
-            <button id="upload-book-btn" type="submit" disabled={uploading}
-              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-white py-4 rounded-xl text-sm font-bold transition-all duration-300 shadow-lg shadow-indigo-600/10">
-              {uploading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                  <span>Metin Çıkarılıyor & Google Translate İle Çevriliyor...</span>
+              {loadingPreview ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></div>
                 </div>
               ) : (
-                "📤 Kitabı Sisteme Yükle ve Otomatik Çevir"
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Kitap Listesi */}
-        <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
-          <h2 className="text-xl font-bold tracking-tight text-white mb-6">📚 Mevcut Kitaplar ({books.length})</h2>
-          {loading ? (
-            <p className="text-gray-500 text-sm">Yükleniyor...</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-800/80">
-                    <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Kitap</th>
-                    <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Yazar</th>
-                    <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Dil</th>
-                    <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Eklenme Tarihi</th>
-                    <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">İşlemler</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/60">
-                  {books.map((b) => (
-                    <tr key={b.id} className="text-gray-300 hover:bg-gray-800/10 transition-colors">
-                      <td className="py-4 font-bold text-white text-sm">{b.title}</td>
-                      <td className="py-4 text-gray-400 font-medium">{b.author || "-"}</td>
-                      <td className="py-4"><span className="px-2.5 py-1 bg-gray-800/80 text-gray-300 rounded-lg text-xs font-bold border border-gray-700">{b.language.toUpperCase()}</span></td>
-                      <td className="py-4 text-gray-400 font-semibold">{new Date(b.createdAt).toLocaleDateString("tr-TR")}</td>
-                      <td className="py-4">
-                        <button onClick={() => deleteBook(b.id)} className="text-red-400 hover:text-red-300 font-bold text-xs px-3 py-1.5 rounded-xl bg-red-950/20 border border-red-900/30 hover:bg-red-900/35 transition">Sil</button>
-                      </td>
-                    </tr>
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 max-h-[420px] overflow-y-auto pr-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                    <PdfThumbnail 
+                      key={pageNum}
+                      pdfDoc={pdfDoc}
+                      pageNumber={pageNum}
+                      isSelected={selectedPages.includes(pageNum)}
+                      onToggle={() => togglePageSelection(pageNum)}
+                    />
                   ))}
-                  {books.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-gray-600">Henüz kitap eklenmemiş.</td></tr>
-                  )}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           )}
-        </div>
+
+          <button id="upload-book-btn" type="submit" disabled={uploading}
+            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-white py-4 rounded-xl text-sm font-bold transition-all duration-300 shadow-lg shadow-indigo-600/10">
+            {uploading ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                <span>Metin Çıkarılıyor & Google Translate İle Çevriliyor...</span>
+              </div>
+            ) : (
+              "📤 Kitabı Sisteme Yükle ve Otomatik Çevir"
+            )}
+          </button>
+        </form>
+      </div>
+
+      {/* Kitap Listesi */}
+      <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
+        <h2 className="text-xl font-bold tracking-tight text-white mb-6">📚 Mevcut Kitaplar ({books.length})</h2>
+        {loading ? (
+          <p className="text-gray-500 text-sm">Yükleniyor...</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b border-gray-800/80">
+                  <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Kitap</th>
+                  <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Yazar</th>
+                  <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Dil</th>
+                  <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Eklenme Tarihi</th>
+                  <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">İşlemler</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/60">
+                {books.map((b) => (
+                  <tr key={b.id} className="text-gray-300 hover:bg-gray-800/10 transition-colors">
+                    <td className="py-4 font-bold text-white text-sm">{b.title}</td>
+                    <td className="py-4 text-gray-400 font-medium">{b.author || "-"}</td>
+                    <td className="py-4"><span className="px-2.5 py-1 bg-gray-800/80 text-gray-300 rounded-lg text-xs font-bold border border-gray-700">{b.language.toUpperCase()}</span></td>
+                    <td className="py-4 text-gray-400 font-semibold">{new Date(b.createdAt).toLocaleDateString("tr-TR")}</td>
+                    <td className="py-4">
+                      <button onClick={() => deleteBook(b.id)} className="text-red-400 hover:text-red-300 font-bold text-xs px-3 py-1.5 rounded-xl bg-red-950/20 border border-red-900/30 hover:bg-red-900/35 transition">Sil</button>
+                    </td>
+                  </tr>
+                ))}
+                {books.length === 0 && (
+                  <tr><td colSpan={5} className="py-8 text-center text-gray-600">Henüz kitap eklenmemiş.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
