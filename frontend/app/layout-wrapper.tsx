@@ -31,6 +31,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [showWelcome, setShowWelcome] = React.useState(false);
+  const [showFeedbackTooltip, setShowFeedbackTooltip] = React.useState(false);
 
   // Initialize background activity tracking
   useActivityTracker();
@@ -47,6 +48,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const handleCloseWelcome = () => {
     localStorage.setItem('welcome_tour_seen', 'true');
     setShowWelcome(false);
+    setShowFeedbackTooltip(true);
   };
 
   const isAuthPage = pathname === '/login' || pathname === '/register';
@@ -306,7 +308,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       </main>
 
       {/* Floating Feedback Bubble */}
-      <FeedbackWidget />
+      <FeedbackWidget 
+        showWelcomeTooltip={showFeedbackTooltip} 
+        onCloseTooltip={() => setShowFeedbackTooltip(false)} 
+      />
 
       {/* Welcome Tour Modal */}
       {showWelcome && (
