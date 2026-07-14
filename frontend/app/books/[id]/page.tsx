@@ -242,10 +242,10 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
             {sentences.map((s, i) => (
               <div 
                 key={i} 
-                className="bk-sent-block"
+                className={`bk-sent-block${s.isHeading ? ' bk-sent-block--heading' : ''}`}
                 style={{
                   textAlign: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'right' : 'left',
-                  paddingLeft: s.indentation ? `${s.indentation * 8}px` : undefined
+                  paddingLeft: s.indentation ? `${s.indentation * 12}px` : undefined
                 }}
               >
 
@@ -257,7 +257,12 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                     justifyContent: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'flex-end' : 'space-between'
                   }}
                 >
-                  <span className="bk-sent-words">
+                  <span 
+                    className="bk-sent-words"
+                    style={{
+                      textAlign: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'right' : 'left'
+                    }}
+                  >
                     {s.words.map((w, wi) => (
                       <span
                         key={wi}
@@ -280,7 +285,13 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
 
                 {/* Turkish translation — directly under the sentence, same block */}
                 {openTr === i && (
-                  <div className="bk-sent-tr">
+                  <div 
+                    className={`bk-sent-tr${s.alignment === 'center' ? ' bk-sent-tr--center' : ''}`}
+                    style={{
+                      justifyContent: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'flex-end' : 'flex-start',
+                      textAlign: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'right' : 'left'
+                    }}
+                  >
                     <span className="bk-tr-flag">TR</span>
                     <span className="bk-tr-text">{s.translation}</span>
                   </div>

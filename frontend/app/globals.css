@@ -549,6 +549,23 @@ body {
   border-color: rgba(0, 110, 47, 0.25) !important;
 }
 
+.bk-sent-block--heading {
+  margin-top: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.bk-sent-en--heading {
+  background: rgba(0, 110, 47, 0.04);
+}
+
+.bk-sent-en--heading .bk-sent-words {
+  font-size: 1.35rem !important;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.45;
+  letter-spacing: 0.015em;
+}
+
 .bk-sent-words {
   font-family: 'Georgia', 'Times New Roman', serif;
   font-size: 1.02rem;
@@ -611,6 +628,13 @@ body {
   border-left: 2px solid var(--primary);
   border-radius: 0 5px 5px 0;
   animation: fadeUp 0.15s ease;
+}
+
+.bk-sent-tr--center {
+  border-left: none !important;
+  border-bottom: 2px solid var(--primary);
+  border-radius: 5px !important;
+  justify-content: center;
 }
 
 .bk-tr-flag {
