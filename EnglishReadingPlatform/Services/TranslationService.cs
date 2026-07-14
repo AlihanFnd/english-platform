@@ -196,17 +196,25 @@ namespace EnglishReadingPlatform.Services
 
         public async Task<List<AnalyzedSentence>> AnalyzeTextAsync(string text)
         {
-            var apiKey = _configuration["Gemini:ApiKey"];
+            var apiKey = _configuration["Gemini:ApiKey"] 
+                         ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY") 
+                         ?? Environment.GetEnvironmentVariable("Gemini__ApiKey")
+                         ?? Environment.GetEnvironmentVariable("API_KEY");
+
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
                 try
                 {
-                    return await AnalyzeTextWithGeminiAsync(text);
+                    return await AnalyzeTextWithGeminiAsync(text, apiKey);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Gemini Error, falling back to Google Translate]: {ex.Message}");
+                    Console.WriteLine($"[Gemini API Error, falling back to Google Translate]: {ex.Message}");
                 }
+            }
+            else
+            {
+                Console.WriteLine("[Gemini API Key missing] No API key found in appsettings.json or environment variables (GEMINI_API_KEY). Using fallback.");
             }
 
             // Fallback to Google Translate + Regex
@@ -237,13 +245,11 @@ namespace EnglishReadingPlatform.Services
             return sentencesData;
         }
 
-        private async Task<List<AnalyzedSentence>> AnalyzeTextWithGeminiAsync(string text)
+        private async Task<List<AnalyzedSentence>> AnalyzeTextWithGeminiAsync(string text, string apiKey)
         {
-            var apiKey = _configuration["Gemini:ApiKey"];
-            var client = _httpFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(5); // Büyük JSON çıktıları 100 saniyeyi aşabildiği için Timeout süresini artırıyoruz.
-            // gemini-2.5-flash is stable and supports structured json outputs
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
+            // Try valid GA models in order (gemini-1.5-flash -> gemini-2.0-flash)
+            var models = new[] { "gemini-1.5-flash", "gemini-2.0-flash" };
+            Exception? lastException = null;
 
             var prompt = "You are an assistant for an English Reading Platform. " +
                          "Analyze the following English text. Do the following:\n" +
@@ -289,49 +295,62 @@ namespace EnglishReadingPlatform.Services
             };
 
             var jsonPayload = JsonSerializer.Serialize(payload);
-            using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-            var response = await client.PostAsync(url, content);
-            if (!response.IsSuccessStatusCode)
+            foreach (var model in models)
             {
-                var errContent = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Gemini API error: {response.StatusCode} - {errContent}");
-            }
-
-            var responseJson = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(responseJson);
-            var root = doc.RootElement;
-            var textResult = root.GetProperty("candidates")[0]
-                                 .GetProperty("content")
-                                 .GetProperty("parts")[0]
-                                 .GetProperty("text")
-                                 .GetString();
-
-            if (string.IsNullOrWhiteSpace(textResult))
-                throw new Exception("Empty response from Gemini API");
-
-            // Standardize and inject sentence indices
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var result = JsonSerializer.Deserialize<TextAnalysisResult>(textResult, options);
-            if (result != null && result.Sentences != null)
-            {
-                for (int i = 0; i < result.Sentences.Count; i++)
+                try
                 {
-                    var s = result.Sentences[i];
-                    s.Index = i;
-                    
-                    // Kelimeleri C# tarafında ayırıp dolduruyoruz, böylece Gemini çok hızlı çalışıyor.
-                    s.Words = ExtractWords(s.Original ?? "").Select(w => new AnalyzedWord
+                    var client = _httpFactory.CreateClient();
+                    client.Timeout = TimeSpan.FromMinutes(5);
+                    var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
+
+                    using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                    var response = await client.PostAsync(url, content);
+
+                    if (!response.IsSuccessStatusCode)
                     {
-                        Word = w,
-                        Translation = w, // Çeviriyi anlık tıklama (lazy) bırakıyoruz
-                        Type = "default"
-                    }).ToList();
+                        var errContent = await response.Content.ReadAsStringAsync();
+                        throw new Exception($"HTTP {response.StatusCode} for model {model}: {errContent}");
+                    }
+
+                    var responseJson = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(responseJson);
+                    var root = doc.RootElement;
+                    var textResult = root.GetProperty("candidates")[0]
+                                         .GetProperty("content")
+                                         .GetProperty("parts")[0]
+                                         .GetProperty("text")
+                                         .GetString();
+
+                    if (string.IsNullOrWhiteSpace(textResult))
+                        throw new Exception($"Empty text result from model {model}");
+
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var result = JsonSerializer.Deserialize<TextAnalysisResult>(textResult, options);
+                    if (result != null && result.Sentences != null)
+                    {
+                        for (int i = 0; i < result.Sentences.Count; i++)
+                        {
+                            var s = result.Sentences[i];
+                            s.Index = i;
+                            s.Words = ExtractWords(s.Original ?? "").Select(w => new AnalyzedWord
+                            {
+                                Word = w,
+                                Translation = w,
+                                Type = "default"
+                            }).ToList();
+                        }
+                        return result.Sentences;
+                    }
                 }
-                return result.Sentences;
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    Console.WriteLine($"[Gemini Attempt Failed on {model}]: {ex.Message}");
+                }
             }
 
-            throw new Exception("Failed to deserialize Gemini response to TextAnalysisResult.");
+            throw lastException ?? new Exception("All Gemini models failed to analyze text.");
         }
     }
 }
