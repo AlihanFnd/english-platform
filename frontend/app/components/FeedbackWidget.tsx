@@ -45,41 +45,51 @@ export default function FeedbackWidget({ showWelcomeTooltip, onCloseTooltip }: F
 
   return (
     <>
+      {/* Dark overlay backdrop to focus on the feedback widget */}
+      {showWelcomeTooltip && (
+        <div 
+          onClick={onCloseTooltip}
+          className="fixed inset-0 z-40 bg-black/80 backdrop-blur-xs transition-opacity duration-300 cursor-pointer animate-in fade-in"
+        ></div>
+      )}
+
       {/* Tooltip speech bubble pointing to the feedback icon */}
       {showWelcomeTooltip && (
-        <div className="fixed bottom-24 right-6 z-40 bg-surface border border-primary/30 p-4 rounded-2xl shadow-2xl w-72 animate-in slide-in-from-bottom duration-300 flex flex-col gap-3">
+        <div className="fixed bottom-24 right-4 left-4 md:left-auto md:right-6 z-50 bg-surface border-2 border-primary p-5 rounded-2xl shadow-2xl md:w-80 animate-in slide-in-from-bottom duration-300 flex flex-col gap-3">
           <button 
             onClick={onCloseTooltip}
-            className="absolute top-2 right-2 text-on-surface-variant hover:text-on-surface text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center bg-surface-container hover:bg-surface-container-high transition-colors cursor-pointer"
+            className="absolute top-2.5 right-2.5 text-on-surface-variant hover:text-on-surface text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center bg-surface-container hover:bg-surface-container-high transition-colors cursor-pointer"
           >
             ✕
           </button>
           
-          <div className="text-xs text-on-surface-variant leading-relaxed font-semibold">
-            📢 <span className="text-primary font-bold">Deneme Sürümü:</span> Lütfen buradan yorumlarınızı yazın, dönütlerinizi bekliyorum. Bu bir test sürümüdür.
+          <div className="text-sm text-on-surface leading-relaxed">
+            📢 <span className="text-primary font-extrabold">Deneme Sürümü:</span> Lütfen buradan yorumlarınızı ve geri bildirimlerinizi yazın. Dönütlerinizi heyecanla bekliyorum!
           </div>
           
           <button 
-            onClick={onCloseTooltip}
-            className="self-end bg-primary hover:bg-primary/95 text-on-primary px-3 py-1 rounded-lg text-[10px] font-bold transition-all bouncy-btn cursor-pointer"
+            onClick={handleOpen}
+            className="self-end bg-primary hover:bg-primary/95 text-on-primary px-4 py-2 rounded-xl text-xs font-bold transition-all bouncy-btn cursor-pointer shadow-md shadow-primary/25"
           >
-            Anladım
+            Yorum Yap
           </button>
           
           {/* Arrow pointing down */}
-          <div className="absolute bottom-[-6px] right-6 w-3 h-3 bg-surface border-r border-b border-primary/30 transform rotate-45"></div>
+          <div className="absolute bottom-[-7px] right-8 w-3 h-3 bg-surface border-r-2 border-b-2 border-primary transform rotate-45"></div>
         </div>
       )}
 
       {/* Floating Bubble Button */}
-      <div className="fixed bottom-6 right-6 z-40">
+      <div className="fixed bottom-6 right-6 z-50">
         {/* Pulsing highlight effect */}
         {showWelcomeTooltip && (
-          <span className="absolute inset-0 rounded-full bg-primary/40 animate-ping pointer-events-none scale-120"></span>
+          <span className="absolute inset-0 rounded-full bg-primary/60 animate-ping pointer-events-none scale-150"></span>
         )}
         <button
           onClick={handleOpen}
-          className="relative bg-primary text-on-primary p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all duration-300 bouncy-btn border border-primary-container/20 group cursor-pointer flex items-center justify-center"
+          className={`relative bg-primary text-on-primary p-4.5 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all duration-300 bouncy-btn border group cursor-pointer flex items-center justify-center ${
+            showWelcomeTooltip ? 'border-white scale-110 ring-4 ring-primary/40' : 'border-primary-container/20'
+          }`}
           title="Geri Bildirim Gönder"
         >
           <MessageSquare className="h-6 w-6 group-hover:rotate-12 transition-transform duration-300" />
