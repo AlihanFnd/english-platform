@@ -324,18 +324,52 @@ namespace EnglishReadingPlatform.Controllers
         }
 
         // ── DELETE /api/admin/books/{id} ────────────────────────
-        /// <summary>Kitabı ve tüm bölümlerini sil</summary>
+        /// <summary>Kitabı ve tüm ilişkili verilerini (bölümler, sayfalar, quizler, ilerlemeler) sil</summary>
         [HttpDelete("books/{id}")]
         public async Task<IActionResult> DeleteBook(int id)
         {
             var book = await _db.Books
                 .Include(b => b.Chapters)
+                .Include(b => b.Pages)
                 .FirstOrDefaultAsync(b => b.Id == id);
 
             if (book == null)
                 return NotFound(new { error = "Kitap bulunamadı." });
 
+            // 1. İlişkili Quiz ve Soruları temizle
+            var quizzes = await _db.Quizzes
+                .Include(q => q.Questions)
+                .Where(q => q.BookId == id)
+                .ToListAsync();
+            foreach (var q in quizzes)
+            {
+                if (q.Questions != null && q.Questions.Any())
+                {
+                    _db.QuizQuestions.RemoveRange(q.Questions);
+                }
+            }
+            if (quizzes.Any())
+            {
+                _db.Quizzes.RemoveRange(quizzes);
+            }
+
+            // 2. İlişkili Grup Kitap Atamalarını sil
+            var assignments = await _db.GroupBookAssignments.Where(a => a.BookId == id).ToListAsync();
+            if (assignments.Any())
+            {
+                _db.GroupBookAssignments.RemoveRange(assignments);
+            }
+
+            // 3. Okuma İlerlemelerini temizle
+            var progresses = await _db.ReadingProgresses.Where(p => p.BookId == id).ToListAsync();
+            if (progresses.Any())
+            {
+                _db.ReadingProgresses.RemoveRange(progresses);
+            }
+
+            // 4. Kitabı sil (Chapters ve Pages cascade olarak silinir)
             _db.Books.Remove(book);
+            
             await _db.SaveChangesAsync();
 
             return Ok(new { success = true, deletedBookId = id });
