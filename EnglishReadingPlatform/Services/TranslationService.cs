@@ -373,10 +373,6 @@ namespace EnglishReadingPlatform.Services
             var trimmed = s.Trim();
             if (Regex.IsMatch(trimmed, @"^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\b", RegexOptions.IgnoreCase))
                 return true;
-            if (trimmed.Length <= 75 && trimmed.ToUpperInvariant() == trimmed && Regex.IsMatch(trimmed, @"[A-Z]"))
-                return true;
-            if (trimmed.Length <= 55 && !trimmed.EndsWith(".") && !trimmed.EndsWith("!") && !trimmed.EndsWith("?") && !trimmed.Contains(","))
-                return true;
             return false;
         }
 

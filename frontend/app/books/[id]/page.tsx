@@ -79,14 +79,10 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
         }
       }
 
-      // Ayrıca başlık tespiti kontrolü (Veritabanında isHeading false saklansa dahi):
+      // Ayrıca başlık tespiti kontrolü (Sadece açıkça CHAPTER vb. ile başlıyorsa):
       if (!isHead && orig.length > 0) {
-        const upperCheck = orig.toUpperCase();
         const startsWithHeadingWord = /^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\b/i.test(orig);
-        const isShortTitle = orig.length <= 65 && !orig.endsWith(".") && !orig.endsWith("!") && !orig.endsWith("?") && !orig.includes(",");
-        const isAllCaps = orig.length <= 80 && orig === upperCheck && /[A-Z]/.test(orig);
-
-        if (startsWithHeadingWord || (isShortTitle && (isAllCaps || orig.split(" ").length <= 8))) {
+        if (startsWithHeadingWord) {
           isHead = true;
           align = "center";
         }
