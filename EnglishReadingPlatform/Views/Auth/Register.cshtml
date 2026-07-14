@@ -1,0 +1,52 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Kayıt Ol";
+}
+
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <span class="auth-logo-icon">🚀</span>
+            <h1>ReadEn</h1>
+            <p>Yeni hesap oluştur</p>
+        </div>
+
+        @if (ViewBag.Error != null)
+        {
+            <div class="error-msg">⚠ @ViewBag.Error</div>
+        }
+
+        <div class="auth-tabs">
+            <a href="/Auth/Login" class="auth-tab">Giriş Yap</a>
+            <div class="auth-tab active">Kayıt Ol</div>
+        </div>
+
+        <form method="post" action="/Auth/Register">
+            <div class="form-group">
+                <label class="form-label">Kullanıcı Adı</label>
+                <input id="username" name="username" type="text" class="form-input" placeholder="kullanici_adi" required />
+            </div>
+            <div class="form-group">
+                <label class="form-label">E-posta</label>
+                <input id="email" name="email" type="email" class="form-input" placeholder="ornek@email.com" required />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Şifre</label>
+                <input id="password" name="password" type="password" class="form-input" placeholder="Min. 6 karakter" required />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Hesap Türü</label>
+                <select id="role" name="role" class="form-select">
+                    <option value="student">Öğrenci</option>
+                    <option value="teacher">Öğretmen / Grup Yöneticisi</option>
+                </select>
+            </div>
+            <button id="registerBtn" type="submit" class="btn-primary">Hesap Oluştur →</button>
+        </form>
+
+        <div style="text-align:center; margin-top:20px; color:var(--text-muted); font-size:0.8rem;">
+            Zaten hesabın var mı?
+            <a href="/Auth/Login" style="color:#a78bfa; font-weight:600;">Giriş Yap</a>
+        </div>
+    </div>
+</div>

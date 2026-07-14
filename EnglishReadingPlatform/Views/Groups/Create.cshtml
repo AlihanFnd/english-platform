@@ -1,0 +1,34 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Grup Oluştur";
+    ViewData["Active"] = "groups";
+}
+
+<div style="max-width:520px; margin:0 auto;">
+    <div class="page-header fade-in">
+        <div>
+            <h1>+ Grup Oluştur</h1>
+            <p>Sınıf veya arkadaş grubu oluştur</p>
+        </div>
+        <a href="/Groups" class="btn-secondary">← Geri</a>
+    </div>
+
+    @if (ViewBag.Error != null)
+    {
+        <div class="error-msg">⚠ @ViewBag.Error</div>
+    }
+
+    <div class="auth-card fade-in" style="max-width:100%;">
+        <form method="post" action="/Groups/Create">
+            <div class="form-group">
+                <label class="form-label">Grup Adı</label>
+                <input id="groupName" name="name" type="text" class="form-input" placeholder="örn. 10-A İngilizce Sınıfı" required />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Açıklama (isteğe bağlı)</label>
+                <textarea id="groupDesc" name="description" class="form-textarea" placeholder="Grubun amacı veya açıklaması"></textarea>
+            </div>
+            <button id="createGroupBtn" type="submit" class="btn-primary">Grup Oluştur →</button>
+        </form>
+    </div>
+</div>

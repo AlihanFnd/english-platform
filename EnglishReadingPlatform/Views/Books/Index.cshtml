@@ -1,0 +1,61 @@
+@model List<EnglishReadingPlatform.Models.Book>
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Kitaplık";
+    ViewData["Active"] = "books";
+    var progresses = ViewBag.Progresses as List<EnglishReadingPlatform.Models.ReadingProgress> ?? new();
+}
+
+<div class="page-header fade-in">
+    <div>
+        <h1>📚 Kitaplık</h1>
+        <p>Okumak istediğin kitabı seç ve başla</p>
+    </div>
+</div>
+
+<div class="cards-grid fade-in">
+    @foreach (var book in Model)
+    {
+        var prog = progresses.FirstOrDefault(p => p.BookId == book.Id);
+        var pct = prog != null ? (int)prog.ProgressPercent : 0;
+        var chap = prog?.CurrentChapter ?? 1;
+
+        <div class="book-card">
+            <div class="book-cover" style="background: linear-gradient(135deg, @book.CoverColor 0%, #0f1629 100%);">
+                📖
+            </div>
+            <div class="book-body">
+                <div class="book-title">@book.Title</div>
+                <div class="book-author">@book.Author</div>
+                <div class="book-desc">@book.Description</div>
+
+                @if (pct > 0)
+                {
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar-fill" style="width:@pct%"></div>
+                    </div>
+                    <div class="progress-label">%@pct tamamlandı · Bölüm @chap</div>
+                }
+
+                <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
+                    <a href="/Books/Read/@book.Id?chapter=@chap" class="book-cta">
+                        @(pct > 0 ? "→ Devam Et" : "→ Okumaya Başla")
+                    </a>
+                    @if (book.Chapters?.Count > 0)
+                    {
+                        <span class="badge badge-purple">@book.Chapters.Count Bölüm</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (!Model.Any())
+{
+    <div class="empty-state">
+        <span class="empty-icon">📭</span>
+        <h3>Henüz kitap eklenmemiş</h3>
+        <p>Sistem yöneticisi kitap ekledikten sonra burada görünecek.</p>
+    </div>
+}

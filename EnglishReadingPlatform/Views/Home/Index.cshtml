@@ -1,0 +1,102 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Ana Sayfa";
+    ViewData["Active"] = "home";
+    var user = ViewBag.User as EnglishReadingPlatform.Models.User;
+    var recentProgress = ViewBag.RecentProgress as List<EnglishReadingPlatform.Models.ReadingProgress> ?? new();
+    int wordCount = ViewBag.WordCount ?? 0;
+    int quizCount = ViewBag.QuizCount ?? 0;
+}
+
+<div class="dashboard-header fade-in">
+    <h1>Merhaba, <span class="gradient-text">@(user?.Username ?? "Kullanıcı")</span> 👋</h1>
+    <p>Bugün bir kitap okumaya devam et ve kelimelerini genişlet.</p>
+</div>
+
+<div class="stats-grid fade-in">
+    <div class="stat-card">
+        <span class="stat-icon">📖</span>
+        <div class="stat-info">
+            <h3>@recentProgress.Count</h3>
+            <p>Aktif Kitap</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <span class="stat-icon">💡</span>
+        <div class="stat-info">
+            <h3>@wordCount</h3>
+            <p>Kayıtlı Kelime</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <span class="stat-icon">🎯</span>
+        <div class="stat-info">
+            <h3>@quizCount</h3>
+            <p>Quiz Tamamlandı</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <span class="stat-icon">🌟</span>
+        <div class="stat-info">
+            <h3>@(user?.Role == "teacher" ? "Öğretmen" : "Öğrenci")</h3>
+            <p>Hesap Türü</p>
+        </div>
+    </div>
+</div>
+
+@if (recentProgress.Any())
+{
+    <div class="section-title"><span>📚</span> Kaldığın Yerden Devam Et</div>
+    <div class="cards-grid fade-in">
+        @foreach (var p in recentProgress)
+        {
+            <div class="book-card" onclick="window.location='/Books/Read/@p.BookId?chapter=@p.CurrentChapter'">
+                <div class="book-cover" style="background: linear-gradient(135deg, @p.Book.CoverColor 0%, #0f1629 100%);">📖</div>
+                <div class="book-body">
+                    <div class="book-title">@p.Book.Title</div>
+                    <div class="book-author">@p.Book.Author</div>
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar-fill" style="width:@((int)p.ProgressPercent)%"></div>
+                    </div>
+                    <div class="progress-label">%@((int)p.ProgressPercent) tamamlandı · Bölüm @p.CurrentChapter</div>
+                    <div class="book-cta">→ Devam Et</div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="empty-state">
+        <span class="empty-icon">📚</span>
+        <h3>Henüz okuma başlatmadın</h3>
+        <p>Kitaplığa giderek bir kitap seç ve okumaya başla.</p>
+        <a href="/Books" class="btn-primary" style="display:inline-block; width:auto; padding:12px 28px;">Kitaplığa Git →</a>
+    </div>
+}
+
+<div style="margin-top:48px;">
+    <div class="section-title"><span>⚡</span> Hızlı Erişim</div>
+    <div class="cards-grid">
+        <a href="/Books" class="book-card" style="padding:24px; text-decoration:none;">
+            <div style="font-size:2rem; margin-bottom:12px;">📚</div>
+            <div class="book-title">Kitaplık</div>
+            <div class="book-author">Tüm kitapları gözat</div>
+        </a>
+        <a href="/Books/Words" class="book-card" style="padding:24px; text-decoration:none;">
+            <div style="font-size:2rem; margin-bottom:12px;">💡</div>
+            <div class="book-title">Kelime Listem</div>
+            <div class="book-author">Flashcard ile çalış</div>
+        </a>
+        <a href="/Groups" class="book-card" style="padding:24px; text-decoration:none;">
+            <div style="font-size:2rem; margin-bottom:12px;">👥</div>
+            <div class="book-title">Gruplar</div>
+            <div class="book-author">Grup yönetimi ve sınıf takibi</div>
+        </a>
+        <a href="/Home/OCR" class="book-card" style="padding:24px; text-decoration:none;">
+            <div style="font-size:2rem; margin-bottom:12px;">📷</div>
+            <div class="book-title">Metin Tara</div>
+            <div class="book-author">Kamera ile İngilizce metin tanı</div>
+        </a>
+    </div>
+</div>

@@ -1,0 +1,50 @@
+@model EnglishReadingPlatform.Models.Quiz
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Quiz";
+    ViewData["Active"] = "books";
+    var letters = new[] { "A", "B", "C", "D" };
+}
+
+<div class="quiz-container fade-in">
+    <div class="quiz-header">
+        <span class="badge badge-purple" style="margin-bottom:12px; display:inline-block;">Quiz</span>
+        <h1>@Model.Title</h1>
+        <p style="color:var(--text-secondary); margin-top:8px;">@Model.Questions.Count soru · Her soru için bir seçenek işaretle</p>
+    </div>
+
+    <form method="post" action="/Books/SubmitQuiz" id="quizForm">
+        <input type="hidden" name="quizId" value="@Model.Id" />
+
+        @{ int qNum = 0; }
+        @foreach (var q in Model.Questions)
+        {
+            qNum++;
+            var opts = new[] { q.OptionA, q.OptionB, q.OptionC, q.OptionD };
+            <div class="question-card" id="q-@q.Id">
+                <div class="question-number">Soru @qNum / @Model.Questions.Count</div>
+                <div class="question-text">@q.QuestionText</div>
+                <div class="options-grid">
+                    @for (int i = 0; i < 4; i++)
+                    {
+                        <label class="option-label" for="ans-@q.Id-@letters[i]">
+                            <input type="radio"
+                                   id="ans-@q.Id-@letters[i]"
+                                   name="answers[@q.Id]"
+                                   value="@letters[i]"
+                                   required />
+                            <span class="option-letter">@letters[i]</span>
+                            <span>@opts[i]</span>
+                        </label>
+                    }
+                </div>
+            </div>
+        }
+
+        <div style="text-align:center; margin-top:32px;">
+            <button type="submit" id="submitQuizBtn" class="btn-primary" style="max-width:300px; margin:0 auto; display:block;">
+                🎯 Quizi Tamamla
+            </button>
+        </div>
+    </form>
+</div>

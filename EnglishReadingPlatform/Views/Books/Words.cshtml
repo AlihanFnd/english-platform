@@ -1,0 +1,57 @@
+@model List<EnglishReadingPlatform.Models.WordListItem>
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Kelime Listem";
+    ViewData["Active"] = "words";
+}
+
+<div class="page-header fade-in">
+    <div>
+        <h1>💡 Kelime Listem</h1>
+        <p>Kartı tıkla — Türkçe karşılığı görmek için çevir</p>
+    </div>
+    <span class="badge badge-purple">@Model.Count kelime</span>
+</div>
+
+@if (Model.Any())
+{
+    <div class="flashcard-grid fade-in">
+        @foreach (var item in Model)
+        {
+            <div class="flashcard" onclick="flipCard(this)" id="card-@item.Id">
+                <div class="flashcard-front">
+                    <div class="flashcard-word">@item.Word</div>
+                    <div class="flashcard-hint">Çevirmek için tıkla</div>
+                    @if (!string.IsNullOrEmpty(item.Context))
+                    {
+                        <div class="flashcard-context" style="margin-top:10px; font-size:0.75rem; color:var(--text-muted);">
+                            "...@item.Context..."
+                        </div>
+                    }
+                </div>
+                <div class="flashcard-back">
+                    <div class="flashcard-translation">@(string.IsNullOrEmpty(item.Translation) ? "—" : item.Translation)</div>
+                    @if (!string.IsNullOrEmpty(item.Context))
+                    {
+                        <div class="flashcard-context">"@item.Context"</div>
+                    }
+                    <div style="margin-top:10px; font-size:0.72rem; color:var(--text-muted);">
+                        @item.AddedAt.ToString("dd MMM yyyy")
+                    </div>
+                </div>
+                <form method="post" action="/Books/DeleteWord/@item.Id" onsubmit="event.stopPropagation()">
+                    <button type="submit" class="flashcard-delete" title="Sil" onclick="event.stopPropagation()">🗑</button>
+                </form>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="empty-state">
+        <span class="empty-icon">💡</span>
+        <h3>Kelime listesi boş</h3>
+        <p>Kitap okurken kelimelere tıkla ve "Kelime Listeme Ekle" diyerek buraya ekle.</p>
+        <a href="/Books" class="btn-primary" style="display:inline-block; width:auto; padding:12px 28px;">Kitaplığa Git →</a>
+    </div>
+}

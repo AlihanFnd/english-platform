@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="İngilizce Çeviri ve Kitap Okuma Platformu — Anlık çeviri, quiz ve grup yönetimi" />
+    <title>@ViewData["Title"] — ReadEn</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+</head>
+<body>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <nav class="navbar">
+            <div class="nav-brand">
+                <span class="nav-logo">📚</span>
+                <span class="nav-title">ReadEn</span>
+            </div>
+            <div class="nav-links">
+                <a href="/Home/Index" class="nav-link @(ViewData["Active"]?.ToString() == "home" ? "active" : "")">
+                    <span>🏠</span> Ana Sayfa
+                </a>
+                <a href="/Books" class="nav-link @(ViewData["Active"]?.ToString() == "books" ? "active" : "")">
+                    <span>📖</span> Kitaplık
+                </a>
+                <a href="/Books/Words" class="nav-link @(ViewData["Active"]?.ToString() == "words" ? "active" : "")">
+                    <span>💡</span> Kelimelerim
+                </a>
+                <a href="/Groups" class="nav-link @(ViewData["Active"]?.ToString() == "groups" ? "active" : "")">
+                    <span>👥</span> Gruplar
+                </a>
+                <a href="/Home/OCR" class="nav-link @(ViewData["Active"]?.ToString() == "ocr" ? "active" : "")">
+                    <span>📷</span> Metin Tara
+                </a>
+            </div>
+            <div class="nav-user">
+                <span class="nav-username">@User.Identity.Name</span>
+                <a href="/Auth/Logout" class="btn-logout">Çıkış</a>
+            </div>
+        </nav>
+    }
+
+    <main class="main-content @(User.Identity?.IsAuthenticated == true ? "with-nav" : "")">
+        @RenderBody()
+    </main>
+
+    <div id="translatePopup" class="translate-popup hidden">
+        <div class="popup-header">
+            <span id="popupWord" class="popup-word"></span>
+            <button onclick="closePopup()" class="popup-close">&#x2715;</button>
+        </div>
+        <div id="popupTranslation" class="popup-translation">
+            <span class="loading-dots">Cevriliyor...</span>
+        </div>
+        <div class="popup-actions">
+            <button id="addWordBtn" class="btn-add-word" onclick="addCurrentWord()">
+                + Kelime Listeme Ekle
+            </button>
+        </div>
+    </div>
+    <div id="popupOverlay" class="popup-overlay hidden" onclick="closePopup()"></div>
+
+    <script src="~/js/app.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

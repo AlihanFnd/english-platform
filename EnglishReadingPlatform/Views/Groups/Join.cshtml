@@ -1,0 +1,33 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Gruba Katıl";
+    ViewData["Active"] = "groups";
+}
+
+<div style="max-width:480px; margin:0 auto;">
+    <div class="page-header fade-in">
+        <div>
+            <h1>🔑 Gruba Katıl</h1>
+            <p>Davet kodunu girerek gruba katıl</p>
+        </div>
+        <a href="/Groups" class="btn-secondary">← Geri</a>
+    </div>
+
+    @if (ViewBag.Error != null)
+    {
+        <div class="error-msg">⚠ @ViewBag.Error</div>
+    }
+
+    <div class="auth-card fade-in" style="max-width:100%;">
+        <form method="post" action="/Groups/Join">
+            <div class="form-group">
+                <label class="form-label">Davet Kodu</label>
+                <input id="inviteCode" name="inviteCode" type="text" class="form-input"
+                       placeholder="örn. A1B2C3D4"
+                       style="font-size:1.2rem; font-weight:700; letter-spacing:0.15em; text-transform:uppercase;"
+                       required />
+            </div>
+            <button id="joinGroupBtn" type="submit" class="btn-primary">Gruba Katıl →</button>
+        </form>
+    </div>
+</div>

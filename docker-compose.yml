@@ -1,0 +1,125 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────
+#  İngilizce Okuma Platformu — Docker Compose
+#  Servisler:
+#    postgres  → Veritabanı                    (localhost:5432)
+#    pgadmin   → Görsel DB yönetimi            (localhost:8080)
+#    backend   → ASP.NET Core Web API          (localhost:5000)
+#    frontend  → Next.js kullanıcı arayüzü     (localhost:3000)
+#    admin     → Next.js admin paneli          (localhost:3001)
+# ─────────────────────────────────────────────────────────────────
+
+services:
+
+  # ─── PostgreSQL 15 ──────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: english_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: englishreadingdb
+      POSTGRES_USER: ${POSTGRES_USER:-appuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-StrongPass@2026!}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d englishreadingdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  # ─── pgAdmin 4 (Görsel DB Yönetimi) ────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: english_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  # ─── ASP.NET Core Backend ───────────────────────────────────────
+  backend:
+    build:
+      context: ./EnglishReadingPlatform
+      dockerfile: Dockerfile
+    container_name: english_backend
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Database=englishreadingdb;Username=${POSTGRES_USER:-appuser};Password=${POSTGRES_PASSWORD:-StrongPass@2026!}"
+      Jwt__Key: ${JWT_KEY:-EnglishPlatformSuperSecretKey2026_MustBe32Chars!!}
+      Jwt__Issuer: EnglishPlatform
+      Jwt__Audience: EnglishPlatformUsers
+      ASPNETCORE_ENVIRONMENT: Production
+      Gemini__ApiKey: ${GEMINI_API_KEY}
+    ports:
+      - "5001:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  # ─── Next.js Frontend (Kullanıcı Arayüzü) ──────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:5001
+    container_name: english_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - app_network
+
+  # ─── Next.js Admin Paneli ───────────────────────────────────────
+  admin:
+    build:
+      context: ./admin-panel
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:5001
+    container_name: english_admin
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5001
+      PORT: "3001"
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    networks:
+      - app_network
+
+# ─── Kalıcı Veri Hacimleri ──────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+# ─── İzole Ağ ───────────────────────────────────────────────────
+networks:
+  app_network:
+    driver: bridge

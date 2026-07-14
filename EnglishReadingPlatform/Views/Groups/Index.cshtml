@@ -1,0 +1,75 @@
+@model List<EnglishReadingPlatform.Models.Group>
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Gruplar";
+    ViewData["Active"] = "groups";
+    var adminGroups = ViewBag.AdminGroups as List<EnglishReadingPlatform.Models.Group> ?? new();
+}
+
+<div class="page-header fade-in">
+    <div>
+        <h1>👥 Gruplar</h1>
+        <p>Sınıf ve arkadaş gruplarında birlikte öğren</p>
+    </div>
+    <div style="display:flex; gap:10px;">
+        <a href="/Groups/Create" class="btn-primary" style="width:auto; padding:10px 20px;">+ Grup Oluştur</a>
+        <a href="/Groups/Join" class="btn-secondary">Gruba Katıl</a>
+    </div>
+</div>
+
+@if (adminGroups.Any())
+{
+    <div class="section-title"><span>👑</span> Yönettiğim Gruplar</div>
+    <div class="cards-grid fade-in">
+        @foreach (var g in adminGroups)
+        {
+            <div class="group-card">
+                <div class="group-name">@g.Name</div>
+                <div class="group-meta">@g.Members.Count üye · @g.BookAssignments.Count kitap atandı</div>
+                <div class="invite-code" onclick="copyInviteCode('@g.InviteCode')" style="cursor:pointer;" title="Kopyala">
+                    🔑 @g.InviteCode
+                </div>
+                <ul class="member-list">
+                    @foreach (var m in g.Members.Take(5))
+                    {
+                        <li><span class="member-badge">@m.User?.Username ?? "—"</span></li>
+                    }
+                    @if (g.Members.Count > 5)
+                    {
+                        <li><span class="member-badge">+@(g.Members.Count - 5) daha</span></li>
+                    }
+                </ul>
+                <a href="/Groups/Manage/@g.Id" class="btn-secondary" style="width:100%; justify-content:center;">⚙ Yönet</a>
+            </div>
+        }
+    </div>
+}
+
+@if (Model.Any())
+{
+    <div class="section-title" style="margin-top:32px;"><span>📚</span> Üye Olduğum Gruplar</div>
+    <div class="cards-grid fade-in">
+        @foreach (var g in Model.Where(g => !adminGroups.Any(a => a.Id == g.Id)))
+        {
+            <div class="group-card">
+                <div class="group-name">@g.Name</div>
+                <div class="group-meta">@g.Description</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    @foreach (var a in g.BookAssignments.Take(3))
+                    {
+                        <span class="badge badge-cyan">📖 @a.Book?.Title</span>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (!Model.Any() && !adminGroups.Any())
+{
+    <div class="empty-state">
+        <span class="empty-icon">👥</span>
+        <h3>Henüz bir gruba üye değilsin</h3>
+        <p>Yeni bir grup oluştur veya davet koduyla mevcut bir gruba katıl.</p>
+    </div>
+}

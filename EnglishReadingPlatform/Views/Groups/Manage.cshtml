@@ -1,0 +1,147 @@
+@model EnglishReadingPlatform.Models.Group
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Grup Yönetimi — " + Model.Name;
+    ViewData["Active"] = "groups";
+    var allBooks = ViewBag.AllBooks as List<EnglishReadingPlatform.Models.Book> ?? new();
+    var progresses = ViewBag.Progresses as List<EnglishReadingPlatform.Models.ReadingProgress> ?? new();
+    var quizResults = ViewBag.QuizResults as List<EnglishReadingPlatform.Models.QuizResult> ?? new();
+}
+
+<div class="page-header fade-in">
+    <div>
+        <h1>⚙ @Model.Name</h1>
+        <p>Grup yönetim paneli · Davet kodu: <strong style="color:#fcd34d; letter-spacing:0.1em;">@Model.InviteCode</strong></p>
+    </div>
+    <a href="/Groups" class="btn-secondary">← Gruplar</a>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:36px;">
+    <!-- Üye Listesi -->
+    <div class="group-card">
+        <div class="section-title" style="margin-bottom:16px;"><span>👥</span> Üyeler (@Model.Members.Count)</div>
+        <ul class="member-list" style="flex-direction:column;">
+            @foreach (var m in Model.Members)
+            {
+                <li style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span>@m.User?.Username</span>
+                    <span class="badge @(m.Role == "admin" ? "badge-orange" : "badge-cyan")">@m.Role</span>
+                </li>
+            }
+        </ul>
+    </div>
+
+    <!-- Kitap Atama -->
+    <div class="group-card">
+        <div class="section-title" style="margin-bottom:16px;"><span>📚</span> Kitap Ata</div>
+        <form method="post" action="/Groups/AssignBook" style="display:flex; gap:10px; flex-direction:column;">
+            <input type="hidden" name="groupId" value="@Model.Id" />
+            <select id="bookSelect" name="bookId" class="form-select">
+                @foreach (var b in allBooks.Where(b => !Model.BookAssignments.Any(a => a.BookId == b.Id)))
+                {
+                    <option value="@b.Id">@b.Title</option>
+                }
+            </select>
+            <button id="assignBookBtn" type="submit" class="btn-primary">📚 Kitap Ata</button>
+        </form>
+
+        @if (Model.BookAssignments.Any())
+        {
+            <div style="margin-top:16px;">
+                <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:8px;">ATANMIŞ KİTAPLAR</div>
+                @foreach (var a in Model.BookAssignments)
+                {
+                    <div class="badge badge-green" style="display:inline-block; margin:3px;">
+                        📖 @a.Book?.Title
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Okuma İlerlemeleri -->
+<div class="section-title"><span>📊</span> Üye Okuma İlerlemeleri</div>
+<div style="background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius); overflow:hidden; margin-bottom:36px;">
+    @if (progresses.Any())
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Kullanıcı</th>
+                    <th>Kitap</th>
+                    <th>Bölüm</th>
+                    <th>İlerleme</th>
+                    <th>Son Okuma</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in progresses)
+                {
+                    <tr>
+                        <td><strong>@p.User?.Username</strong></td>
+                        <td>@p.Book?.Title</td>
+                        <td>@p.CurrentChapter</td>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <div class="progress-bar-wrap" style="flex:1; margin:0;">
+                                    <div class="progress-bar-fill" style="width:@((int)p.ProgressPercent)%"></div>
+                                </div>
+                                <span style="font-size:0.8rem; color:var(--text-secondary); white-space:nowrap;">%@((int)p.ProgressPercent)</span>
+                            </div>
+                        </td>
+                        <td style="color:var(--text-muted); font-size:0.8rem;">@p.LastRead.ToString("dd MMM")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="empty-state" style="padding:32px;">
+            <p>Henüz okuma verisi yok</p>
+        </div>
+    }
+</div>
+
+<!-- Quiz Sonuçları -->
+<div class="section-title"><span>🎯</span> Quiz Sonuçları</div>
+<div style="background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius); overflow:hidden;">
+    @if (quizResults.Any())
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Kullanıcı</th>
+                    <th>Quiz</th>
+                    <th>Skor</th>
+                    <th>Başarı %</th>
+                    <th>Tarih</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in quizResults.OrderByDescending(r => r.TakenAt))
+                {
+                    var pct = r.TotalQuestions > 0 ? (int)((double)r.Score / r.TotalQuestions * 100) : 0;
+                    <tr>
+                        <td><strong>@r.User?.Username</strong></td>
+                        <td>@r.Quiz?.Title</td>
+                        <td>@r.Score / @r.TotalQuestions</td>
+                        <td>
+                            <span class="badge @(pct >= 80 ? "badge-green" : pct >= 60 ? "badge-cyan" : "badge-orange")">
+                                %@pct
+                            </span>
+                        </td>
+                        <td style="color:var(--text-muted); font-size:0.8rem;">@r.TakenAt.ToString("dd MMM")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="empty-state" style="padding:32px;">
+            <p>Henüz quiz verisi yok</p>
+        </div>
+    }
+</div>
