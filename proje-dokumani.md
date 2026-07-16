@@ -193,8 +193,22 @@ Güvenlik bu projede opsiyonel değildir; tüm katmanlarda en yüksek öncelik o
 - **Token Kullanım Loglaması**: Groq üzerinden yapılan her işlemin (kitap analiz, kelime çeviri vb.) anlık girdi, çıktı ve toplam token tüketim miktarı backend loglarına yazdırılarak şeffaf maliyet takibi sağlandı.
 - **Otokuplaj ve Docker Rebuild**: Yapılan tüm frontend ve backend güncellemeleri Docker ortamında `docker compose up -d --build` ile derlenerek yayına alındı.
 
-
-
-
-
-
+### [2026-07-16] - Dashboard Mobil Yeniden Tasarımı, Günlük Motivasyon Kartları ve Reader Header İyileştirmeleri
+- **Dashboard Mobil Uyum Revizyonu (Okumaya Devam Et Kartı)**:
+  * "Okumaya Devam Et" kartının mobildeki görünümü tamamen dikey (`flex-col`) düzene geçirildi. Kitap kapağı üstte daha belirgin ve büyük (`w-20 h-28`), kitap detayları, ilerleme barı ve yönlendirme butonu ise altta ortalanmış şekilde konumlandırıldı.
+  * Masaüstü ekranlarda (`md:`) ise eski kompakt, yatay (`flex-row`) hizalama ve sağ alt buton yerleşimi korundu.
+  * İlerleme barı yüksekliği mobilde takibi kolaylaştırmak adına `h-2.5` olarak güncellendi.
+  * "Okumaya Devam Et" butonu mobilde tam genişlik (`w-full`), büyük dolgu (`py-3`) ve belirgin bir buton haline getirilerek dokunmatik ekranlar için optimize edildi.
+- **Motivasyon ve Hedef Alanı (Günün İpucu & Hedef Kartları)**:
+  * Mobilde en altta kalan boş alanları değerlendirmek ve kullanıcı etkileşimini artırmak için iki yeni kart eklendi:
+    * 💡 **Günün İpucu**: Kullanıcıyı her gün düzenli okuma yapmaya teşvik eden, dinamik cam (glass-card) görünümlü bilgi kartı.
+    * 🔥 **Hedefin**: Günlük kelime ve bölüm hedeflerini hatırlatarak motivasyon sağlayan etkileşimli hedef kartı.
+  * Bu kartlar mobilde alt alta, masaüstünde ise yan yana esnek (`grid-cols-1 md:grid-cols-2`) yerleşimle sunuldu.
+- **Book Reader Header Mobil Optimizasyonu & Buton Temizliği**:
+  * Kitap okuma sayfasında (`BookReader`) üst kısımda yer alan geri dönüş butonundaki "Kitaplık" yazısı, dar mobil ekranlarda (`max-width: 480px`) CSS kurallarıyla gizlendi. Bu sayede mobilde sadece sol ok simgesi gösterilerek sayfa başlığına maksimum yer açıldı.
+  * Sayfa başlığı ve konum bilgisi (`bk-title-block`), mobil cihazlarda sıkışmayı ve üst üste binmeyi önlemek adına sola yaslandı (`text-left`).
+  * Aktif olarak kullanılmayan ve arayüzde yer kaplayan "Başlıkları Yeniden Çevir & Düzenle" (`handleReanalyze`) butonu header alanından tamamen kaldırılarak arayüz sadeleştirildi.
+- **Tema ve Kod Temizliği**:
+  * Dashboard üzerindeki kullanıcı adı baş harfleri ve isim metinleri dinamik `capitalize` fonksiyonu ile biçimlendirildi.
+  * Header'da yer alan kullanıcı avatarının rengi, temaya tam uyum sağlaması için mavi (tertiary) tonlardan marka rengi olan yeşile (primary) dönüştürüldü.
+  * Yapılan tüm düzenlemeler Docker üzerinde derlendi ve GitHub (`main` dalı) üzerinden Vercel/Render ortamlarına gönderildi.
