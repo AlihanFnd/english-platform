@@ -288,7 +288,7 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
 
       {/* ── Header strip ── */}
       <div className="bk-header">
-        <Link href="/books" className="bk-back"><ArrowLeft size={13}/> Kitaplık</Link>
+        <Link href="/books" className="bk-back"><ArrowLeft size={13}/> <span>Kitaplık</span></Link>
         <div className="bk-title-block">
           <span className="bk-title">{bookTitle}</span>
           <span className="bk-loc">

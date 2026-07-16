@@ -338,8 +338,9 @@ body {
 .bk-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0 0.875rem;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
   border-bottom: 1px solid var(--outline-variant);
   margin-bottom: 1.25rem;
 }
@@ -347,6 +348,7 @@ body {
 .bk-back {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.3rem;
   font-size: 0.72rem;
   font-weight: 600;
@@ -354,16 +356,40 @@ body {
   text-decoration: none;
   flex-shrink: 0;
   transition: color .15s;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  background: var(--surface-container-low);
 }
 
 .bk-back:hover {
   color: var(--on-surface);
+  background: var(--surface-container);
+}
+
+.bk-back span {
+  display: inline;
+}
+
+@media (max-width: 480px) {
+  .bk-back span {
+    display: none; /* Mobilde sadece sol ok ikonu kalır, yer açılır */
+  }
+  .bk-back {
+    padding: 0.35rem;
+  }
 }
 
 .bk-title-block {
   flex: 1;
   text-align: center;
   min-width: 0;
+  padding: 0 0.25rem;
+}
+
+@media (max-width: 640px) {
+  .bk-title-block {
+    text-align: left; /* Mobilde sola yaslanarak sıkışma önlenir */
+  }
 }
 
 .bk-title {
