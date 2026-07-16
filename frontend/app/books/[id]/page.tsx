@@ -296,14 +296,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button 
-            onClick={handleReanalyze} 
-            disabled={analyzing}
-            className="bk-quiz bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 cursor-pointer"
-            title="Eski önbelleği temizleyip başlıkları alt alta ve doğru şekilde yeniden analiz et"
-          >
-            🔄 {analyzing ? 'Yenileniyor...' : 'Başlıkları Yeniden Çevir & Düzenle'}
-          </button>
           {!hasPages && chapter && (
             <Link href={`/books/${bookId}/quiz?chapterId=${chapter.id}`} className="bk-quiz">
               <HelpCircle size={13}/> Quiz
