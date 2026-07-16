@@ -182,7 +182,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       </header>
 
       {/* Mobile Header (Deep Navy) */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#1E293B] border-b border-outline-variant px-4 flex items-center justify-between z-20 shadow-md">
+      <header data-mobile-header="true" className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#1E293B] border-b border-outline-variant px-4 flex items-center justify-between z-20 shadow-md">
         <div className="flex items-center gap-2">
           {pathname !== '/' ? (
             <button 
@@ -220,7 +220,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
-      </div>
+      </header>
 
       {/* Mobile Menu Backdrop & Panel */}
       {mobileMenuOpen && (
