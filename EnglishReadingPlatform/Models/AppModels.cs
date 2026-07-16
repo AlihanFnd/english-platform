@@ -191,4 +191,15 @@ namespace EnglishReadingPlatform.Models
         [Required, MaxLength(1000)] public string Message { get; set; } = "";
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
+
+    // ─── Çeviri Önbelleği (Token Tasarrufu İçin) ──────────────────
+    public class TranslationCache
+    {
+        [Key] public int Id { get; set; }
+        [Required, MaxLength(255)] public string QueryText { get; set; } = ""; // Çevrilmek istenen kelime/kalıp (küçük harfe normalize edilmiş)
+        public string? ContextText { get; set; } // İçinde geçtiği cümle (küçük harfe normalize edilmiş)
+        [Required] public string Translation { get; set; } = ""; // Groq tarafından dönülen çeviri/açıklama
+        [Required, MaxLength(50)] public string WordType { get; set; } = "default"; // Kelime türü
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
 }

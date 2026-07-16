@@ -251,16 +251,18 @@ namespace EnglishReadingPlatform.Controllers
     {
         private readonly TranslationService _transService;
         private readonly TokenSecurityService _tokenSecurity;
+        private readonly AppDbContext _db;
 
-        public TranslateController(TranslationService transService, TokenSecurityService tokenSecurity)
+        public TranslateController(TranslationService transService, TokenSecurityService tokenSecurity, AppDbContext db)
         {
             _transService = transService;
             _tokenSecurity = tokenSecurity;
+            _db = db;
         }
 
         private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-        public record TReq(string Text);
+        public record TReq(string Text, string? Context = null, bool UseAI = false);
 
         [HttpPost("word")]
         public async Task<IActionResult> Word([FromBody] TReq req)
@@ -269,8 +271,48 @@ namespace EnglishReadingPlatform.Controllers
                 return StatusCode(429, new { error = "Dakika başına çeviri limitini aştınız." });
 
             if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "" });
-            var r = await _transService.TranslateWordAsync(req.Text.Trim());
-            return Ok(new { translation = r.Tr, type = r.Type });
+
+            var clean = System.Text.RegularExpressions.Regex.Replace(req.Text, @"[^a-zA-Z0-9'\ -]", "").Trim().ToLower();
+            var cleanContext = req.Context?.Trim().ToLower();
+
+            // Eğer yapay zeka zorlandıysa (UseAI = true) ve bu kelime önbellekte yoksa günlük limiti sorgula
+            if (req.UseAI && !string.IsNullOrWhiteSpace(req.Context))
+            {
+                var cachedExists = await _db.TranslationCaches.AnyAsync(tc => tc.QueryText == clean && tc.ContextText == cleanContext);
+                if (!cachedExists)
+                {
+                    var todayUtc = DateTime.UtcNow.Date;
+                    var aiCount = await _db.UserActivityLogs.CountAsync(log => 
+                        log.UserId == CurrentUserId && 
+                        log.ActivityType == "ai_word_translation" && 
+                        log.Timestamp >= todayUtc);
+
+                    if (aiCount >= 30)
+                    {
+                        return BadRequest(new { error = "Günlük 30 olan yapay zeka bağlamsal kelime çeviri limitinizi doldurdunuz." });
+                    }
+
+                    // Limit aşılmadıysa yeni log ekle
+                    var activityLog = new UserActivityLog
+                    {
+                        UserId = CurrentUserId,
+                        ActivityType = "ai_word_translation",
+                        Details = $"Word: {clean}",
+                        Timestamp = DateTime.UtcNow
+                    };
+                    _db.UserActivityLogs.Add(activityLog);
+                    await _db.SaveChangesAsync();
+                }
+            }
+
+            var r = await _transService.TranslateWordAsync(req.Text.Trim(), req.Context?.Trim(), req.UseAI);
+            return Ok(new { 
+                translation = r.Translation, 
+                generalMeaning = r.GeneralMeaning,
+                contextualMeaning = r.ContextualMeaning,
+                synonyms = r.Synonyms,
+                type = r.Type 
+            });
         }
 
         [HttpPost("sentence")]

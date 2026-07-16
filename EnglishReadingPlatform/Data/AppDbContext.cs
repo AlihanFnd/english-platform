@@ -22,6 +22,7 @@ namespace EnglishReadingPlatform.Data
         public DbSet<BookPage> BookPages => Set<BookPage>();
         public DbSet<UserActivityLog> UserActivityLogs => Set<UserActivityLog>();
         public DbSet<Feedback> Feedbacks => Set<Feedback>();
+        public DbSet<TranslationCache> TranslationCaches => Set<TranslationCache>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -31,6 +32,9 @@ namespace EnglishReadingPlatform.Data
             modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
             modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
             modelBuilder.Entity<Group>().HasIndex(g => g.InviteCode).IsUnique();
+            
+            // Index for Translation Cache
+            modelBuilder.Entity<TranslationCache>().HasIndex(tc => new { tc.QueryText, tc.ContextText });
 
             // Seed: Varsayılan Admin Kullanıcısı
             // Şifre: Admin@2026!  (BCrypt hash)

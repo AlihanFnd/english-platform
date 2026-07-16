@@ -32,7 +32,7 @@ async function translateWord(word, context) {
         const res = await fetch('/Translate/Word', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: word })
+            body: JSON.stringify({ text: word, context: context })
         });
         const data = await res.json();
         currentTranslation = data.translation;

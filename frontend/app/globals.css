@@ -760,6 +760,7 @@ body {
   font-size: 0.92rem;
   font-weight: 600;
   color: var(--primary);
+  white-space: pre-line;
 }
 
 .bk-wp-x {

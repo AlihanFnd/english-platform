@@ -180,6 +180,20 @@ Güvenlik bu projede opsiyonel değildir; tüm katmanlarda en yüksek öncelik o
 - **Öğrenilecek Kelime Sayacı**: Kelime listesinin üstünde güncel olarak kaç adet kelime öğrenilmeyi beklediği bir sayaç kutusuyla canlı olarak gösterilir.
 - **Kelime Düzenleme & Dönüş Düzeltmeleri**: Flashcard'lardaki sonsuz dönme hatası düzeltildi. Kart düzenleme (PUT api) entegrasyonu tamamlandı.
 
+### [2026-07-15] - Groq API Geçişi, Bağlamsal Çeviri, Token Tasarrufu (Önbellek) ve Eş Anlamlılar Entegrasyonu
+- **Gemini API'den Groq'a Geçiş**: API limit yetersizlikleri ve maliyet yönetimi nedeniyle platformun tüm yapay zeka analiz (`TranslationService.cs`) ve PDF bölümleme (`PdfService.cs`) altyapısı Gemini API'sinden **Groq API** (`llama-3.3-70b-versatile` modeli) altyapısına taşındı.
+- **Akıllı Token Tasarrufu (Önbellek - Cache Sistemi)**:
+  * Veritabanında kelime ve geçtiği cümle bazlı composite index (`QueryText`, `ContextText`) içeren `TranslationCaches` tablosu oluşturuldu.
+  * Tıklanan kelimeler Groq API'ye gönderilmeden önce bu tablodan kontrol edilir. Aynı cümle içindeki aynı kelime sorgularında **0 token harcanarak** doğrudan önbellekten veri çekilir.
+  * Yeni ve benzersiz kelime/bağlam ikilileri Groq ile çevrildikten sonra veritabanına otomatik kaydedilir.
+- **Bağlam Duyarlı Yapay Zeka Çevirisi**: Kelime tıklamalarında sadece kelime değil, kelimenin içinde geçtiği tüm cümle bağlamı (`Context`) backend'e iletilir. Groq kelimenin düz sözlük anlamı yerine o cümledeki gerçek fonksiyonunu analiz edip, aradaki farkları açıklama ve örneklerle sunar.
+- **Google Translate Eş Anlam (Synonyms) Desteği**:
+  * Google Translate üzerinden yapılan standart kelime çevirilerinde, gelen raw JSON yanıtı içindeki alternatif çeviriler ve eş anlamlılar (`dt=bd` parametresi) parse edilmeye başlandı.
+  * Kelimeler türlerine göre (isim, fiil, sıfat, zarf vb.) gruplanarak primary çevirinin hemen altında şık bir şekilde listelenir (Örn: *• Fiil: çalıştırmak, yönetmek*).
+- **Token Kullanım Loglaması**: Groq üzerinden yapılan her işlemin (kitap analiz, kelime çeviri vb.) anlık girdi, çıktı ve toplam token tüketim miktarı backend loglarına yazdırılarak şeffaf maliyet takibi sağlandı.
+- **Otokuplaj ve Docker Rebuild**: Yapılan tüm frontend ve backend güncellemeleri Docker ortamında `docker compose up -d --build` ile derlenerek yayına alındı.
+
+
 
 
 

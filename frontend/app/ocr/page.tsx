@@ -40,10 +40,11 @@ export default function OcrPage() {
   const [analyzedSentences, setAnalyzedSentences] = useState<AnalyzedSentence[]>([]);
 
   // Selected word details
-  const [selectedWord, setSelectedWord] = useState<AnalyzedWord | null>(null);
+  const [selectedWord, setSelectedWord] = useState<any | null>(null);
   const [selectedWordContext, setSelectedWordContext] = useState('');
   const [addedWords, setAddedWords] = useState<Record<string, boolean>>({});
   const [savingWord, setSavingWord] = useState(false);
+  const [loadingAI, setLoadingAI] = useState(false);
 
   // Hidden/shown sentence translations index list
   const [showTranslations, setShowTranslations] = useState<Record<number, boolean>>({});
@@ -139,8 +140,14 @@ export default function OcrPage() {
     setSelectedWord({ word: w.word, translation: 'Çevriliyor...', type: isKalip ? 'kalıp' : (w.type || 'default') });
     setSelectedWordContext(originalSentence);
     try {
-      const res = await api.translateWord(w.word);
-      setSelectedWord({ word: w.word, translation: res.translation, type: isKalip ? 'kalıp' : res.type });
+      const res = await api.translateWord(w.word, originalSentence, false);
+      setSelectedWord({ 
+        word: w.word, 
+        translation: res.translation, 
+        generalMeaning: res.generalMeaning,
+        synonyms: res.synonyms,
+        type: isKalip ? 'kalıp' : res.type 
+      });
     } catch (e) {
       setSelectedWord({ word: w.word, translation: 'Çevrilemedi', type: isKalip ? 'kalıp' : 'default' });
     }
@@ -150,7 +157,10 @@ export default function OcrPage() {
     if (!selectedWord) return;
     setSavingWord(true);
     try {
-      await api.addWord(selectedWord.word, selectedWord.translation, selectedWordContext);
+      const saveText = selectedWord.generalMeaning 
+        ? `${selectedWord.generalMeaning}${selectedWord.synonyms ? '\n\nEş Anlamlılar:\n' + selectedWord.synonyms : ''}`
+        : selectedWord.translation;
+      await api.addWord(selectedWord.word, saveText, selectedWordContext);
       setAddedWords(prev => ({ ...prev, [selectedWord.word.toLowerCase()]: true }));
     } catch (err) {
       console.error(err);
@@ -364,6 +374,8 @@ export default function OcrPage() {
                 </p>
               </div>
             )}
+
+
 
             <button
               disabled={addedWords[selectedWord.word.toLowerCase()] || savingWord}

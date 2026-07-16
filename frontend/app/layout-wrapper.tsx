@@ -119,40 +119,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           })}
         </nav>
 
-        {/* User profile section in sidebar */}
-        <div className="mt-auto pt-6 border-t border-white/10 flex flex-col gap-3">
-          <div className="flex items-center gap-3 px-2">
-            <div className="h-10 w-10 rounded-full bg-primary border border-white/20 flex items-center justify-center text-white font-bold shadow-sm">
-              {user.username[0].toUpperCase()}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-semibold text-white truncate">{user.username}</p>
-              <p className="text-[11px] text-white/55 capitalize">{user.role === 'teacher' ? 'Öğretmen' : 'Öğrenci'}</p>
-            </div>
-          </div>
-          
-          {/* Sidebar Theme Toggle Button */}
-          <button
-            onClick={toggleTheme}
-            className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 hover:text-white transition-all text-xs font-semibold border border-white/10 w-full cursor-pointer"
-            title={theme === 'light' ? 'Koyu Temaya Geç' : 'Açık Temaya Geç'}
-          >
-            <div className="flex items-center gap-2.5">
-              {theme === 'light' ? (
-                <Moon className="h-4 w-4 text-primary" />
-              ) : (
-                <Sun className="h-4 w-4 text-yellow-400" />
-              )}
-              <span>{theme === 'light' ? 'Karanlık Tema' : 'Aydınlık Tema'}</span>
-            </div>
-            <div className={`w-8 h-4 rounded-full p-0.5 flex items-center transition-colors ${theme === 'dark' ? 'bg-primary justify-end' : 'bg-white/20 justify-start'}`}>
-              <div className="w-3 h-3 rounded-full bg-white shadow-sm" />
-            </div>
-          </button>
-
+        {/* Clean logout section in sidebar */}
+        <div className="mt-auto pt-4 border-t border-white/10">
           <button
             onClick={logout}
-            className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all font-semibold text-xs w-full text-left"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all font-semibold text-xs w-full text-left"
           >
             <LogOut className="h-4 w-4" />
             Çıkış Yap
@@ -199,11 +170,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           <button className="bg-primary text-on-primary px-6 py-2 rounded-full text-xs font-bold bouncy-btn shadow-md shadow-primary/20">Yükselt</button>
           
           <div className="flex items-center gap-3 border-l border-outline-variant pl-5">
-            <div className="h-9 w-9 rounded-full bg-tertiary flex items-center justify-center text-white font-bold text-sm shadow-sm">
+            <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm shadow-sm">
               {user.username[0].toUpperCase()}
             </div>
             <div className="text-left">
-              <p className="text-xs font-bold text-on-surface leading-none">{user.username}</p>
+              <p className="text-xs font-bold text-on-surface leading-none capitalize">{user.username}</p>
               <p className="text-[10px] text-on-surface-variant capitalize mt-1">{user.role}</p>
             </div>
           </div>

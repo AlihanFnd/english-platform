@@ -185,18 +185,24 @@ namespace EnglishReadingPlatform.Services
             }
 
             result.FullText = string.Join("\n\n", pageTexts);
-            result.Chapters = await SplitIntoChaptersWithGeminiAsync(pageTexts);
+            result.Chapters = await SplitIntoChaptersWithGroqAsync(pageTexts);
 
             return result;
         }
 
-        private async Task<List<PdfChapter>> SplitIntoChaptersWithGeminiAsync(List<string> pages)
+        private async Task<List<PdfChapter>> SplitIntoChaptersWithGroqAsync(List<string> pages)
         {
-            var apiKey = _configuration["Gemini:ApiKey"];
+            var apiKey = _configuration["Groq:ApiKey"] 
+                          ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
+                          ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 return SplitIntoChaptersRegex(pages);
             }
+
+            var model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
+            if (string.IsNullOrWhiteSpace(model)) model = "llama-3.3-70b-versatile";
 
             try
             {
@@ -225,47 +231,47 @@ namespace EnglishReadingPlatform.Services
                              "Here is the start text of each page:\n" +
                              string.Join("\n", pageHeaders);
 
-                var client = _httpFactory.CreateClient();
-                var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
-
                 var payload = new
                 {
-                    contents = new[]
+                    model = model,
+                    messages = new[]
                     {
-                        new
-                        {
-                            parts = new[]
-                            {
-                                new { text = prompt }
-                            }
-                        }
+                        new { role = "user", content = prompt }
                     },
-                    generationConfig = new
+                    response_format = new
                     {
-                        responseMimeType = "application/json"
+                        type = "json_object"
                     }
                 };
 
                 var jsonPayload = JsonSerializer.Serialize(payload);
-                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var client = _httpFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(5);
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
-                var response = await client.PostAsync(url, content);
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
+
                 if (!response.IsSuccessStatusCode)
                 {
-                    throw new Exception("Gemini API call failed");
+                    var errContent = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"HTTP {response.StatusCode} from Groq: {errContent}");
                 }
 
                 var responseJson = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(responseJson);
                 var root = doc.RootElement;
-                var textResult = root.GetProperty("candidates")[0]
+                if (root.TryGetProperty("usage", out var usage))
+                {
+                    Console.WriteLine($"[Groq Token Usage (PdfChapterSplit)] Prompt: {usage.GetProperty("prompt_tokens")}, Completion: {usage.GetProperty("completion_tokens")}, Total: {usage.GetProperty("total_tokens")}");
+                }
+                var textResult = root.GetProperty("choices")[0]
+                                     .GetProperty("message")
                                      .GetProperty("content")
-                                     .GetProperty("parts")[0]
-                                     .GetProperty("text")
                                      .GetString();
 
                 if (string.IsNullOrWhiteSpace(textResult))
-                    throw new Exception("Empty response");
+                    throw new Exception("Empty response from Groq");
 
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var geminiResult = JsonSerializer.Deserialize<GeminiChaptersResult>(textResult, options);
@@ -307,7 +313,7 @@ namespace EnglishReadingPlatform.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Gemini Chapter Split Error, falling back to regex]: {ex.Message}");
+                Console.WriteLine($"[Groq Chapter Split Error, falling back to regex]: {ex.Message}");
             }
 
             return SplitIntoChaptersRegex(pages);

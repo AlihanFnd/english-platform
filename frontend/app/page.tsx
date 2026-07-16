@@ -3,8 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { api, ReadingProgress, User } from './api';
 import { useAuth } from './context/AuthContext';
-import { BookOpen, BookMarked, Award, GraduationCap, ArrowRight, Sparkles } from 'lucide-react';
+import { BookOpen, BookMarked, FileSearch, ChevronRight, Play, Zap, Flame, Lightbulb, Target } from 'lucide-react';
 import Link from 'next/link';
+
+function capitalize(str: string) {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -47,232 +52,248 @@ export default function Dashboard() {
     );
   }
 
-  const statCards = [
-    {
-      name: 'Öğrenilen Kelimeler',
-      value: stats?.wordCount ?? 0,
-      icon: BookMarked,
-      color: 'from-blue-600 to-indigo-600',
-      shadow: 'shadow-blue-500/10',
-      href: '/words',
-    },
-    {
-      name: 'Tamamlanan Quizler',
-      value: stats?.quizCount ?? 0,
-      icon: Award,
-      color: 'from-amber-500 to-orange-600',
-      shadow: 'shadow-amber-500/10',
-      href: '/words',
-    }
-  ];
+  const hasProgress = stats?.recentProgress && stats.recentProgress.length > 0;
+  const currentProgress = hasProgress ? stats.recentProgress[0] : null;
+  const progressPercent = hasProgress ? stats.recentProgress[0].progressPercent : 0;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      {/* Sol Panel: Okumaya Devam Et & Son Kelimeler */}
-      <div className="lg:col-span-8 space-y-8">
-        
-        {/* Welcome & Continue Reading Hero Banner */}
-        <div className="glass-card rounded-3xl p-8 flex flex-col md:flex-row gap-8 items-center md:items-start group relative overflow-hidden">
-          <div className="absolute top-[-10%] right-[-10%] w-32 h-32 bg-primary/10 blur-3xl pointer-events-none"></div>
-          
-          {stats?.recentProgress && stats.recentProgress.length > 0 ? (
-            <div
-              className="relative w-40 h-56 flex-shrink-0 shadow-2xl rounded-2xl overflow-hidden transition-transform duration-500 group-hover:scale-[1.03] flex flex-col justify-between p-5 border border-black/5 text-white font-extrabold"
-              style={{ backgroundColor: 'var(--primary)' }}
-            >
-              <div className="absolute inset-0 bg-black/10"></div>
-              <span className="z-10 text-xs font-black text-left leading-tight uppercase tracking-wider line-clamp-4">
-                {stats.recentProgress[0].bookTitle}
-              </span>
-              <div className="z-10 text-left">
-                <span className="text-[9px] font-semibold text-white/80 block uppercase tracking-widest">
-                  Okunuyor
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="relative w-40 h-56 flex-shrink-0 shadow-2xl rounded-2xl overflow-hidden transition-transform duration-500 group-hover:scale-105 bg-surface-container border border-outline-variant flex items-center justify-center">
-              <BookOpen className="h-16 w-16 text-primary animate-pulse" />
-            </div>
-          )}
+    <div className="w-full space-y-4">
 
-          <div className="flex-1 flex flex-col justify-between h-full space-y-6">
-            <div>
-              <span className="bg-primary/20 text-primary font-bold px-3 py-1 rounded-full text-xs uppercase tracking-wider mb-3 inline-block">
-                Hoş Geldin, {user?.username}
-              </span>
-              <h3 className="font-display-lg text-3xl font-extrabold text-on-surface leading-tight">
-                {stats?.recentProgress && stats.recentProgress.length > 0 
-                  ? stats.recentProgress[0].bookTitle
-                  : "İngilizce Okuma Serüveni"
-                }
-              </h3>
-              <p className="text-on-surface-variant font-body-md mt-1">
-                {stats?.recentProgress && stats.recentProgress.length > 0 
-                  ? `Son Okuma: Bölüm ${stats.recentProgress[0].currentChapter}`
-                  : "Hemen bir kitap seçip kelimeleri keşfetmeye başla!"
-                }
+      {/* ── 1. KISIM: Okumaya Devam Et ── */}
+      {hasProgress && currentProgress ? (
+        <div className="glass-card rounded-2xl p-4 md:p-5">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-4">
+            {/* Kitap kapağı ikonu — mobilde büyük, ortada */}
+            <div
+              className="w-20 h-28 md:w-14 md:h-20 rounded-xl relative flex flex-col justify-between p-2.5 md:p-2 text-white shrink-0 shadow-lg"
+              style={{
+                background: 'linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 60%, #000) 100%)',
+              }}
+            >
+              <div className="absolute inset-y-0 right-0 w-1 bg-black/25 rounded-r-xl" />
+              <BookOpen className="h-4 w-4 md:h-3 md:w-3 text-white/80 self-end" />
+              <p className="text-[8px] md:text-[7px] font-black leading-tight uppercase tracking-tight line-clamp-3 text-left pr-1">
+                {currentProgress.bookTitle}
               </p>
             </div>
 
-            {stats?.recentProgress && stats.recentProgress.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="font-label-md text-on-surface-variant">İlerleme</span>
-                  <span className="font-headline-md text-primary font-bold">
-                    %{Math.round(stats.recentProgress[0].progressPercent)}
-                  </span>
+            {/* Bilgi + Progress */}
+            <div className="flex-1 min-w-0 space-y-2.5 w-full text-center md:text-left">
+              <div>
+                <span
+                  className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-1"
+                  style={{
+                    color: 'var(--primary)',
+                    background: 'color-mix(in srgb, var(--primary) 8%, transparent)',
+                    borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)',
+                  }}
+                >
+                  <Zap className="h-2 w-2 fill-current" />
+                  Okumaya Devam Et
+                </span>
+                <h4 className="text-sm font-black text-on-surface leading-tight line-clamp-1">
+                  {currentProgress.bookTitle}
+                </h4>
+                <p className="text-[10px] text-on-surface-variant mt-0.5">
+                  Bölüm <span className="font-bold text-on-surface">{currentProgress.currentChapter}</span>
+                </p>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-[10px] font-bold">
+                  <span className="text-on-surface-variant">İlerleme</span>
+                  <span style={{ color: 'var(--primary)' }}>%{Math.round(progressPercent)}</span>
                 </div>
-                <div className="h-3 w-full bg-surface-container rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-primary to-primary-container rounded-full shadow-[0_0_12px_rgba(34,197,94,0.4)] transition-all duration-1000"
-                    style={{ width: `${stats.recentProgress[0].progressPercent}%` }}
-                  ></div>
+                <div className="h-2.5 md:h-2 w-full rounded-full bg-surface-container border border-outline-variant/20 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      width: `${progressPercent}%`,
+                      background: 'var(--primary)',
+                    }}
+                  />
                 </div>
               </div>
-            )}
 
-            <Link
-              href={stats?.recentProgress && stats.recentProgress.length > 0 
-                ? `/books/${stats.recentProgress[0].bookId}?chapter=${stats.recentProgress[0].currentChapter}`
-                : "/books"
-              }
-              className="bg-primary text-on-primary font-bold py-4 px-10 rounded-lg flex items-center justify-center gap-3 bouncy-btn w-fit shadow-lg shadow-primary/20"
+              {/* Buton */}
+              <Link
+                href={`/books/${currentProgress.bookId}?chapter=${currentProgress.currentChapter}`}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm text-on-primary bouncy-btn transition-all hover:opacity-90 md:w-auto md:inline-flex md:px-5 md:py-2.5"
+                style={{
+                  background: 'var(--primary)',
+                  boxShadow: '0 3px 10px color-mix(in srgb, var(--primary) 28%, transparent)',
+                }}
+              >
+                <Play className="h-3.5 w-3.5 fill-white" />
+                Okumaya Devam Et
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="glass-card rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: 'color-mix(in srgb, var(--primary) 10%, transparent)' }}
+          >
+            <BookOpen className="h-6 w-6" style={{ color: 'var(--primary)' }} />
+          </div>
+          <div className="space-y-0.5 text-center sm:text-left">
+            <h4 className="font-black text-on-surface text-sm">Aktif Okuma Yok</h4>
+            <p className="text-xs text-on-surface-variant">Kütüphaneden bir kitap seçerek başlayabilirsin.</p>
+          </div>
+          <Link
+            href="/books"
+            className="ml-auto shrink-0 text-on-primary font-black py-2.5 px-6 rounded-xl text-xs bouncy-btn"
+            style={{ background: 'var(--primary)' }}
+          >
+            Kitaplığa Git
+          </Link>
+        </div>
+      )}
+
+      {/* ── 2. KISIM: Avatar + Sayaçlar + Hızlı Erişim ── */}
+      <div className="glass-card rounded-2xl p-4">
+
+        {/* Avatar + İsim + Sayaçlar – tek satır */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-on-primary text-xs font-black shadow-sm shrink-0"
+              style={{ background: 'var(--primary)' }}
             >
-              <Sparkles className="h-5 w-5" />
-              <span>{stats?.recentProgress && stats.recentProgress.length > 0 ? "Öğrenmeye Devam Et" : "Kitaplığı Keşfet"}</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Son Öğrenilen Kelimeler */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center px-2">
-            <h4 className="font-headline-md text-xl font-bold text-on-surface">Son Öğrenilen Kelimeler</h4>
-            <Link href="/words" className="text-primary font-bold text-sm hover:underline">Tümünü Gör</Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="glass-card p-6 rounded-2xl flex flex-col justify-between hover:border-primary transition-all group">
-              <div>
-                <div className="flex justify-between items-start mb-2">
-                  <h5 className="font-headline-md text-xl font-bold text-primary">Kelimelerim</h5>
-                  <BookMarked className="text-on-surface-variant group-hover:text-primary transition-colors h-5 w-5" />
-                </div>
-                <p className="text-on-surface-variant font-body-md italic mb-3">Kişisel Sözlük</p>
-                <p className="text-on-surface font-body-md">Şu ana kadar platform genelinde kaydettiğiniz tüm İngilizce kelimeler ve anlamları.</p>
-              </div>
-              <div className="mt-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-                  <span className="font-label-sm text-sm text-on-surface-variant font-semibold">{stats?.wordCount ?? 0} Kayıtlı Kelime</span>
-                </div>
-              </div>
+              {capitalize(user?.username ?? '')[0]}
             </div>
+            <div>
+              <p className="text-sm font-black text-on-surface leading-none">{capitalize(user?.username ?? '')}</p>
+              <p className="text-[10px] text-on-surface-variant font-medium">Linguza</p>
+            </div>
+          </div>
 
-            <div className="glass-card p-6 rounded-2xl flex flex-col justify-between hover:border-primary transition-all group">
-              <div>
-                <div className="flex justify-between items-start mb-2">
-                  <h5 className="font-headline-md text-xl font-bold text-primary">Quiz Sonuçları</h5>
-                  <Award className="text-on-surface-variant group-hover:text-primary transition-colors h-5 w-5" />
-                </div>
-                <p className="text-on-surface-variant font-body-md italic mb-3">Öğrenme Değerlendirmesi</p>
-                <p className="text-on-surface font-body-md">Kitap bölümlerini tamamladıktan sonra çözdüğünüz anlama testlerinin başarı durumu.</p>
-              </div>
-              <div className="mt-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-                  <span className="font-label-sm text-sm text-on-surface-variant font-semibold">{stats?.quizCount ?? 0} Tamamlanan Test</span>
-                </div>
-              </div>
+          {/* Sayaçlar */}
+          <div className="flex items-center gap-1.5">
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border"
+              style={{
+                background: 'color-mix(in srgb, var(--primary) 8%, transparent)',
+                borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)',
+              }}
+            >
+              <span className="text-sm font-black" style={{ color: 'var(--primary)' }}>{stats?.wordCount ?? 0}</span>
+              <span className="text-[10px] font-semibold text-on-surface-variant">Kelime</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-surface-container border border-outline-variant">
+              <span className="text-sm font-black text-on-surface">{stats?.quizCount ?? 0}</span>
+              <span className="text-[10px] font-semibold text-on-surface-variant">Quiz</span>
             </div>
           </div>
         </div>
 
+        {/* Hızlı Erişim – 3 buton yatay */}
+        <div className="grid grid-cols-3 gap-2">
+          {/* Kitap Okuma */}
+          <Link
+            href="/books"
+            className="group relative flex flex-col gap-2 p-3 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5"
+            style={{
+              background: 'linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, #000) 100%)',
+              boxShadow: '0 4px 16px color-mix(in srgb, var(--primary) 30%, transparent)',
+            }}
+          >
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.07)' }} />
+            <div className="relative z-10 p-1.5 rounded-lg w-fit" style={{ background: 'rgba(255,255,255,0.2)' }}>
+              <BookOpen className="h-3.5 w-3.5 text-white" />
+            </div>
+            <div className="relative z-10">
+              <p className="text-[9px] font-bold uppercase tracking-wide opacity-70 text-white leading-none">Kütüphane</p>
+              <p className="text-xs font-black text-white leading-tight">Kitap Okuma</p>
+            </div>
+          </Link>
+
+          {/* Kelimelerim */}
+          <Link
+            href="/words"
+            className="group flex flex-col gap-2 p-3 rounded-xl bg-surface-container border border-outline-variant transition-all duration-300 hover:-translate-y-0.5 cursor-pointer"
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--primary) 45%, transparent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
+          >
+            <div className="p-1.5 rounded-lg border w-fit"
+              style={{ background: 'color-mix(in srgb, var(--primary) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}>
+              <BookMarked className="h-3.5 w-3.5" style={{ color: 'var(--primary)' }} />
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wide leading-none">Kayıtlı</p>
+              <p className="text-xs font-black text-on-surface leading-tight">Kelimelerim</p>
+            </div>
+          </Link>
+
+          {/* Metin Tara */}
+          <Link
+            href="/ocr"
+            className="group flex flex-col gap-2 p-3 rounded-xl bg-surface-container border border-outline-variant transition-all duration-300 hover:-translate-y-0.5 cursor-pointer"
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--primary) 45%, transparent)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
+          >
+            <div className="p-1.5 rounded-lg border w-fit"
+              style={{ background: 'color-mix(in srgb, var(--primary) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}>
+              <FileSearch className="h-3.5 w-3.5" style={{ color: 'var(--primary)' }} />
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wide leading-none">OCR</p>
+              <p className="text-xs font-black text-on-surface leading-tight">Metin Tara</p>
+            </div>
+          </Link>
+        </div>
       </div>
 
-      {/* Sağ Panel: Günlük Hedef & Önerilen Adımlar */}
-      <aside className="lg:col-span-4 space-y-8">
-        
-        {/* Daily Goal Card (Circular ring) */}
-        <div className="glass-card rounded-3xl p-8 flex flex-col items-center text-center relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/15 blur-3xl pointer-events-none"></div>
-          <h4 className="font-headline-md text-lg font-bold mb-8 text-on-surface">Günlük Hedef</h4>
-          
-          <div className="relative w-44 h-44 mb-8 flex items-center justify-center">
-            {/* SVG Progress Ring */}
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-              <circle className="text-surface-container stroke-current" cx="50" cy="50" fill="transparent" r="42" strokeWidth="8"></circle>
-              <circle 
-                className="text-primary stroke-current transition-all duration-1000" 
-                cx="50" cy="50" fill="transparent" r="42" strokeLinecap="round" strokeWidth="8" 
-                style={{ strokeDasharray: 264, strokeDashoffset: Math.max(0, 264 - (264 * Math.min(stats?.wordCount ?? 0, 10)) / 10) }}
-              ></circle>
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-extrabold text-on-surface">{stats?.wordCount ?? 0}</span>
-              <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Öğrenilen</span>
+      {/* ── 3. KISIM: Günlük İpucu + Seri ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Günlük İpucu */}
+        <div className="glass-card rounded-2xl p-4 relative overflow-hidden">
+          <div className="absolute -right-6 -bottom-6 opacity-5">
+            <Lightbulb className="h-24 w-24" style={{ color: 'var(--primary)' }} />
+          </div>
+          <div className="flex items-start gap-3 relative z-10">
+            <div
+              className="p-2 rounded-xl shrink-0"
+              style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)' }}
+            >
+              <Lightbulb className="h-4 w-4" style={{ color: 'var(--primary)' }} />
             </div>
-          </div>
-
-          <div className="space-y-2 w-full">
-            <p className="text-on-surface font-bold text-md">Harika İlerleme!</p>
-            <p className="text-on-surface-variant text-sm leading-relaxed">Kelime haznenizi geliştirmek için kitap okumaya devam edin ve yeni kelimeler kaydedin.</p>
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-outline-variant w-full">
-            <div className="flex justify-between items-center">
-              <div className="text-left">
-                <p className="text-[10px] font-bold text-on-surface-variant uppercase">Mevcut Rütbe</p>
-                <p className="text-lg font-extrabold text-primary">Seçkin Üye</p>
-              </div>
-              <div className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg text-sm shadow-sm animate-pulse-soft">
-                Seviye 4
-              </div>
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Günün İpucu</p>
+              <p className="text-xs text-on-surface leading-relaxed">
+                Her gün en az <span className="font-black" style={{ color: 'var(--primary)' }}>10 dakika</span> İngilizce okumak, kelime haznenizi hızla geliştirir.
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Önerilen Adımlar */}
-        <div className="space-y-4">
-          <h4 className="font-label-md text-on-surface uppercase tracking-wider text-xs px-2 font-bold">Önerilen Adımlar</h4>
-          <div className="space-y-3">
-            <Link href="/books" className="glass-card p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-white/10 transition-colors group">
-              <div className="w-12 h-12 rounded-lg bg-secondary-container/50 flex items-center justify-center text-tertiary">
-                <BookOpen className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-on-surface text-sm">Okuma Kütüphanesi</p>
-                <p className="text-xs text-on-surface-variant">Yeni Kitaplar Keşfet</p>
-              </div>
-              <span className="text-on-surface-variant group-hover:text-primary transition-colors font-bold">&rarr;</span>
-            </Link>
-
-            <Link href="/ocr" className="glass-card p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-white/10 transition-colors group">
-              <div className="w-12 h-12 rounded-lg bg-primary/25 flex items-center justify-center text-primary">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-on-surface text-sm">Kendi Metnini Tara (OCR)</p>
-                <p className="text-xs text-on-surface-variant">Görselden Metin Okuma</p>
-              </div>
-              <span className="text-on-surface-variant group-hover:text-primary transition-colors font-bold">&rarr;</span>
-            </Link>
-
-            <Link href="/groups" className="glass-card p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:bg-white/10 transition-colors group">
-              <div className="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
-                <GraduationCap className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <p className="font-bold text-on-surface text-sm">Sınıfım ve Gruplarım</p>
-                <p className="text-xs text-on-surface-variant">Arkadaşlarınla Birlikte Çalış</p>
-              </div>
-              <span className="text-on-surface-variant group-hover:text-primary transition-colors font-bold">&rarr;</span>
-            </Link>
+        {/* Hedef / Motivasyon */}
+        <div className="glass-card rounded-2xl p-4 relative overflow-hidden">
+          <div className="absolute -right-6 -bottom-6 opacity-5">
+            <Target className="h-24 w-24" style={{ color: 'var(--primary)' }} />
+          </div>
+          <div className="flex items-start gap-3 relative z-10">
+            <div
+              className="p-2 rounded-xl shrink-0"
+              style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)' }}
+            >
+              <Flame className="h-4 w-4" style={{ color: 'var(--primary)' }} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Hedefin</p>
+              <p className="text-xs text-on-surface leading-relaxed">
+                Bugün <span className="font-black" style={{ color: 'var(--primary)' }}>5 yeni kelime</span> öğrenmeyi ve bir bölüm okumayı hedefle!
+              </p>
+            </div>
           </div>
         </div>
+      </div>
 
-      </aside>
     </div>
   );
 }

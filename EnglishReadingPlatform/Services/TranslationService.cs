@@ -3,6 +3,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
+using EnglishReadingPlatform.Data;
+using EnglishReadingPlatform.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace EnglishReadingPlatform.Services
 {
@@ -16,6 +19,15 @@ namespace EnglishReadingPlatform.Services
 
         [JsonPropertyName("type")]
         public string Type { get; set; } = "default";
+    }
+
+    public class WordTranslationResult
+    {
+        public string Translation { get; set; } = "";
+        public string GeneralMeaning { get; set; } = "";
+        public string ContextualMeaning { get; set; } = "";
+        public string Synonyms { get; set; } = "";
+        public string Type { get; set; } = "";
     }
 
     public class AnalyzedSentence
@@ -52,13 +64,15 @@ namespace EnglishReadingPlatform.Services
     {
         private readonly IHttpClientFactory _httpFactory;
         private readonly IConfiguration _configuration;
+        private readonly AppDbContext _db;
         private const string GT = "https://translate.googleapis.com/translate_a/single";
         private const string UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
 
-        public TranslationService(IHttpClientFactory httpFactory, IConfiguration configuration)
+        public TranslationService(IHttpClientFactory httpFactory, IConfiguration configuration, AppDbContext db)
         {
             _httpFactory = httpFactory;
             _configuration = configuration;
+            _db = db;
         }
 
         public async Task<string> TranslateSentenceAsync(string text)
@@ -78,28 +92,220 @@ namespace EnglishReadingPlatform.Services
             catch { return text; }
         }
 
-        public async Task<(string Tr, string Type)> TranslateWordAsync(string word)
+        public class WordTranslationResponse
+        {
+            [JsonPropertyName("general_meaning")]
+            public string GeneralMeaning { get; set; } = "";
+
+            [JsonPropertyName("contextual_meaning")]
+            public string ContextualMeaning { get; set; } = "";
+
+            [JsonPropertyName("synonyms")]
+            public string Synonyms { get; set; } = "";
+
+            [JsonPropertyName("type")]
+            public string Type { get; set; } = "";
+        }
+
+        public async Task<WordTranslationResult> TranslateWordAsync(string word, string? context = null, bool forceAI = false)
         {
             var clean = Regex.Replace(word, @"[^a-zA-Z0-9'\ -]", "").Trim().ToLower();
-            if (string.IsNullOrEmpty(clean)) return (word, "default");
+            if (string.IsNullOrEmpty(clean)) return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = "default" };
             
             var isKalip = clean.Contains(' ');
             var defaultType = isKalip ? "kalıp" : GuessType(clean);
+            var cleanContext = context?.Trim().ToLower();
 
+            if (!string.IsNullOrWhiteSpace(context))
+            {
+                // 1. Önce Veritabanı Önbelleğinden Kontrol Et (Cache hit her zaman 0 tokendir, forceAI olmasa da dönebilir)
+                try
+                {
+                    var cached = await _db.TranslationCaches.FirstOrDefaultAsync(tc => 
+                        tc.QueryText == clean && tc.ContextText == cleanContext);
+                    
+                    if (cached != null)
+                    {
+                        Console.WriteLine($"[Translation Cache HIT] Word: {clean}");
+                        
+                        var parts = cached.Translation.Split("|||", StringSplitOptions.None);
+                        if (parts.Length == 3)
+                        {
+                            var formattedText = $"Anlamı: {parts[0]}\nCümledeki Anlamı: {parts[1]}";
+                            if (!string.IsNullOrWhiteSpace(parts[2]))
+                            {
+                                formattedText += $"\n\nEş Anlamlılar: {parts[2]}";
+                            }
+                            return new WordTranslationResult
+                            {
+                                Translation = formattedText,
+                                GeneralMeaning = parts[0],
+                                ContextualMeaning = parts[1],
+                                Synonyms = parts[2],
+                                Type = cached.WordType
+                            };
+                        }
+                        else
+                        {
+                            return new WordTranslationResult
+                            {
+                                Translation = cached.Translation,
+                                GeneralMeaning = cached.Translation,
+                                Type = cached.WordType
+                            };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Translation Cache Read Error]: {ex.Message}");
+                }
+
+                // 2. Önbellekte Yoksa ve Kullanıcı Butona Basarak Yapay Zekayı Zorladıysa (forceAI == true) Groq'tan Al
+                var apiKey = _configuration["Groq:ApiKey"] 
+                              ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
+                              ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+
+                if (!string.IsNullOrWhiteSpace(apiKey) && forceAI)
+                {
+                    try
+                    {
+                        var model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
+                        if (string.IsNullOrWhiteSpace(model)) model = "llama-3.3-70b-versatile";
+
+                        var prompt = "Translate the word in the context of the sentence. Keep the output extremely concise (just the words). Return a JSON object conforming exactly to this schema:\n" +
+                                     "{\n" +
+                                     "  \"general_meaning\": \"(Literal/general Turkish translation of the word, 1-3 words max)\",\n" +
+                                     "  \"contextual_meaning\": \"(The direct Turkish translation of the word *in this specific sentence context*, only 1-3 words max. Absolutely no definitions, no explanations, no reasoning, no extra words)\",\n" +
+                                     "  \"synonyms\": \"(comma-separated list of direct Turkish synonyms appropriate for this context, max 4 words)\",\n" +
+                                     "  \"type\": \"(word class in Turkish, e.g., isim, fiil, sıfat, zarf, kalıp)\"\n" +
+                                     "}\n\n" +
+                                     $"Word: {word}\n" +
+                                     $"Sentence Context: {context}";
+
+                        var payload = new
+                        {
+                            model = model,
+                            messages = new[]
+                            {
+                                new { role = "user", content = prompt }
+                            },
+                            response_format = new
+                            {
+                                type = "json_object"
+                            }
+                        };
+
+                        var jsonPayload = JsonSerializer.Serialize(payload);
+                        var client = _httpFactory.CreateClient();
+                        client.Timeout = TimeSpan.FromSeconds(20);
+                        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+                        using var reqContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", reqContent);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var responseJson = await response.Content.ReadAsStringAsync();
+                            using var doc = JsonDocument.Parse(responseJson);
+                            var root = doc.RootElement;
+                            if (root.TryGetProperty("usage", out var usage))
+                            {
+                                Console.WriteLine($"[Groq Token Usage (TranslateWord)] Prompt: {usage.GetProperty("prompt_tokens")}, Completion: {usage.GetProperty("completion_tokens")}, Total: {usage.GetProperty("total_tokens")}");
+                            }
+                            var textResult = root.GetProperty("choices")[0]
+                                                 .GetProperty("message")
+                                                 .GetProperty("content")
+                                                 .GetString();
+
+                            if (!string.IsNullOrWhiteSpace(textResult))
+                            {
+                                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                                var result = JsonSerializer.Deserialize<WordTranslationResponse>(textResult, options);
+                                if (result != null && !string.IsNullOrWhiteSpace(result.ContextualMeaning))
+                                {
+                                    var typeResult = string.IsNullOrWhiteSpace(result.Type) ? defaultType : result.Type;
+                                    
+                                    var formattedText = $"Anlamı: {result.GeneralMeaning}\n" +
+                                                        $"Cümledeki Anlamı: {result.ContextualMeaning}";
+                                    if (!string.IsNullOrWhiteSpace(result.Synonyms))
+                                    {
+                                        formattedText += $"\n\nEş Anlamlılar: {result.Synonyms}";
+                                    }
+
+                                    // Veritabanına ||| ayracı ile parça parça sakla
+                                    var dbValue = $"{result.GeneralMeaning}|||{result.ContextualMeaning}|||{result.Synonyms}";
+
+                                    try
+                                    {
+                                        var cachedEntry = new TranslationCache
+                                        {
+                                            QueryText = clean,
+                                            ContextText = cleanContext,
+                                            Translation = dbValue,
+                                            WordType = typeResult,
+                                            CreatedAt = DateTime.UtcNow
+                                        };
+                                        _db.TranslationCaches.Add(cachedEntry);
+                                        await _db.SaveChangesAsync();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[Translation Cache Write Error]: {ex.Message}");
+                                    }
+
+                                    return new WordTranslationResult
+                                    {
+                                        Translation = formattedText,
+                                        GeneralMeaning = result.GeneralMeaning,
+                                        ContextualMeaning = result.ContextualMeaning,
+                                        Synonyms = result.Synonyms,
+                                        Type = typeResult
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Groq Word Context Translate Error]: {ex.Message}");
+                    }
+                }
+            }
+
+            // 3. Fallback: Google Translate + Synonyms (Ücretsiz ve Hızlı)
             try
             {
-                await Task.Delay(30); // Kelime ve kalıp çevirileri için hafif gecikme
+                await Task.Delay(30);
                 var client = _httpFactory.CreateClient();
                 client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UA);
                 var url = $"{GT}?client=gtx&sl=en&tl=tr&dt=t&dt=bd&q={Uri.EscapeDataString(clean)}";
                 var res = await client.GetAsync(url);
-                if (!res.IsSuccessStatusCode) return (word, defaultType);
+                if (!res.IsSuccessStatusCode) return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = defaultType };
                 var json = await res.Content.ReadAsStringAsync();
                 var (tr, rawType) = ParseWord(json);
                 var typeResult = isKalip ? "kalıp" : MapType(rawType ?? defaultType);
-                return (string.IsNullOrEmpty(tr) ? word : tr, typeResult);
+                
+                // Parse synonyms from Google Translate
+                string googleSynonyms = "";
+                var displayTranslation = tr;
+                var idx = tr.IndexOf("\n\nEş Anlamlılar / Alternatifler:");
+                if (idx != -1)
+                {
+                    displayTranslation = tr.Substring(0, idx).Trim();
+                    googleSynonyms = tr.Substring(idx).Replace("Eş Anlamlılar / Alternatifler:\n", "").Trim();
+                }
+
+                return new WordTranslationResult
+                {
+                    Translation = tr,
+                    GeneralMeaning = displayTranslation,
+                    ContextualMeaning = "",
+                    Synonyms = googleSynonyms,
+                    Type = typeResult
+                };
             }
-            catch { return (word, defaultType); }
+            catch { return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = defaultType }; }
         }
 
         public List<string> SplitSentences(string text)
@@ -179,6 +385,44 @@ namespace EnglishReadingPlatform.Services
                 var tr = doc.RootElement[0][0][0].GetString() ?? "";
                 string? rawType = null;
                 try { rawType = doc.RootElement[3][0][0].GetString(); } catch { }
+
+                var synonymsList = new List<string>();
+                try
+                {
+                    if (doc.RootElement.GetArrayLength() > 1 && doc.RootElement[1].ValueKind == JsonValueKind.Array)
+                    {
+                        var partsOfSpeech = doc.RootElement[1];
+                        for (int i = 0; i < partsOfSpeech.GetArrayLength(); i++)
+                        {
+                            var posItem = partsOfSpeech[i];
+                            var posName = posItem[0].GetString();
+                            var trPosName = MapType(posName ?? "");
+                            
+                            var translations = posItem[1];
+                            var posSyns = new List<string>();
+                            for (int j = 0; j < Math.Min(translations.GetArrayLength(), 5); j++)
+                            {
+                                var syn = translations[j].GetString();
+                                if (!string.IsNullOrEmpty(syn) && !syn.Equals(tr, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    posSyns.Add(syn);
+                                }
+                            }
+
+                            if (posSyns.Any())
+                            {
+                                synonymsList.Add($"• {trPosName}: {string.Join(", ", posSyns)}");
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                if (synonymsList.Any())
+                {
+                    tr = $"{tr}\n\nEş Anlamlılar / Alternatifler:\n" + string.Join("\n", synonymsList);
+                }
+
                 return (tr, rawType);
             }
             catch { return ("", null); }
@@ -206,25 +450,25 @@ namespace EnglishReadingPlatform.Services
 
         public async Task<List<AnalyzedSentence>> AnalyzeTextAsync(string text)
         {
-            var apiKey = _configuration["Gemini:ApiKey"] 
-                         ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY") 
-                         ?? Environment.GetEnvironmentVariable("Gemini__ApiKey")
-                         ?? Environment.GetEnvironmentVariable("API_KEY");
+            var apiKey = _configuration["Groq:ApiKey"] 
+                          ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
+                          ?? Environment.GetEnvironmentVariable("Groq__ApiKey")
+                          ?? Environment.GetEnvironmentVariable("API_KEY");
 
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
                 try
                 {
-                    return await AnalyzeTextWithGeminiAsync(text, apiKey);
+                    return await AnalyzeTextWithGroqAsync(text, apiKey);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Gemini API Error, falling back to Google Translate]: {ex.Message}");
+                    Console.WriteLine($"[Groq API Error, falling back to Google Translate]: {ex.Message}");
                 }
             }
             else
             {
-                Console.WriteLine("[Gemini API Key missing] No API key found in appsettings.json or environment variables (GEMINI_API_KEY). Using fallback.");
+                Console.WriteLine("[Groq API Key missing] No API key found in appsettings.json or environment variables (GROQ_API_KEY). Using fallback.");
             }
 
             // Fallback to Google Translate + Regex
@@ -259,11 +503,10 @@ namespace EnglishReadingPlatform.Services
             return NormalizeAndSeparateHeadings(sentencesData);
         }
 
-        private async Task<List<AnalyzedSentence>> AnalyzeTextWithGeminiAsync(string text, string apiKey)
+        private async Task<List<AnalyzedSentence>> AnalyzeTextWithGroqAsync(string text, string apiKey)
         {
-            // Try valid active models in order (gemini-2.5-flash -> gemini-2.0-flash -> gemini-1.5-flash)
-            var models = new[] { "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash" };
-            Exception? lastException = null;
+            var model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
+            if (string.IsNullOrWhiteSpace(model)) model = "llama-3.3-70b-versatile";
 
             var prompt = "You are an assistant for an English Reading Platform. " +
                          "Analyze the following English text. Do the following:\n" +
@@ -292,79 +535,74 @@ namespace EnglishReadingPlatform.Services
 
             var payload = new
             {
-                contents = new[]
+                model = model,
+                messages = new[]
                 {
-                    new
-                    {
-                        parts = new[]
-                        {
-                            new { text = prompt }
-                        }
-                    }
+                    new { role = "user", content = prompt }
                 },
-                generationConfig = new
+                response_format = new
                 {
-                    responseMimeType = "application/json"
+                    type = "json_object"
                 }
             };
 
             var jsonPayload = JsonSerializer.Serialize(payload);
 
-            foreach (var model in models)
+            try
             {
-                try
+                var client = _httpFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(5);
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
+
+                if (!response.IsSuccessStatusCode)
                 {
-                    var client = _httpFactory.CreateClient();
-                    client.Timeout = TimeSpan.FromMinutes(5);
-                    var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
-
-                    using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-                    var response = await client.PostAsync(url, content);
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var errContent = await response.Content.ReadAsStringAsync();
-                        throw new Exception($"HTTP {response.StatusCode} for model {model}: {errContent}");
-                    }
-
-                    var responseJson = await response.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(responseJson);
-                    var root = doc.RootElement;
-                    var textResult = root.GetProperty("candidates")[0]
-                                         .GetProperty("content")
-                                         .GetProperty("parts")[0]
-                                         .GetProperty("text")
-                                         .GetString();
-
-                    if (string.IsNullOrWhiteSpace(textResult))
-                        throw new Exception($"Empty text result from model {model}");
-
-                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    var result = JsonSerializer.Deserialize<TextAnalysisResult>(textResult, options);
-                    if (result != null && result.Sentences != null)
-                    {
-                        for (int i = 0; i < result.Sentences.Count; i++)
-                        {
-                            var s = result.Sentences[i];
-                            s.Index = i;
-                            s.Words = ExtractWords(s.Original ?? "").Select(w => new AnalyzedWord
-                            {
-                                Word = w,
-                                Translation = w,
-                                Type = "default"
-                            }).ToList();
-                        }
-                        return NormalizeAndSeparateHeadings(result.Sentences);
-                    }
+                    var errContent = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"HTTP {response.StatusCode} from Groq: {errContent}");
                 }
-                catch (Exception ex)
+
+                var responseJson = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseJson);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("usage", out var usage))
                 {
-                    lastException = ex;
-                    Console.WriteLine($"[Gemini Attempt Failed on {model}]: {ex.Message}");
+                    Console.WriteLine($"[Groq Token Usage (AnalyzeText)] Prompt: {usage.GetProperty("prompt_tokens")}, Completion: {usage.GetProperty("completion_tokens")}, Total: {usage.GetProperty("total_tokens")}");
+                }
+                var textResult = root.GetProperty("choices")[0]
+                                     .GetProperty("message")
+                                     .GetProperty("content")
+                                     .GetString();
+
+                if (string.IsNullOrWhiteSpace(textResult))
+                    throw new Exception("Empty text result from Groq model");
+
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var result = JsonSerializer.Deserialize<TextAnalysisResult>(textResult, options);
+                if (result != null && result.Sentences != null)
+                {
+                    for (int i = 0; i < result.Sentences.Count; i++)
+                    {
+                        var s = result.Sentences[i];
+                        s.Index = i;
+                        s.Words = ExtractWords(s.Original ?? "").Select(w => new AnalyzedWord
+                        {
+                            Word = w,
+                            Translation = w,
+                            Type = "default"
+                        }).ToList();
+                    }
+                    return NormalizeAndSeparateHeadings(result.Sentences);
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Groq API call failed]: {ex.Message}");
+                throw;
+            }
 
-            throw lastException ?? new Exception("All Gemini models failed to analyze text.");
+            throw new Exception("Failed to deserialize Groq response");
         }
 
         private static bool IsSentenceHeading(string s)

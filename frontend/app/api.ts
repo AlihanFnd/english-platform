@@ -208,8 +208,14 @@ export const api = {
     }>('/books/submitquiz', 'POST', { quizId, answers }),
 
   // Translate
-  translateWord: (text: string) =>
-    apiRequest<{ translation: string; type: string }>('/translate/word', 'POST', { text }),
+  translateWord: (text: string, context?: string, useAI?: boolean) =>
+    apiRequest<{ 
+      translation: string; 
+      type: string; 
+      generalMeaning?: string; 
+      contextualMeaning?: string; 
+      synonyms?: string; 
+    }>('/translate/word', 'POST', { text, context, useAI }),
   
   translateSentence: (text: string) =>
     apiRequest<{ translation: string }>('/translate/sentence', 'POST', { text }),

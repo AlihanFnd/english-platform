@@ -40,10 +40,11 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Word popup
-  const [selWord, setSelWord]     = useState<AnalyzedWord | null>(null);
+  const [selWord, setSelWord]     = useState<any | null>(null);
   const [selCtx, setSelCtx]       = useState('');
   const [added, setAdded]         = useState<Record<string, boolean>>({});
   const [saving, setSaving]       = useState(false);
+  const [loadingAI, setLoadingAI] = useState(false);
 
   const normalizeSentences = (arr: any): AnalyzedSentence[] => {
     const raw = Array.isArray(arr) ? arr : [];
@@ -177,7 +178,14 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   const saveWord = async () => {
     if (!selWord) return;
     setSaving(true);
-    try { await api.addWord(selWord.word, selWord.translation, selCtx); setAdded(p => ({ ...p, [selWord.word.toLowerCase()]: true })); }
+    try { 
+      const wordAsAny = selWord as any;
+      const saveText = wordAsAny.generalMeaning 
+        ? `${wordAsAny.generalMeaning}${wordAsAny.synonyms ? '\n\nEş Anlamlılar:\n' + wordAsAny.synonyms : ''}`
+        : wordAsAny.translation;
+      await api.addWord(wordAsAny.word, saveText, selCtx); 
+      setAdded(p => ({ ...p, [wordAsAny.word.toLowerCase()]: true })); 
+    }
     catch (e) { console.error(e); } finally { setSaving(false); }
   };
 
@@ -186,8 +194,14 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     setSelWord({ word: w.word, translation: "Çevriliyor...", type: isKalip ? "kalıp" : (w.type || "default") });
     setSelCtx(originalSentence);
     try {
-      const res = await api.translateWord(w.word);
-      setSelWord({ word: w.word, translation: res.translation, type: isKalip ? "kalıp" : res.type });
+      const res = await api.translateWord(w.word, originalSentence, false);
+      setSelWord({ 
+        word: w.word, 
+        translation: res.translation, 
+        generalMeaning: res.generalMeaning,
+        synonyms: res.synonyms,
+        type: isKalip ? "kalıp" : res.type 
+      });
     } catch (e) {
       setSelWord({ word: w.word, translation: "Çevrilemedi", type: isKalip ? "kalıp" : "default" });
     }
@@ -424,6 +438,9 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
             <button className="bk-wp-x" onClick={() => setSelWord(null)}><X size={15}/></button>
           </div>
           {selCtx && <p className="bk-wp-ctx">"{selCtx}"</p>}
+          
+
+
           <button
             className={`bk-wp-add${added[selWord.word.toLowerCase()] ? ' done' : ''}`}
             disabled={added[selWord.word.toLowerCase()] || saving}
