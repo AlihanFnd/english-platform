@@ -21,6 +21,8 @@ export interface Book {
   author: string;
   coverColor: string;
   description: string;
+  level?: string;
+  category?: string;
   chaptersCount?: number;
   progress?: number;
   currentChapter?: number;

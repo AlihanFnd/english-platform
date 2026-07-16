@@ -29,6 +29,8 @@ namespace EnglishReadingPlatform.Models
         [MaxLength(500)] public string Description { get; set; } = "";
         public string CoverColor { get; set; } = "#6366f1"; // fallback renk
         public string Language { get; set; } = "en";
+        [MaxLength(50)] public string Level { get; set; } = "A1"; // e.g. A1, A2, B1, B2, C1, C2, A1-A2, B1-B2 etc.
+        [MaxLength(50)] public string Category { get; set; } = "story"; // e.g. story, article
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<Chapter> Chapters { get; set; } = new List<Chapter>();

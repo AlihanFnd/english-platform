@@ -14,6 +14,8 @@ interface Book {
   author: string;
   description: string;
   language: string;
+  level?: string;
+  category?: string;
   chapterCount: number;
   createdAt: string;
 }
@@ -96,6 +98,8 @@ export default function BooksPage() {
   const [author, setAuthor] = useState("");
   const [description, setDescription] = useState("");
   const [language, setLanguage] = useState("en");
+  const [level, setLevel] = useState("A1");
+  const [category, setCategory] = useState("story");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   // PDF.js states
@@ -103,6 +107,16 @@ export default function BooksPage() {
   const [totalPages, setTotalPages] = useState<number>(0);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // Edit Book states
+  const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editAuthor, setEditAuthor] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editLanguage, setEditLanguage] = useState("en");
+  const [editLevel, setEditLevel] = useState("A1");
+  const [editCategory, setEditCategory] = useState("story");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     const script = document.createElement("script");
@@ -227,6 +241,8 @@ export default function BooksPage() {
     form.append("author", author);
     form.append("description", description);
     form.append("language", language);
+    form.append("level", level);
+    form.append("category", category);
     form.append("file", pdfFile);
     form.append("selectedPages", selectedPages.join(","));
 
@@ -266,6 +282,53 @@ export default function BooksPage() {
     if (res.ok) {
       setBooks((b) => b.filter((x) => x.id !== id));
       setMessage({ type: "success", text: "Kitap silindi." });
+    }
+  }
+
+  function handleEditClick(b: Book) {
+    setEditingBook(b);
+    setEditTitle(b.title || "");
+    setEditAuthor(b.author || "");
+    setEditDescription(b.description || "");
+    setEditLanguage(b.language || "en");
+    setEditLevel(b.level || "A1");
+    setEditCategory(b.category || "story");
+  }
+
+  async function handleUpdateBook(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingBook || !token) return;
+
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`${API}/api/admin/books/${editingBook.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: editTitle,
+          author: editAuthor,
+          description: editDescription,
+          language: editLanguage,
+          level: editLevel,
+          category: editCategory,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage({ type: "error", text: data.error || "Güncelleme başarısız." });
+      } else {
+        setMessage({ type: "success", text: `✅ "${editTitle}" kitabı başarıyla güncellendi!` });
+        setEditingBook(null);
+        loadBooks(token);
+      }
+    } catch {
+      setMessage({ type: "error", text: "Sunucu hatası oluştu." });
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -315,7 +378,7 @@ export default function BooksPage() {
               placeholder="Kitap hakkında kısa açıklama..." />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Dil</label>
               <select id="book-language" value={language} onChange={e => setLanguage(e.target.value)}
@@ -327,11 +390,39 @@ export default function BooksPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">PDF veya Word Dosyası * (Max 50MB)</label>
-              <input id="book-pdf" type="file" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required
-                onChange={e => setPdfFile(e.target.files?.[0] || null)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-gray-300 text-sm focus:outline-none focus:border-indigo-500 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-bold file:hover:bg-indigo-500 file:cursor-pointer transition-all" />
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Seviye (CEFR & Ara Seviyeler)</label>
+              <select id="book-level" value={level} onChange={e => setLevel(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all">
+                <option value="A1">A1 (Beginner)</option>
+                <option value="A1-A2">A1-A2 (Elementary)</option>
+                <option value="A2">A2 (Pre-Intermediate)</option>
+                <option value="A2-B1">A2-B1 (Pre to Intermediate)</option>
+                <option value="B1">B1 (Intermediate)</option>
+                <option value="B1-B2">B1-B2 (Upper Intermediate)</option>
+                <option value="B2">B2 (Upper Intermediate+)</option>
+                <option value="B2-C1">B2-C1 (Advanced Transition)</option>
+                <option value="C1">C1 (Advanced)</option>
+                <option value="C1-C2">C1-C2 (Proficiency Transition)</option>
+                <option value="C2">C2 (Mastery)</option>
+                <option value="Tümü / Her Seviye">Tümü / Her Seviye</option>
+              </select>
             </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Kategori</label>
+              <select id="book-category" value={category} onChange={e => setCategory(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all">
+                <option value="story">Hikaye (Story)</option>
+                <option value="article">Makale (Article)</option>
+                <option value="other">Diğer (Other)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">PDF veya Word Dosyası * (Max 50MB)</label>
+            <input id="book-pdf" type="file" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required
+              onChange={e => setPdfFile(e.target.files?.[0] || null)}
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-gray-300 text-sm focus:outline-none focus:border-indigo-500 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-bold file:hover:bg-indigo-500 file:cursor-pointer transition-all" />
           </div>
 
           {/* PDF Sayfa Önizleme Grid */}
@@ -394,6 +485,8 @@ export default function BooksPage() {
                 <tr className="text-left text-gray-500 border-b border-gray-800/80">
                   <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Kitap</th>
                   <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Yazar</th>
+                  <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Kategori</th>
+                  <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Seviye</th>
                   <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Dil</th>
                   <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">Eklenme Tarihi</th>
                   <th className="pb-4 font-bold uppercase tracking-widest text-[10px]">İşlemler</th>
@@ -404,21 +497,123 @@ export default function BooksPage() {
                   <tr key={b.id} className="text-gray-300 hover:bg-gray-800/10 transition-colors">
                     <td className="py-4 font-bold text-white text-sm">{b.title}</td>
                     <td className="py-4 text-gray-400 font-medium">{b.author || "-"}</td>
+                    <td className="py-4">
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                        b.category === 'article' 
+                          ? 'bg-amber-950/40 text-amber-300 border-amber-800/60' 
+                          : 'bg-violet-950/40 text-violet-300 border-violet-800/60'
+                      }`}>
+                        {b.category === 'article' ? '📄 Makale' : b.category === 'other' ? '📁 Diğer' : '📖 Hikaye'}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <span className="px-2.5 py-1 bg-indigo-950/40 text-indigo-300 rounded-lg text-xs font-extrabold border border-indigo-800/60">
+                        {b.level || "A1"}
+                      </span>
+                    </td>
                     <td className="py-4"><span className="px-2.5 py-1 bg-gray-800/80 text-gray-300 rounded-lg text-xs font-bold border border-gray-700">{b.language.toUpperCase()}</span></td>
                     <td className="py-4 text-gray-400 font-semibold">{new Date(b.createdAt).toLocaleDateString("tr-TR")}</td>
                     <td className="py-4">
-                      <button onClick={() => deleteBook(b.id)} className="text-red-400 hover:text-red-300 font-bold text-xs px-3 py-1.5 rounded-xl bg-red-950/20 border border-red-900/30 hover:bg-red-900/35 transition">Sil</button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleEditClick(b)} className="text-indigo-300 hover:text-indigo-200 font-bold text-xs px-3 py-1.5 rounded-xl bg-indigo-950/40 border border-indigo-800/50 hover:bg-indigo-900/40 transition">✏️ Düzenle</button>
+                        <button onClick={() => deleteBook(b.id)} className="text-red-400 hover:text-red-300 font-bold text-xs px-3 py-1.5 rounded-xl bg-red-950/20 border border-red-900/30 hover:bg-red-900/35 transition">Sil</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {books.length === 0 && (
-                  <tr><td colSpan={5} className="py-8 text-center text-gray-600">Henüz kitap eklenmemiş.</td></tr>
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-600">Henüz kitap eklenmemiş.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* Kitap Düzenleme Modalı */}
+      {editingBook && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 max-w-xl w-full shadow-2xl space-y-6 my-auto">
+            <div className="flex items-center justify-between border-b border-gray-800/80 pb-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <span>✏️</span> Kitap Düzenle (#{editingBook.id})
+              </h3>
+              <button onClick={() => setEditingBook(null)} className="text-gray-400 hover:text-white font-bold text-sm bg-gray-800 px-3 py-1 rounded-xl">✕</button>
+            </div>
+
+            <form onSubmit={handleUpdateBook} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Kitap Başlığı *</label>
+                <input type="text" required value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Yazar</label>
+                <input type="text" value={editAuthor} onChange={e => setEditAuthor(e.target.value)}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Açıklama</label>
+                <textarea rows={3} value={editDescription} onChange={e => setEditDescription(e.target.value)}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Dil</label>
+                  <select value={editLanguage} onChange={e => setEditLanguage(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500">
+                    <option value="en">İngilizce</option>
+                    <option value="tr">Türkçe</option>
+                    <option value="de">Almanca</option>
+                    <option value="fr">Fransızca</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Seviye (CEFR)</label>
+                  <select value={editLevel} onChange={e => setEditLevel(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500">
+                    <option value="A1">A1 (Beginner)</option>
+                    <option value="A1-A2">A1-A2 (Elementary)</option>
+                    <option value="A2">A2 (Pre-Intermediate)</option>
+                    <option value="A2-B1">A2-B1 (Pre to Intermediate)</option>
+                    <option value="B1">B1 (Intermediate)</option>
+                    <option value="B1-B2">B1-B2 (Upper Intermediate)</option>
+                    <option value="B2">B2 (Upper Intermediate+)</option>
+                    <option value="B2-C1">B2-C1 (Advanced Transition)</option>
+                    <option value="C1">C1 (Advanced)</option>
+                    <option value="C1-C2">C1-C2 (Proficiency Transition)</option>
+                    <option value="C2">C2 (Mastery)</option>
+                    <option value="Tümü / Her Seviye">Tümü / Her Seviye</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Kategori</label>
+                  <select value={editCategory} onChange={e => setEditCategory(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500">
+                    <option value="story">Hikaye (Story)</option>
+                    <option value="article">Makale (Article)</option>
+                    <option value="other">Diğer (Other)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4 border-t border-gray-800/80">
+                <button type="button" onClick={() => setEditingBook(null)}
+                  className="w-1/3 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl text-sm font-bold transition">
+                  İptal
+                </button>
+                <button type="submit" disabled={savingEdit}
+                  className="w-2/3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 text-white py-3 rounded-xl text-sm font-bold transition shadow-lg shadow-indigo-600/20">
+                  {savingEdit ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }

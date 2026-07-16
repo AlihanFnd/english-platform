@@ -52,9 +52,9 @@ namespace EnglishReadingPlatform.Data
 
 
             modelBuilder.Entity<Book>().HasData(
-                new Book { Id = 1, Title = "The Adventures of Tom Sawyer", Author = "Mark Twain", Description = "A classic American novel about childhood adventures.", CoverColor = "#6366f1", Language = "en", CreatedAt = DateTime.UtcNow },
-                new Book { Id = 2, Title = "Alice in Wonderland", Author = "Lewis Carroll", Description = "A young girl falls into a fantasy world full of peculiar creatures.", CoverColor = "#ec4899", Language = "en", CreatedAt = DateTime.UtcNow },
-                new Book { Id = 3, Title = "The Old Man and the Sea", Author = "Ernest Hemingway", Description = "An aging Cuban fisherman struggles with a giant marlin.", CoverColor = "#0ea5e9", Language = "en", CreatedAt = DateTime.UtcNow }
+                new Book { Id = 1, Title = "The Adventures of Tom Sawyer", Author = "Mark Twain", Description = "A classic American novel about childhood adventures.", CoverColor = "#6366f1", Language = "en", Level = "A1-A2", Category = "story", CreatedAt = DateTime.UtcNow },
+                new Book { Id = 2, Title = "Alice in Wonderland", Author = "Lewis Carroll", Description = "A young girl falls into a fantasy world full of peculiar creatures.", CoverColor = "#ec4899", Language = "en", Level = "A2", Category = "story", CreatedAt = DateTime.UtcNow },
+                new Book { Id = 3, Title = "The Old Man and the Sea", Author = "Ernest Hemingway", Description = "An aging Cuban fisherman struggles with a giant marlin.", CoverColor = "#0ea5e9", Language = "en", Level = "B1", Category = "story", CreatedAt = DateTime.UtcNow }
             );
 
             modelBuilder.Entity<Chapter>().HasData(

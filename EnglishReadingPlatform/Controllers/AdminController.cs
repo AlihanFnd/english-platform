@@ -134,6 +134,8 @@ namespace EnglishReadingPlatform.Controllers
                     b.Author,
                     b.Description,
                     b.Language,
+                    b.Level,
+                    b.Category,
                     b.CreatedAt,
                     ChapterCount = b.Chapters.Count
                 })
@@ -154,6 +156,8 @@ namespace EnglishReadingPlatform.Controllers
             public string Description { get; set; } = "";
             public string Language { get; set; } = "en";
             public string CoverColor { get; set; } = "#6366f1";
+            public string Level { get; set; } = "A1";
+            public string Category { get; set; } = "story";
             public string? PageSelection { get; set; }
         }
 
@@ -194,6 +198,8 @@ namespace EnglishReadingPlatform.Controllers
                 Description = meta.Description.Trim(),
                 Language = meta.Language,
                 CoverColor = meta.CoverColor,
+                Level = meta.Level ?? "A1",
+                Category = meta.Category ?? "story",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -230,6 +236,8 @@ namespace EnglishReadingPlatform.Controllers
             public string Description { get; set; } = "";
             public string Language { get; set; } = "en";
             public string CoverColor { get; set; } = "#6366f1";
+            public string Level { get; set; } = "A1";
+            public string Category { get; set; } = "story";
             public string SelectedPages { get; set; } = ""; // Comma-separated
         }
 
@@ -266,6 +274,8 @@ namespace EnglishReadingPlatform.Controllers
                 Description = meta.Description.Trim(),
                 Language = meta.Language,
                 CoverColor = meta.CoverColor,
+                Level = meta.Level ?? "A1",
+                Category = meta.Category ?? "story",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -321,6 +331,38 @@ namespace EnglishReadingPlatform.Controllers
                 title = book.Title,
                 pagesCreated = bookPages.Count
             });
+        }
+
+        // ── PUT /api/admin/books/{id} ────────────────────────
+        public class BookUpdateRequest
+        {
+            public string Title { get; set; } = "";
+            public string Author { get; set; } = "";
+            public string Description { get; set; } = "";
+            public string Language { get; set; } = "en";
+            public string Level { get; set; } = "A1";
+            public string Category { get; set; } = "story";
+        }
+
+        [HttpPut("books/{id}")]
+        public async Task<IActionResult> UpdateBook(int id, [FromBody] BookUpdateRequest request)
+        {
+            var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == id);
+            if (book == null)
+                return NotFound(new { error = "Kitap bulunamadı." });
+
+            if (string.IsNullOrWhiteSpace(request.Title))
+                return BadRequest(new { error = "Kitap başlığı zorunludur." });
+
+            book.Title = request.Title.Trim();
+            book.Author = request.Author?.Trim() ?? "";
+            book.Description = request.Description?.Trim() ?? "";
+            book.Language = request.Language ?? "en";
+            book.Level = request.Level ?? "A1";
+            book.Category = request.Category ?? "story";
+
+            await _db.SaveChangesAsync();
+            return Ok(new { success = true, book });
         }
 
         // ── DELETE /api/admin/books/{id} ────────────────────────

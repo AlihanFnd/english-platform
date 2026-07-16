@@ -44,6 +44,8 @@ namespace EnglishReadingPlatform.Controllers
                 b.Author,
                 b.CoverColor,
                 b.Description,
+                b.Level,
+                b.Category,
                 ChaptersCount = b.Chapters.Count,
                 Progress = progresses.FirstOrDefault(p => p.BookId == b.Id)?.ProgressPercent ?? 0f,
                 CurrentChapter = progresses.FirstOrDefault(p => p.BookId == b.Id)?.CurrentChapter ?? 1
@@ -70,6 +72,8 @@ namespace EnglishReadingPlatform.Controllers
                 book.Author,
                 book.CoverColor,
                 book.Description,
+                book.Level,
+                book.Category,
                 HasPages = hasPages,
                 Chapters = book.Chapters.OrderBy(c => c.ChapterNumber).Select(c => new {
                     c.Id,
