@@ -95,10 +95,56 @@ export default function BooksPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Sleek, Luxury & Compact Top Navigation & Filter Bar */}
-      <div className="glass-card rounded-2xl p-3 sm:p-4 border border-outline-variant/60 shadow-lg flex flex-col lg:flex-row lg:items-center justify-between gap-4 sticky top-4 z-30 backdrop-blur-xl">
-        {/* Left: Category Tabs */}
-        <div className="flex flex-wrap items-center gap-2">
+      {/* Sleek, Luxury & Mobile-First Compact Top Navigation Bar */}
+      <div className="glass-card rounded-2xl p-3 sm:p-4 border border-outline-variant/60 shadow-lg space-y-3 sticky top-4 z-30 backdrop-blur-xl">
+        {/* Row 1: Search & Level Dropdown Side-by-Side on Mobile and Desktop */}
+        <div className="flex items-center justify-between gap-2.5 w-full">
+          {/* Compact Search Box */}
+          <div className="relative flex-1">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-on-surface-variant pointer-events-none">
+              <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
+            </span>
+            <input
+              type="text"
+              placeholder="Kitap veya yazar ara..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="bg-surface-container-high/90 border border-outline-variant/80 pl-9 pr-7 py-2 rounded-xl text-xs sm:text-sm font-semibold w-full focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all shadow-inner placeholder:text-on-surface-variant/70 text-on-surface"
+            />
+            {search && (
+              <button 
+                onClick={() => setSearch('')}
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[11px] font-bold text-on-surface-variant hover:text-on-surface"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Compact Level Select Dropdown */}
+          <div className="relative flex-shrink-0 w-[130px] sm:w-44">
+            <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-primary pointer-events-none text-xs font-black">
+              🎯
+            </span>
+            <select
+              value={selectedLevel}
+              onChange={(e) => setSelectedLevel(e.target.value)}
+              className="w-full bg-surface-container-high/90 border border-outline-variant/80 rounded-xl pl-8 pr-6 py-2 text-xs sm:text-sm font-extrabold text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer shadow-inner truncate"
+            >
+              {LEVELS.map((lvl) => (
+                <option key={lvl.id} value={lvl.id} className="bg-surface font-bold text-on-surface py-1">
+                  {lvl.label} {lvl.subtitle ? `(${lvl.subtitle})` : ''}
+                </option>
+              ))}
+            </select>
+            <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-on-surface-variant">
+              <span className="text-[9px]">▼</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: Horizontal Swipeable Category Pills on Mobile (Clean & Compact) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5 pb-1 -mx-1 px-1">
           {CATEGORIES.map((cat) => {
             const Icon = cat.icon;
             const isActive = selectedCategory === cat.id;
@@ -110,15 +156,15 @@ export default function BooksPage() {
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-extrabold text-xs sm:text-sm transition-all duration-300 ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all duration-300 flex-shrink-0 whitespace-nowrap ${
                   isActive
-                    ? 'bg-gradient-to-r from-primary to-emerald-600 text-on-primary shadow-md shadow-primary/25 scale-102'
-                    : 'bg-surface-container/60 hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-outline-variant/40'
+                    ? 'bg-gradient-to-r from-primary to-emerald-600 text-on-primary shadow-md shadow-primary/25 scale-102 border border-primary/40'
+                    : 'bg-surface-container/70 hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-outline-variant/50'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-on-primary' : 'text-primary'}`} />
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-on-primary' : 'text-primary'}`} />
                 <span>{cat.label}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
                   isActive ? 'bg-black/20 text-on-primary' : 'bg-surface-container-highest text-on-surface-variant'
                 }`}>
                   {count}
@@ -126,52 +172,6 @@ export default function BooksPage() {
               </button>
             );
           })}
-        </div>
-
-        {/* Right: Level Select Dropdown & Compact Mini Search Box */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
-          {/* Level Filter Select */}
-          <div className="relative flex-shrink-0 w-full sm:w-48">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-primary pointer-events-none text-xs font-black">
-              🎯
-            </span>
-            <select
-              value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value)}
-              className="w-full bg-surface-container-high border border-outline-variant/80 rounded-xl pl-9 pr-8 py-2 text-xs sm:text-sm font-extrabold text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer shadow-inner"
-            >
-              {LEVELS.map((lvl) => (
-                <option key={lvl.id} value={lvl.id} className="bg-surface font-bold text-on-surface py-1">
-                  {lvl.label} {lvl.subtitle ? `(${lvl.subtitle})` : ''}
-                </option>
-              ))}
-            </select>
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-on-surface-variant">
-              <span className="text-[10px]">▼</span>
-            </div>
-          </div>
-
-          {/* Compact Mini Search Box */}
-          <div className="relative flex-1 sm:w-56">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-on-surface-variant pointer-events-none">
-              <Search className="h-4 w-4" />
-            </span>
-            <input
-              type="text"
-              placeholder="Kitap veya yazar ara..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="bg-surface-container-high border border-outline-variant/80 pl-9 pr-7 py-2 rounded-xl text-xs sm:text-sm font-medium w-full focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all shadow-inner placeholder:text-on-surface-variant/70 text-on-surface"
-            />
-            {search && (
-              <button 
-                onClick={() => setSearch('')}
-                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[10px] font-bold text-on-surface-variant hover:text-on-surface"
-              >
-                ✕
-              </button>
-            )}
-          </div>
         </div>
       </div>
 
