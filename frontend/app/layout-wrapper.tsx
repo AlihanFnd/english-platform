@@ -171,11 +171,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           
           <div className="flex items-center gap-3 border-l border-outline-variant pl-5">
             <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm shadow-sm">
-              {user.username[0].toUpperCase()}
+              {(user?.username?.[0] || 'U').toUpperCase()}
             </div>
             <div className="text-left">
-              <p className="text-xs font-bold text-on-surface leading-none capitalize">{user.username}</p>
-              <p className="text-[10px] text-on-surface-variant capitalize mt-1">{user.role}</p>
+              <p className="text-xs font-bold text-on-surface leading-none capitalize">{user?.username || 'Kullanıcı'}</p>
+              <p className="text-[10px] text-on-surface-variant capitalize mt-1">{user?.role || 'user'}</p>
             </div>
           </div>
         </div>
@@ -250,11 +250,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             <div className="mt-auto pt-6 border-t border-white/10 flex flex-col gap-3">
               <div className="flex items-center gap-3 px-2">
                 <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-white font-bold">
-                  {user.username[0].toUpperCase()}
+                  {(user?.username?.[0] || 'U').toUpperCase()}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">{user.username}</p>
-                  <p className="text-xs text-white/55 capitalize">{user.role}</p>
+                  <p className="text-sm font-semibold text-white">{user?.username || 'Kullanıcı'}</p>
+                  <p className="text-xs text-white/55 capitalize">{user?.role || 'user'}</p>
                 </div>
               </div>
 

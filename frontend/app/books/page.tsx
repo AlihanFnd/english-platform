@@ -52,8 +52,8 @@ export default function BooksPage() {
   const filteredBooks = useMemo(() => {
     return books.filter(b => {
       const matchesSearch = 
-        b.title.toLowerCase().includes(search.toLowerCase()) ||
-        b.author.toLowerCase().includes(search.toLowerCase()) ||
+        (b.title || '').toLowerCase().includes(search.toLowerCase()) ||
+        (b.author || '').toLowerCase().includes(search.toLowerCase()) ||
         (b.description && b.description.toLowerCase().includes(search.toLowerCase()));
 
       const matchesCategory = 
