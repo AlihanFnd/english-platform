@@ -172,7 +172,7 @@ namespace EnglishReadingPlatform.Services
                     var cached = await _db.TranslationCaches.FirstOrDefaultAsync(tc => 
                         tc.QueryText == clean && tc.ContextText == cleanContext);
                     
-                    if (cached != null)
+                    if (cached != null && !string.IsNullOrWhiteSpace(cached.Translation) && !cached.Translation.Trim().Equals(clean, StringComparison.OrdinalIgnoreCase))
                     {
                         Console.WriteLine($"[Translation Cache HIT] Word: {clean}");
                         
@@ -529,8 +529,7 @@ namespace EnglishReadingPlatform.Services
 
             var wordSet = rawSentences.SelectMany(ExtractWords).Select(w => w.ToLower()).Distinct().ToList();
 
-            var sentTask = Task.WhenAll(rawSentences.Select(s => TranslateSentenceAsync(s)));
-            var sentTrs = sentTask.Result;
+            var sentTrs = await Task.WhenAll(rawSentences.Select(s => TranslateSentenceAsync(s)));
 
             var sentencesData = rawSentences.Select((s, i) =>
             {
