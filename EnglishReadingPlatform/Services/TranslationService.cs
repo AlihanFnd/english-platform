@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using EnglishReadingPlatform.Data;
 using EnglishReadingPlatform.Models;
 using Microsoft.EntityFrameworkCore;
+using EnglishReadingPlatform.Validation;
 
 namespace EnglishReadingPlatform.Services
 {
@@ -83,13 +84,60 @@ namespace EnglishReadingPlatform.Services
                 await Task.Delay(50); // Google translate rate-limit yememek için hafif gecikme
                 var client = _httpFactory.CreateClient();
                 client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UA);
-                var url = $"{GT}?client=gtx&sl=auto&tl=tr&dt=t&q={Uri.EscapeDataString(text)}";
+                var url = $"{GT}?client=gtx&sl=en&tl=tr&dt=t&q={Uri.EscapeDataString(text)}";
                 var res = await client.GetAsync(url);
-                if (!res.IsSuccessStatusCode) return text;
-                var json = await res.Content.ReadAsStringAsync();
-                return ParseSentence(json) ?? text;
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    var parsed = ParseSentence(json);
+                    if (!string.IsNullOrWhiteSpace(parsed)) return parsed;
+                }
             }
-            catch { return text; }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Google Translate Sentence Error]: {ex.Message}");
+            }
+
+            // Fallback: Google Translate patladıysa (Render IP ban vb.) Groq AI ile çevir
+            try
+            {
+                var apiKey = _configuration["Groq:ApiKey"] 
+                              ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
+                              ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    var model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
+                    var client = _httpFactory.CreateClient();
+                    client.Timeout = TimeSpan.FromSeconds(10);
+                    client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+                    var payload = new
+                    {
+                        model = model,
+                        messages = new[]
+                        {
+                            new { role = "user", content = $"Translate the following English sentence to natural Turkish. Return ONLY the Turkish translation, nothing else.\n\nSentence: {text}" }
+                        }
+                    };
+
+                    using var reqContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", reqContent);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseJson = await response.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(responseJson);
+                        var trResult = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()?.Trim();
+                        if (!string.IsNullOrWhiteSpace(trResult)) return trResult;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Groq Sentence Fallback Error]: {ex.Message}");
+            }
+
+            return text;
         }
 
         public class WordTranslationResponse
@@ -240,10 +288,14 @@ namespace EnglishReadingPlatform.Services
                                     {
                                         var cachedEntry = new TranslationCache
                                         {
-                                            QueryText = clean,
+                                            // KURAL-05: iki alan da varchar sınırlı ve
+                                            // biri LLM yanıtından geliyor. Taşma burada
+                                            // try/catch'e düşüp SESSİZCE yutuluyordu:
+                                            // önbellek hiç yazılmıyor, kimse fark etmiyordu.
+                                            QueryText = clean.KirpEnCok(AlanSinirlari.OnbellekSorgusu),
                                             ContextText = cleanContext,
                                             Translation = dbValue,
-                                            WordType = typeResult,
+                                            WordType = typeResult.KirpEnCok(AlanSinirlari.OnbellekTipi),
                                             CreatedAt = DateTime.UtcNow
                                         };
                                         _db.TranslationCaches.Add(cachedEntry);
