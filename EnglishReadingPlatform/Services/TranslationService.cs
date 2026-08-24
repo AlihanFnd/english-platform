@@ -76,15 +76,24 @@ namespace EnglishReadingPlatform.Services
             _db = db;
         }
 
+        private HttpClient CreateGoogleTranslateClient()
+        {
+            var client = _httpFactory.CreateClient();
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Referer", "https://translate.google.com/");
+            return client;
+        }
+
         public async Task<string> TranslateSentenceAsync(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return text;
             try
             {
                 await Task.Delay(50); // Google translate rate-limit yememek için hafif gecikme
-                var client = _httpFactory.CreateClient();
-                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UA);
-                var url = $"{GT}?client=gtx&sl=en&tl=tr&dt=t&q={Uri.EscapeDataString(text)}";
+                var client = CreateGoogleTranslateClient();
+                var url = $"{GT}?client=dict-chrome-ex&sl=en&tl=tr&dt=t&q={Uri.EscapeDataString(text)}";
                 var res = await client.GetAsync(url);
                 if (res.IsSuccessStatusCode)
                 {
@@ -325,39 +334,94 @@ namespace EnglishReadingPlatform.Services
                 }
             }
 
-            // 3. Fallback: Google Translate + Synonyms (Ücretsiz ve Hızlı)
+            // 3. Google Translate + Synonyms (Ücretsiz ve Hızlı)
             try
             {
                 await Task.Delay(30);
-                var client = _httpFactory.CreateClient();
-                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UA);
-                var url = $"{GT}?client=gtx&sl=en&tl=tr&dt=t&dt=bd&q={Uri.EscapeDataString(clean)}";
+                var client = CreateGoogleTranslateClient();
+                var url = $"{GT}?client=dict-chrome-ex&sl=en&tl=tr&dt=t&dt=bd&q={Uri.EscapeDataString(clean)}";
                 var res = await client.GetAsync(url);
-                if (!res.IsSuccessStatusCode) return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = defaultType };
-                var json = await res.Content.ReadAsStringAsync();
-                var (tr, rawType) = ParseWord(json);
-                var typeResult = isKalip ? "kalıp" : MapType(rawType ?? defaultType);
-                
-                // Parse synonyms from Google Translate
-                string googleSynonyms = "";
-                var displayTranslation = tr;
-                var idx = tr.IndexOf("\n\nEş Anlamlılar / Alternatifler:");
-                if (idx != -1)
+                if (res.IsSuccessStatusCode)
                 {
-                    displayTranslation = tr.Substring(0, idx).Trim();
-                    googleSynonyms = tr.Substring(idx).Replace("Eş Anlamlılar / Alternatifler:\n", "").Trim();
-                }
+                    var json = await res.Content.ReadAsStringAsync();
+                    var (tr, rawType) = ParseWord(json);
+                    if (!string.IsNullOrWhiteSpace(tr) && !tr.Trim().Equals(clean, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var typeResult = isKalip ? "kalıp" : MapType(rawType ?? defaultType);
+                        
+                        string googleSynonyms = "";
+                        var displayTranslation = tr;
+                        var idx = tr.IndexOf("\n\nEş Anlamlılar / Alternatifler:");
+                        if (idx != -1)
+                        {
+                            displayTranslation = tr.Substring(0, idx).Trim();
+                            googleSynonyms = tr.Substring(idx).Replace("Eş Anlamlılar / Alternatifler:\n", "").Trim();
+                        }
 
-                return new WordTranslationResult
-                {
-                    Translation = tr,
-                    GeneralMeaning = displayTranslation,
-                    ContextualMeaning = "",
-                    Synonyms = googleSynonyms,
-                    Type = typeResult
-                };
+                        return new WordTranslationResult
+                        {
+                            Translation = tr,
+                            GeneralMeaning = displayTranslation,
+                            ContextualMeaning = "",
+                            Synonyms = googleSynonyms,
+                            Type = typeResult
+                        };
+                    }
+                }
             }
-            catch { return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = defaultType }; }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Google Translate Word Error]: {ex.Message}");
+            }
+
+            // 4. Fallback: Google Translate takıldıysa Groq AI ile kelimeyi çevir
+            try
+            {
+                var apiKey = _configuration["Groq:ApiKey"] 
+                              ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
+                              ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    var model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
+                    var client = _httpFactory.CreateClient();
+                    client.Timeout = TimeSpan.FromSeconds(8);
+                    client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+                    var prompt = $"Translate the English word/phrase '{clean}' to natural Turkish. Return ONLY the Turkish translation, nothing else.";
+                    var payload = new
+                    {
+                        model = model,
+                        messages = new[] { new { role = "user", content = prompt } }
+                    };
+
+                    using var reqContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", reqContent);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseJson = await response.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(responseJson);
+                        var trResult = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()?.Trim();
+                        if (!string.IsNullOrWhiteSpace(trResult))
+                        {
+                            return new WordTranslationResult
+                            {
+                                Translation = trResult,
+                                GeneralMeaning = trResult,
+                                ContextualMeaning = "",
+                                Synonyms = "",
+                                Type = defaultType
+                            };
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Groq Word Fallback Error]: {ex.Message}");
+            }
+
+            return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = defaultType };
         }
 
         public List<string> SplitSentences(string text)
