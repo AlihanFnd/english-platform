@@ -1,9 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using EnglishReadingPlatform.Authorization;
 using EnglishReadingPlatform.Data;
 using EnglishReadingPlatform.Models;
+using EnglishReadingPlatform.RateLimiting;
+using EnglishReadingPlatform.Validation;
+using System.ComponentModel.DataAnnotations;
 
 namespace EnglishReadingPlatform.Controllers
 {
@@ -21,11 +26,15 @@ namespace EnglishReadingPlatform.Controllers
 
         public class CreateFeedbackRequest
         {
+            [Required(ErrorMessage = "Mesaj içeriği boş olamaz.")]
+            [StringLength(AlanSinirlari.GeriBildirim, MinimumLength = 1,
+                ErrorMessage = "Mesaj en fazla {1} karakter olabilir.")]
             public string Message { get; set; } = "";
         }
 
         // POST /api/feedback
         [HttpPost]
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ — spam
         public async Task<IActionResult> CreateFeedback([FromBody] CreateFeedbackRequest req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.Message))
@@ -33,13 +42,12 @@ namespace EnglishReadingPlatform.Controllers
                 return BadRequest(new { error = "Mesaj içeriği boş olamaz." });
             }
 
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim == null)
+            // KURAL-05: claim'in VARLIĞI yetmez, SAYIYA ÇEVRİLEBİLİR olması da gerekir.
+            // int.Parse bozuk bir claim'de 500 üretirdi.
+            if (!this.KullaniciIdAl(out var userId))
             {
-                return Unauthorized(new { error = "Oturum açılmamış." });
+                return Unauthorized(new { error = "Oturum bilgisi geçersiz." });
             }
-
-            var userId = int.Parse(userIdClaim.Value);
 
             var feedback = new Feedback
             {
@@ -59,8 +67,10 @@ namespace EnglishReadingPlatform.Controllers
         [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> GetFeedbackList()
         {
+            // KURAL-08: Include(f => f.User) projeksiyonun yanında ÖLÜ KODDU —
+            // EF onu zaten yok sayıyor. Bırakılması "burada tüm User yükleniyor"
+            // yanılgısı yaratır; kaldırıldı.
             var feedbacks = await _db.Feedbacks
-                .Include(f => f.User)
                 .OrderByDescending(f => f.CreatedAt)
                 .Select(f => new
                 {

@@ -31,3 +31,19 @@ yarn-debug.log*
 yarn-error.log*
 logs/
 *.log
+
+# ─── Güvenlik kanıt altyapısı (KURAL-01) ───────────────────────
+TestResults/
+**/TestResults/
+zafiyet.txt
+
+# Veritabanı yedekleri — PII içerir, sürüm kontrolüne ASLA girmez
+yedek-*.sql
+*.dump
+neon_dump.sql
+
+# ─── KURAL-02: sırlar ve hassas çıktılar ───────────────────
+EnglishReadingPlatform/appsettings.Production.json
+EnglishReadingPlatform/appsettings.Local.json
+*.pfx
+*.p12

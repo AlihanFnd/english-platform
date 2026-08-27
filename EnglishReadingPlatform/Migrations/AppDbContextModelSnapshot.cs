@@ -68,7 +68,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Books");
+                    b.ToTable("Books", (string)null);
 
                     b.HasData(
                         new
@@ -77,7 +77,7 @@ namespace EnglishReadingPlatform.Migrations
                             Author = "Mark Twain",
                             Category = "story",
                             CoverColor = "#6366f1",
-                            CreatedAt = new DateTime(2026, 7, 16, 17, 11, 41, 319, DateTimeKind.Utc).AddTicks(6060),
+                            CreatedAt = new DateTime(2026, 7, 16, 17, 11, 41, 0, DateTimeKind.Utc),
                             Description = "A classic American novel about childhood adventures.",
                             Language = "en",
                             Level = "A1-A2",
@@ -89,7 +89,7 @@ namespace EnglishReadingPlatform.Migrations
                             Author = "Lewis Carroll",
                             Category = "story",
                             CoverColor = "#ec4899",
-                            CreatedAt = new DateTime(2026, 7, 16, 17, 11, 41, 319, DateTimeKind.Utc).AddTicks(6060),
+                            CreatedAt = new DateTime(2026, 7, 16, 17, 11, 41, 0, DateTimeKind.Utc),
                             Description = "A young girl falls into a fantasy world full of peculiar creatures.",
                             Language = "en",
                             Level = "A2",
@@ -101,7 +101,7 @@ namespace EnglishReadingPlatform.Migrations
                             Author = "Ernest Hemingway",
                             Category = "story",
                             CoverColor = "#0ea5e9",
-                            CreatedAt = new DateTime(2026, 7, 16, 17, 11, 41, 319, DateTimeKind.Utc).AddTicks(6070),
+                            CreatedAt = new DateTime(2026, 7, 16, 17, 11, 41, 0, DateTimeKind.Utc),
                             Description = "An aging Cuban fisherman struggles with a giant marlin.",
                             Language = "en",
                             Level = "B1",
@@ -135,7 +135,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("BookId");
 
-                    b.ToTable("BookPages");
+                    b.ToTable("BookPages", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Chapter", b =>
@@ -165,7 +165,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("BookId");
 
-                    b.ToTable("Chapters");
+                    b.ToTable("Chapters", (string)null);
 
                     b.HasData(
                         new
@@ -225,7 +225,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Feedbacks");
+                    b.ToTable("Feedbacks", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Group", b =>
@@ -263,7 +263,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("InviteCode")
                         .IsUnique();
 
-                    b.ToTable("Groups");
+                    b.ToTable("Groups", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.GroupBookAssignment", b =>
@@ -289,7 +289,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("GroupId");
 
-                    b.ToTable("GroupBookAssignments");
+                    b.ToTable("GroupBookAssignments", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.GroupMember", b =>
@@ -319,7 +319,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("GroupMembers");
+                    b.ToTable("GroupMembers", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.OcrRecord", b =>
@@ -348,7 +348,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("OcrRecords");
+                    b.ToTable("OcrRecords", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Quiz", b =>
@@ -378,7 +378,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("ChapterId");
 
-                    b.ToTable("Quizzes");
+                    b.ToTable("Quizzes", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.QuizQuestion", b =>
@@ -420,7 +420,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("QuizId");
 
-                    b.ToTable("QuizQuestions");
+                    b.ToTable("QuizQuestions", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.QuizResult", b =>
@@ -452,7 +452,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("QuizResults");
+                    b.ToTable("QuizResults", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.ReadingProgress", b =>
@@ -484,7 +484,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ReadingProgresses");
+                    b.ToTable("ReadingProgresses", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.TranslationCache", b =>
@@ -519,7 +519,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("QueryText", "ContextText");
 
-                    b.ToTable("TranslationCaches");
+                    b.ToTable("TranslationCaches", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.User", b =>
@@ -559,18 +559,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Users");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedAt = new DateTime(2026, 7, 7, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "admin@platform.com",
-                            PasswordHash = "$2a$11$1/GQ3L.yftZsXrCKiRCklerzhm5qAyiSadiuTIqYrYIUuyX4o8vRe",
-                            Role = "admin",
-                            Username = "admin"
-                        });
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.UserActivityLog", b =>
@@ -604,7 +593,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("UserActivityLogs");
+                    b.ToTable("UserActivityLogs", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.WordListItem", b =>
@@ -640,7 +629,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("WordListItems");
+                    b.ToTable("WordListItems", (string)null);
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.BookPage", b =>

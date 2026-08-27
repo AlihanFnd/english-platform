@@ -12,7 +12,9 @@ import {
   Loader, 
   ArrowLeft,
   BookOpen,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 interface AnalyzedWord {
@@ -25,6 +27,9 @@ interface AnalyzedSentence {
   original: string;
   translation: string;
   words: AnalyzedWord[];
+  // KURAL-06: false ise 'translation' gerçek bir çeviri değil, özgün metnin
+  // kendisidir. Alan yoksa (eski kayıt) 'true' varsayılır.
+  ceviriBasarili?: boolean;
 }
 
 export default function OcrPage() {
@@ -106,6 +111,9 @@ export default function OcrPage() {
       setOcrRunning(false);
     }
   };
+
+  // KURAL-06: kaç satır çevrilemedi?
+  const cevrilemeyen = analyzedSentences.filter(s => s.ceviriBasarili === false).length;
 
   const handleAnalyzeText = async (text: string) => {
     if (!text.trim()) return;
@@ -277,6 +285,30 @@ export default function OcrPage() {
 
             {analyzedSentences.length > 0 ? (
               <div className="space-y-6 leading-loose text-lg text-on-surface">
+
+                {/* KURAL-06: sessiz başarısızlık artık görünür */}
+                {cevrilemeyen > 0 && (
+                  <div
+                    role="status"
+                    className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-on-surface"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <span className="flex-1 min-w-[12rem]">
+                      {cevrilemeyen === analyzedSentences.length
+                        ? 'Metin çevrilemedi — çeviri servisine ulaşılamadı.'
+                        : `${cevrilemeyen} satır çevrilemedi — çeviri servisine ulaşılamadı.`}
+                    </span>
+                    <button
+                      onClick={() => handleAnalyzeText(scannedText)}
+                      disabled={analyzingText || !scannedText.trim()}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-[0.7rem] font-bold text-amber-700 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${analyzingText ? 'animate-spin' : ''}`} />
+                      {analyzingText ? 'Deneniyor...' : 'Yeniden dene'}
+                    </button>
+                  </div>
+                )}
+
                 {analyzedSentences.map((sent, sIdx) => (
                   <div key={sIdx} className="space-y-3 group/sent p-2.5 rounded-xl hover:bg-surface-container border border-transparent hover:border-outline-variant transition-all">
                     <div className="flex flex-wrap gap-x-2 gap-y-3">
@@ -310,9 +342,16 @@ export default function OcrPage() {
                       </button>
 
                       {showTranslations[sIdx] && (
-                        <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-xs text-on-surface italic">
-                          {sent.translation}
-                        </div>
+                        sent.ceviriBasarili === false ? (
+                          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-on-surface flex items-start gap-2">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px text-amber-600" />
+                            <span>Bu satır çevrilemedi — çeviri servisine ulaşılamadı. Yukarıdan tekrar analiz edebilirsin.</span>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-xs text-on-surface italic">
+                            {sent.translation}
+                          </div>
+                        )
                       )}
                     </div>
                   </div>

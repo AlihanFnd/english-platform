@@ -722,6 +722,73 @@ body {
   line-height: 1.55;
 }
 
+/* ── KURAL-06: çevrilemeyen satır uyarısı ────────────────────────────
+   Çeviri servisi patladığında backend özgün İngilizce metni Basarili=false
+   ile geri döndürüyor. Bu bloklar o durumu görünür kılar; aksi hâlde
+   kullanıcı İngilizce cümleyi Türkçe çevirisi sanardı. */
+.bk-ceviri-uyari {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--on-surface);
+  background: rgba(191, 118, 0, 0.10);
+  border: 1px solid rgba(191, 118, 0, 0.30);
+  border-radius: 8px;
+}
+
+.bk-ceviri-uyari__ikon {
+  color: #bf7600;
+  flex-shrink: 0;
+}
+
+.bk-ceviri-uyari__metin { flex: 1 1 12rem; }
+
+.bk-ceviri-uyari__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #bf7600;
+  background: rgba(191, 118, 0, 0.14);
+  border: 1px solid rgba(191, 118, 0, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.bk-ceviri-uyari__btn:hover:not(:disabled) { background: rgba(191, 118, 0, 0.24); }
+.bk-ceviri-uyari__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.bk-spin-ikon { animation: bkDon 0.9s linear infinite; }
+@keyframes bkDon { to { transform: rotate(360deg); } }
+
+/* Çevrilemeyen satırın kendi bloğu — yeşil "TR" şeridi yerine amber */
+.bk-sent-tr--hata {
+  background: rgba(191, 118, 0, 0.07);
+  border-left-color: #bf7600;
+}
+
+.bk-sent-tr--hata.bk-sent-tr--center { border-bottom-color: #bf7600; }
+
+.bk-tr-flag--hata {
+  color: #bf7600;
+  background: rgba(191, 118, 0, 0.14);
+  border-color: rgba(191, 118, 0, 0.30);
+}
+
+.bk-tr-text--hata {
+  font-style: normal;
+  color: var(--on-surface-variant, var(--on-surface));
+}
+
 /* ── Pagination ── */
 .bk-pagination {
   display: flex;

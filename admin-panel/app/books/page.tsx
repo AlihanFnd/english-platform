@@ -3,10 +3,52 @@
 "use client";
 
 import React, { useState, useEffect, useRef, FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import AdminLayout from "../components/AdminLayout";
+import { useAdminKorumasi, adminTokenOku } from "../hooks/useAdminAuth";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+
+/**
+ * KURAL-05 — Taksonomi tek kaynaktan gelir: GET /api/books/taxonomy
+ *
+ * Bu listeler backend'deki IzinliDegerler whitelist'inin AYNISIDIR ve yalnızca
+ * uç erişilemezse kullanılan YEDEKTİR. Panelde whitelist dışı bir seçenek
+ * durursa yöneticinin tamamen meşru bir seçimi 400 alır; bu yüzden yedek de
+ * AlanSinirlariTests tarafından backend ile karşılaştırılır.
+ */
+const YEDEK_TAKSONOMI = {
+  levels: ["A1", "A1-A2", "A2", "A2-B1", "B1", "B1-B2", "B2", "B2-C1", "C1", "C1-C2", "C2"],
+  categories: ["story", "article", "other"],
+  languages: ["en"],
+};
+
+const SEVIYE_ETIKETI: Record<string, string> = {
+  "A1": "A1 (Beginner)",
+  "A1-A2": "A1-A2 (Elementary)",
+  "A2": "A2 (Pre-Intermediate)",
+  "A2-B1": "A2-B1 (Pre to Intermediate)",
+  "B1": "B1 (Intermediate)",
+  "B1-B2": "B1-B2 (Upper Intermediate)",
+  "B2": "B2 (Upper Intermediate+)",
+  "B2-C1": "B2-C1 (Advanced Transition)",
+  "C1": "C1 (Advanced)",
+  "C1-C2": "C1-C2 (Proficiency Transition)",
+  "C2": "C2 (Mastery)",
+};
+
+const KATEGORI_ETIKETI: Record<string, string> = {
+  story: "Hikaye (Story)",
+  article: "Makale (Article)",
+  other: "Diğer (Other)",
+};
+
+const DIL_ETIKETI: Record<string, string> = { en: "İngilizce" };
+
+interface Taksonomi {
+  levels: string[];
+  categories: string[];
+  languages: string[];
+}
 
 interface Book {
   id: number;
@@ -17,6 +59,9 @@ interface Book {
   level?: string;
   category?: string;
   chapterCount: number;
+  // KURAL-08: sayfa modunda yüklenen kitapların chapterCount'u 0'dır; panelde
+  // "boş kitap" gibi görünüyorlardı. Sunucu artık sayfa adedini de veriyor.
+  pageCount: number;
   createdAt: string;
 }
 
@@ -71,11 +116,11 @@ function PdfThumbnail({ pdfDoc, pageNumber, isSelected, onToggle }: PdfThumbnail
       }`}
     >
       <div className="relative overflow-hidden rounded-lg shadow-inner">
-        <canvas ref={canvasRef} className="rounded-lg shadow bg-white max-h-36 object-contain transition-transform duration-300 group-hover:scale-105" />
+        <canvas ref={canvasRef} className="rounded-lg shadow-sm bg-white max-h-36 object-contain transition-transform duration-300 group-hover:scale-105" />
         <div className={`absolute inset-0 bg-indigo-950/20 transition-opacity duration-300 ${isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-40"}`} />
         
         {isSelected && (
-          <div className="absolute top-2 right-2 bg-gradient-to-r from-indigo-500 to-violet-500 text-white rounded-full p-1.5 w-7 h-7 flex items-center justify-center text-xs font-bold shadow-lg animate-in zoom-in duration-200">
+          <div className="absolute top-2 right-2 bg-linear-to-r from-indigo-500 to-violet-500 text-white rounded-full p-1.5 w-7 h-7 flex items-center justify-center text-xs font-bold shadow-lg animate-in zoom-in duration-200">
             ✓
           </div>
         )}
@@ -86,8 +131,6 @@ function PdfThumbnail({ pdfDoc, pageNumber, isSelected, onToggle }: PdfThumbnail
 }
 
 export default function BooksPage() {
-  const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -118,6 +161,9 @@ export default function BooksPage() {
   const [editCategory, setEditCategory] = useState("story");
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // KURAL-05: seçenekler backend whitelist'inden gelir, panelde kopya tutulmaz.
+  const [taksonomi, setTaksonomi] = useState<Taksonomi>(YEDEK_TAKSONOMI);
+
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
@@ -133,28 +179,59 @@ export default function BooksPage() {
     };
   }, []);
 
-  useEffect(() => {
-    const t = localStorage.getItem("admin_token");
-    if (!t) { router.replace("/"); return; }
-    setToken(t);
-    loadBooks(t);
-  }, [router]);
+  useAdminKorumasi();
 
   useEffect(() => {
-    if (!pdfFile) {
-      setPdfDoc(null);
+    const t = adminTokenOku();
+    if (!t) return;
+    loadBooks(t);
+    taksonomiYukle(t);
+  }, []);
+
+  // Uç erişilemezse YEDEK_TAKSONOMI'de kalınır: seçim kutuları asla boş kalmaz.
+  async function taksonomiYukle(t: string) {
+    try {
+      const res = await fetch(`${API}/api/books/taxonomy`, {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (!res.ok) return;
+      const d = await res.json();
+      if (Array.isArray(d?.levels) && d.levels.length > 0) {
+        setTaksonomi({
+          levels: d.levels,
+          categories: d.categories ?? YEDEK_TAKSONOMI.categories,
+          languages: d.languages ?? YEDEK_TAKSONOMI.languages,
+        });
+      }
+    } catch {
+      /* yedekte kalınır */
+    }
+  }
+
+  // Dosya seçimi değiştiğinde önizleme durumunu ayarlar.
+  // Bu iş bilerek efektte DEĞİL olay işleyicisinde yapılır: efekt gövdesinde
+  // senkron setState gereksiz ikinci render tetikler
+  // (react-hooks/set-state-in-effect).
+  function dosyaSecimiDegisti(f: File | null) {
+    setPdfFile(f);
+    setPdfDoc(null);
+    if (!f) {
       setTotalPages(0);
       setSelectedPages([]);
-      return;
-    }
-
-    // Word (.docx) belgeleri için PDF önizlemeyi bypass et
-    if (pdfFile.name.toLowerCase().endsWith(".docx")) {
-      setPdfDoc(null);
+    } else if (f.name.toLowerCase().endsWith(".docx")) {
+      // Word belgelerini tek sayfa olarak simüle ederiz
       setTotalPages(1);
-      setSelectedPages([1]); // Word belgelerini tek sayfa olarak simüle ederiz
-      return;
+      setSelectedPages([1]);
+    } else {
+      // Gerçek PDF: sayfa sayısı aşağıdaki efektte, dosya okunduktan sonra belirlenir.
+      setTotalPages(0);
+      setSelectedPages([]);
     }
+  }
+
+  useEffect(() => {
+    // Yalnızca gerçek PDF dosyaları için önizleme yüklenir.
+    if (!pdfFile || pdfFile.name.toLowerCase().endsWith(".docx")) return;
 
     const loadPdf = async () => {
       setLoadingPreview(true);
@@ -227,6 +304,7 @@ export default function BooksPage() {
 
   async function handleUpload(e: FormEvent) {
     e.preventDefault();
+    const token = adminTokenOku();
     if (!pdfFile || !token) return;
     if (selectedPages.length === 0) {
       setMessage({ type: "error", text: "Lütfen en az bir sayfa seçin." });
@@ -262,7 +340,7 @@ export default function BooksPage() {
           type: "success",
           text: `✅ "${data.title}" kitabı ${data.pagesCreated} sayfa ve otomatik çevirilerle sisteme başarıyla eklendi!`,
         });
-        setTitle(""); setAuthor(""); setDescription(""); setPdfFile(null);
+        setTitle(""); setAuthor(""); setDescription(""); dosyaSecimiDegisti(null);
         setPdfDoc(null); setTotalPages(0); setSelectedPages([]);
         loadBooks(token);
       }
@@ -274,6 +352,7 @@ export default function BooksPage() {
   }
 
   async function deleteBook(id: number) {
+    const token = adminTokenOku();
     if (!token || !confirm("Bu kitabı silmek istediğinizden emin misiniz?")) return;
     const res = await fetch(`${API}/api/admin/books/${id}`, {
       method: "DELETE",
@@ -297,6 +376,7 @@ export default function BooksPage() {
 
   async function handleUpdateBook(e: React.FormEvent) {
     e.preventDefault();
+    const token = adminTokenOku();
     if (!editingBook || !token) return;
 
     setSavingEdit(true);
@@ -335,7 +415,7 @@ export default function BooksPage() {
   return (
     <AdminLayout>
       <div className="mb-8">
-        <h1 className="text-3xl font-black tracking-tight text-white bg-clip-text bg-gradient-to-r from-white to-gray-400">Kitap Yönetimi</h1>
+        <h1 className="text-3xl font-black tracking-tight text-white bg-clip-text bg-linear-to-r from-white to-gray-400">Kitap Yönetimi</h1>
         <p className="text-gray-400 text-sm mt-1.5 font-medium">Pre-translation teknolojisi ve görsel sayfa seçimi ile kitap oluşturun</p>
       </div>
 
@@ -350,8 +430,8 @@ export default function BooksPage() {
       )}
 
       {/* PDF Yükleme Formu */}
-      <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-8 shadow-xl space-y-6">
-        <h2 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2">
+      <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-xs rounded-3xl p-8 shadow-xl space-y-6">
+        <h2 className="text-xl font-bold tracking-tight bg-linear-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2">
           <span>📤</span> Yeni Kitap Yükle & Çevir
         </h2>
         
@@ -360,13 +440,13 @@ export default function BooksPage() {
             <div>
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Kitap Başlığı *</label>
               <input id="book-title" required value={title} onChange={e => setTitle(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
                 placeholder="Örn: Tom Sawyer'ın Maceraları" />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Yazar</label>
               <input id="book-author" value={author} onChange={e => setAuthor(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600"
                 placeholder="Yazar adı" />
             </div>
           </div>
@@ -374,7 +454,7 @@ export default function BooksPage() {
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Açıklama</label>
             <textarea id="book-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}
-              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 resize-none"
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-gray-600 resize-none"
               placeholder="Kitap hakkında kısa açıklama..." />
           </div>
 
@@ -382,38 +462,28 @@ export default function BooksPage() {
             <div>
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Dil</label>
               <select id="book-language" value={language} onChange={e => setLanguage(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all">
-                <option value="en">İngilizce</option>
-                <option value="tr">Türkçe</option>
-                <option value="de">Almanca</option>
-                <option value="fr">Fransızca</option>
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-hidden focus:border-indigo-500 transition-all">
+                {taksonomi.languages.map((d) => (
+                  <option key={d} value={d}>{DIL_ETIKETI[d] ?? d}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Seviye (CEFR & Ara Seviyeler)</label>
               <select id="book-level" value={level} onChange={e => setLevel(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all">
-                <option value="A1">A1 (Beginner)</option>
-                <option value="A1-A2">A1-A2 (Elementary)</option>
-                <option value="A2">A2 (Pre-Intermediate)</option>
-                <option value="A2-B1">A2-B1 (Pre to Intermediate)</option>
-                <option value="B1">B1 (Intermediate)</option>
-                <option value="B1-B2">B1-B2 (Upper Intermediate)</option>
-                <option value="B2">B2 (Upper Intermediate+)</option>
-                <option value="B2-C1">B2-C1 (Advanced Transition)</option>
-                <option value="C1">C1 (Advanced)</option>
-                <option value="C1-C2">C1-C2 (Proficiency Transition)</option>
-                <option value="C2">C2 (Mastery)</option>
-                <option value="Tümü / Her Seviye">Tümü / Her Seviye</option>
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-hidden focus:border-indigo-500 transition-all">
+                {taksonomi.levels.map((s) => (
+                  <option key={s} value={s}>{SEVIYE_ETIKETI[s] ?? s}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Kategori</label>
               <select id="book-category" value={category} onChange={e => setCategory(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all">
-                <option value="story">Hikaye (Story)</option>
-                <option value="article">Makale (Article)</option>
-                <option value="other">Diğer (Other)</option>
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-hidden focus:border-indigo-500 transition-all">
+                {taksonomi.categories.map((c) => (
+                  <option key={c} value={c}>{KATEGORI_ETIKETI[c] ?? c}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -421,13 +491,13 @@ export default function BooksPage() {
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">PDF veya Word Dosyası * (Max 50MB)</label>
             <input id="book-pdf" type="file" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required
-              onChange={e => setPdfFile(e.target.files?.[0] || null)}
-              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-gray-300 text-sm focus:outline-none focus:border-indigo-500 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-bold file:hover:bg-indigo-500 file:cursor-pointer transition-all" />
+              onChange={e => dosyaSecimiDegisti(e.target.files?.[0] || null)}
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-gray-300 text-sm focus:outline-hidden focus:border-indigo-500 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-bold file:hover:bg-indigo-500 file:cursor-pointer transition-all" />
           </div>
 
           {/* PDF Sayfa Önizleme Grid */}
           {pdfDoc && (
-            <div className="border border-gray-800 bg-gray-950/20 backdrop-blur-sm rounded-2xl p-6 space-y-6">
+            <div className="border border-gray-800 bg-gray-950/20 backdrop-blur-xs rounded-2xl p-6 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
                 <div>
                   <h3 className="font-bold text-sm text-white">Sayfa Seçimi</h3>
@@ -460,7 +530,7 @@ export default function BooksPage() {
           )}
 
           <button id="upload-book-btn" type="submit" disabled={uploading}
-            className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-white py-4 rounded-xl text-sm font-bold transition-all duration-300 shadow-lg shadow-indigo-600/10">
+            className="w-full bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-white py-4 rounded-xl text-sm font-bold transition-all duration-300 shadow-lg shadow-indigo-600/10">
             {uploading ? (
               <div className="flex items-center justify-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
@@ -474,7 +544,7 @@ export default function BooksPage() {
       </div>
 
       {/* Kitap Listesi */}
-      <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-sm rounded-3xl p-8 shadow-xl">
+      <div className="bg-gray-900/30 border border-gray-800/80 backdrop-blur-xs rounded-3xl p-8 shadow-xl">
         <h2 className="text-xl font-bold tracking-tight text-white mb-6">📚 Mevcut Kitaplar ({books.length})</h2>
         {loading ? (
           <p className="text-gray-500 text-sm">Yükleniyor...</p>
@@ -532,7 +602,7 @@ export default function BooksPage() {
 
       {/* Kitap Düzenleme Modalı */}
       {editingBook && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 max-w-xl w-full shadow-2xl space-y-6 my-auto">
             <div className="flex items-center justify-between border-b border-gray-800/80 pb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
@@ -545,57 +615,47 @@ export default function BooksPage() {
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Kitap Başlığı *</label>
                 <input type="text" required value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500" />
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-hidden focus:border-indigo-500" />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Yazar</label>
                 <input type="text" value={editAuthor} onChange={e => setEditAuthor(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500" />
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-hidden focus:border-indigo-500" />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Açıklama</label>
                 <textarea rows={3} value={editDescription} onChange={e => setEditDescription(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500" />
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-hidden focus:border-indigo-500" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Dil</label>
                   <select value={editLanguage} onChange={e => setEditLanguage(e.target.value)}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500">
-                    <option value="en">İngilizce</option>
-                    <option value="tr">Türkçe</option>
-                    <option value="de">Almanca</option>
-                    <option value="fr">Fransızca</option>
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-hidden focus:border-indigo-500">
+                    {taksonomi.languages.map((d) => (
+                      <option key={d} value={d}>{DIL_ETIKETI[d] ?? d}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Seviye (CEFR)</label>
                   <select value={editLevel} onChange={e => setEditLevel(e.target.value)}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500">
-                    <option value="A1">A1 (Beginner)</option>
-                    <option value="A1-A2">A1-A2 (Elementary)</option>
-                    <option value="A2">A2 (Pre-Intermediate)</option>
-                    <option value="A2-B1">A2-B1 (Pre to Intermediate)</option>
-                    <option value="B1">B1 (Intermediate)</option>
-                    <option value="B1-B2">B1-B2 (Upper Intermediate)</option>
-                    <option value="B2">B2 (Upper Intermediate+)</option>
-                    <option value="B2-C1">B2-C1 (Advanced Transition)</option>
-                    <option value="C1">C1 (Advanced)</option>
-                    <option value="C1-C2">C1-C2 (Proficiency Transition)</option>
-                    <option value="C2">C2 (Mastery)</option>
-                    <option value="Tümü / Her Seviye">Tümü / Her Seviye</option>
-                  </select>
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-hidden focus:border-indigo-500">
+                    {taksonomi.levels.map((s) => (
+                      <option key={s} value={s}>{SEVIYE_ETIKETI[s] ?? s}</option>
+                    ))}
+                      </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Kategori</label>
                   <select value={editCategory} onChange={e => setEditCategory(e.target.value)}
-                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500">
-                    <option value="story">Hikaye (Story)</option>
-                    <option value="article">Makale (Article)</option>
-                    <option value="other">Diğer (Other)</option>
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-hidden focus:border-indigo-500">
+                    {taksonomi.categories.map((c) => (
+                      <option key={c} value={c}>{KATEGORI_ETIKETI[c] ?? c}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -606,7 +666,7 @@ export default function BooksPage() {
                   İptal
                 </button>
                 <button type="submit" disabled={savingEdit}
-                  className="w-2/3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 text-white py-3 rounded-xl text-sm font-bold transition shadow-lg shadow-indigo-600/20">
+                  className="w-2/3 bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 text-white py-3 rounded-xl text-sm font-bold transition shadow-lg shadow-indigo-600/20">
                   {savingEdit ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
                 </button>
               </div>

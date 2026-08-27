@@ -6,12 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ChevronLeft, ChevronRight,
   Volume2, BookMarked, CheckCircle, X, HelpCircle,
-  Maximize2, Minimize2
+  Maximize2, Minimize2, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 
 interface AnalyzedWord { word: string; translation: string; type: string; }
-interface AnalyzedSentence { original: string; translation: string; isHeading?: boolean; alignment?: 'left' | 'center' | 'right'; indentation?: number; words: AnalyzedWord[]; }
+interface AnalyzedSentence { original: string; translation: string; isHeading?: boolean; alignment?: 'left' | 'center' | 'right'; indentation?: number; words: AnalyzedWord[]; ceviriBasarili?: boolean; }
 
 export default function BookReader({ params }: { params: Promise<{ id: string }> }) {
   const { id: bookIdStr } = use(params);
@@ -56,6 +56,10 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
       let isHead = s.isHeading !== undefined ? s.isHeading : (s.IsHeading !== undefined ? s.IsHeading : false);
       let align = s.alignment || s.Alignment || (isHead ? "center" : "left");
       let words = s.words || s.Words || [];
+      // KURAL-06: alan YOKSA 'true' varsayılır. Bu sayfa daha önce çevrilip
+      // SentencesJson'a yazıldıysa o kayıtta bu alan bulunmaz; eksikliği
+      // "başarısız" saymak tüm eski kitapları hatalı işaretlerdi.
+      const basarili = (s.ceviriBasarili ?? s.CeviriBasarili) !== false;
 
       // Eğer satır içinde başlık ile normal paragraf cümlesi birleşmişse (örn: "CHAPTER I THE BEGINNING It was a dark...")
       if (!isHead && orig.length > 20) {
@@ -70,6 +74,9 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
               isHeading: true,
               alignment: "center",
               indentation: 0,
+              // Başlıklar zaten çoğu zaman çevrilmeden bırakılır; burada
+              // uyarı basmak sürekli yanlış alarm üretirdi.
+              ceviriBasarili: true,
               words: headingPart.split(/\s+/).map((w: string) => ({ word: w, translation: w, type: "default" }))
             });
             orig = bodyPart;
@@ -101,7 +108,8 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
         isHeading: isHead,
         alignment: isHead ? "center" : (align || "left"),
         indentation: s.indentation || s.Indentation || 0,
-        words: formattedWords
+        words: formattedWords,
+        ceviriBasarili: basarili
       });
     });
 
@@ -146,6 +154,9 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
       document.body.classList.remove('reader-fullscreen-active');
     };
   }, [isFullscreen]);
+
+  // KURAL-06: bu sayfada kaç satır çevrilemedi?
+  const cevrilemeyen = sentences.filter(s => s.ceviriBasarili === false).length;
 
   const handleReanalyze = async () => {
     if (analyzing || loading) return;
@@ -321,6 +332,29 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
           <p className="bk-empty">Bu sayfada metin bulunamadı.</p>
         ) : (
           <div className="bk-sentences" onMouseUp={handleSelection} onTouchEnd={handleSelection}>
+
+            {/* KURAL-06: çeviri servisi patladığında özgün İngilizce metin
+                "çeviri" gibi görünüyordu. Artık açıkça söyleniyor. */}
+            {cevrilemeyen > 0 && (
+              <div className="bk-ceviri-uyari" role="status">
+                <AlertTriangle size={14} className="bk-ceviri-uyari__ikon" />
+                <span className="bk-ceviri-uyari__metin">
+                  {cevrilemeyen === sentences.length
+                    ? 'Bu sayfa çevrilemedi — çeviri servisine ulaşılamadı.'
+                    : `${cevrilemeyen} satır çevrilemedi — çeviri servisine ulaşılamadı.`}
+                  {' '}Aşağıda o satırların İngilizcesi görünüyor.
+                </span>
+                <button
+                  className="bk-ceviri-uyari__btn"
+                  onClick={handleReanalyze}
+                  disabled={analyzing || loading}
+                >
+                  <RefreshCw size={12} className={analyzing ? 'bk-spin-ikon' : undefined} />
+                  {analyzing ? 'Deneniyor...' : 'Yeniden dene'}
+                </button>
+              </div>
+            )}
+
             {sentences.map((s, i) => (
               <div 
                 key={i} 
@@ -368,14 +402,25 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                 {/* Turkish translation — directly under the sentence, same block */}
                 {openTr === i && (
                   <div 
-                    className={`bk-sent-tr${s.alignment === 'center' ? ' bk-sent-tr--center' : ''}`}
+                    className={`bk-sent-tr${s.alignment === 'center' ? ' bk-sent-tr--center' : ''}${s.ceviriBasarili === false ? ' bk-sent-tr--hata' : ''}`}
                     style={{
                       justifyContent: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'flex-end' : 'flex-start',
                       textAlign: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'right' : 'left'
                     }}
                   >
-                    <span className="bk-tr-flag">TR</span>
-                    <span className="bk-tr-text">{s.translation}</span>
+                    {s.ceviriBasarili === false ? (
+                      <>
+                        <span className="bk-tr-flag bk-tr-flag--hata">!</span>
+                        <span className="bk-tr-text bk-tr-text--hata">
+                          Bu satır çevrilemedi. Yukarıdaki “Yeniden dene” ile tekrar deneyebilirsin.
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="bk-tr-flag">TR</span>
+                        <span className="bk-tr-text">{s.translation}</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

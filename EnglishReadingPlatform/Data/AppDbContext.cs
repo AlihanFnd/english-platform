@@ -24,6 +24,20 @@ namespace EnglishReadingPlatform.Data
         public DbSet<Feedback> Feedbacks => Set<Feedback>();
         public DbSet<TranslationCache> TranslationCaches => Set<TranslationCache>();
 
+        /// <summary>
+        /// KURAL-05: tohum verisinin zaman damgası SABİT olmalıdır.
+        ///
+        /// Eskiden HasData içinde DateTime.UtcNow vardı. Model her
+        /// değerlendirildiğinde farklı bir değer ürettiği için EF Core modeli
+        /// "değişmiş" sayıyor, her 'migrations add' sahte bir UpdateData satırı
+        /// doğuruyordu. Bu yalnızca gürültü değil GÜVENLİK sorunudur: her
+        /// migration'ın kirli çıkması, aralarına karışan GERÇEK bir şema
+        /// değişikliğini (ör. bir kolonun sessizce daraltılması) görünmez kılar.
+        /// KURAL-05'in "şema değişmedi" kanıtı da ancak bu sabitle tekrarlanabilir.
+        /// </summary>
+        private static readonly DateTime TohumTarihi =
+            new(2026, 7, 16, 17, 11, 41, DateTimeKind.Utc);
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -36,25 +50,16 @@ namespace EnglishReadingPlatform.Data
             // Index for Translation Cache
             modelBuilder.Entity<TranslationCache>().HasIndex(tc => new { tc.QueryText, tc.ContextText });
 
-            // Seed: Varsayılan Admin Kullanıcısı
-            // Şifre: Admin@2026!  (BCrypt hash)
-            modelBuilder.Entity<User>().HasData(
-                new User
-                {
-                    Id = 1,
-                    Username = "admin",
-                    Email = "admin@platform.com",
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@2026!"),
-                    Role = "admin",
-                    CreatedAt = new DateTime(2026, 7, 7, 0, 0, 0, DateTimeKind.Utc)
-                }
-            );
-
+            // KURAL-02: Yönetici tohumu buradan kaldırıldı.
+            // Şifre koda gömülüydü ve BCrypt her tuzda farklı hash ürettiği için
+            // her "migrations add" komutu yeni bir UpdateData satırı doğuruyordu.
+            // Yeni yol: YoneticiTohumlayici — Seed:AdminEmail / Seed:AdminPassword
+            // ortam değişkenlerinden okur, hiçbiri yoksa yönetici oluşturmaz.
 
             modelBuilder.Entity<Book>().HasData(
-                new Book { Id = 1, Title = "The Adventures of Tom Sawyer", Author = "Mark Twain", Description = "A classic American novel about childhood adventures.", CoverColor = "#6366f1", Language = "en", Level = "A1-A2", Category = "story", CreatedAt = DateTime.UtcNow },
-                new Book { Id = 2, Title = "Alice in Wonderland", Author = "Lewis Carroll", Description = "A young girl falls into a fantasy world full of peculiar creatures.", CoverColor = "#ec4899", Language = "en", Level = "A2", Category = "story", CreatedAt = DateTime.UtcNow },
-                new Book { Id = 3, Title = "The Old Man and the Sea", Author = "Ernest Hemingway", Description = "An aging Cuban fisherman struggles with a giant marlin.", CoverColor = "#0ea5e9", Language = "en", Level = "B1", Category = "story", CreatedAt = DateTime.UtcNow }
+                new Book { Id = 1, Title = "The Adventures of Tom Sawyer", Author = "Mark Twain", Description = "A classic American novel about childhood adventures.", CoverColor = "#6366f1", Language = "en", Level = "A1-A2", Category = "story", CreatedAt = TohumTarihi },
+                new Book { Id = 2, Title = "Alice in Wonderland", Author = "Lewis Carroll", Description = "A young girl falls into a fantasy world full of peculiar creatures.", CoverColor = "#ec4899", Language = "en", Level = "A2", Category = "story", CreatedAt = TohumTarihi },
+                new Book { Id = 3, Title = "The Old Man and the Sea", Author = "Ernest Hemingway", Description = "An aging Cuban fisherman struggles with a giant marlin.", CoverColor = "#0ea5e9", Language = "en", Level = "B1", Category = "story", CreatedAt = TohumTarihi }
             );
 
             modelBuilder.Entity<Chapter>().HasData(

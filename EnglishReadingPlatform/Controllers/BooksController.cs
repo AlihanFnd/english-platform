@@ -1,10 +1,16 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using EnglishReadingPlatform.Authorization;
+using EnglishReadingPlatform.Contracts;
 using EnglishReadingPlatform.Data;
 using EnglishReadingPlatform.Models;
+using EnglishReadingPlatform.RateLimiting;
 using EnglishReadingPlatform.Services;
+using EnglishReadingPlatform.Validation;
+using System.ComponentModel.DataAnnotations;
 
 namespace EnglishReadingPlatform.Controllers
 {
@@ -16,47 +22,76 @@ namespace EnglishReadingPlatform.Controllers
         private readonly AppDbContext _db;
         private readonly QuizGeneratorService _quizGen;
         private readonly TranslationService _transService;
-        private readonly TokenSecurityService _tokenSecurity;
 
-        public BooksController(AppDbContext db, QuizGeneratorService quizGen, TranslationService transService, TokenSecurityService tokenSecurity)
+        public BooksController(AppDbContext db, QuizGeneratorService quizGen, TranslationService transService)
         {
             _db = db;
             _quizGen = quizGen;
             _transService = transService;
-            _tokenSecurity = tokenSecurity;
         }
 
-        private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        // KURAL-05: claim de bir GİRDİDİR. int.Parse(...!) bozuk bir claim'de
+        // FormatException/NullReferenceException fırlatıp 500 üretirdi.
+        private int CurrentUserId => this.KullaniciId();
 
         // GET /api/books — Kitaplık
         [HttpGet]
         public async Task<IActionResult> Index()
         {
-            var books = await _db.Books.Include(b => b.Chapters).ToListAsync();
             var userId = CurrentUserId;
-            var progresses = await _db.ReadingProgresses
-                .Where(p => p.UserId == userId)
+
+            // KURAL-08: Include(b => b.Chapters) tüm bölüm METİNLERİNİ belleğe
+            // çekiyordu — kitaplık listesi için gereken tek şey adetti. Sayım
+            // artık SQL'de yapılıyor: içerik hiç okunmuyor.
+            var kitaplar = await _db.Books
+                .Select(b => new
+                {
+                    b.Id, b.Title, b.Author, b.CoverColor, b.Description,
+                    b.Level, b.Category,
+                    ChaptersCount = b.Chapters.Count,
+                    // PagesCount YENİ: sayfa modundaki kitapların Chapters'ı boştur;
+                    // arayüz onları "1 Bölüm" diye gösteriyordu.
+                    PagesCount = b.Pages.Count
+                })
                 .ToListAsync();
 
-            var result = books.Select(b => new {
-                b.Id,
-                b.Title,
-                b.Author,
-                b.CoverColor,
-                b.Description,
-                b.Level,
-                b.Category,
-                ChaptersCount = b.Chapters.Count,
-                Progress = progresses.FirstOrDefault(p => p.BookId == b.Id)?.ProgressPercent ?? 0f,
-                CurrentChapter = progresses.FirstOrDefault(p => p.BookId == b.Id)?.CurrentChapter ?? 1
+            var ilerlemeler = await _db.ReadingProgresses
+                .Where(p => p.UserId == userId)
+                .Select(p => new { p.BookId, p.ProgressPercent, p.CurrentChapter })
+                .ToListAsync();
+
+            var sonuc = kitaplar.Select(b =>
+            {
+                var i = ilerlemeler.FirstOrDefault(p => p.BookId == b.Id);
+                return new KitapYaniti(
+                    b.Id, b.Title, b.Author, b.CoverColor, b.Description,
+                    b.Level, b.Category, b.ChaptersCount, b.PagesCount,
+                    i?.ProgressPercent ?? 0f, i?.CurrentChapter ?? 1);
             });
 
-            return Ok(result);
+            return Ok(sonuc);
         }
+
+        // GET /api/books/taxonomy — seviye/kategori/dil listeleri
+        //
+        // KURAL-05: taksonomi üç yerde ayrı tanımlıydı (backend whitelist,
+        // frontend LEVELS, admin-panel <option>). Ayrıştığı an yöneticinin
+        // tamamen meşru bir seçimi 400 alır ve panel kitap kaydedemez hâle gelir.
+        // Bu uç, whitelist'in KENDİSİNİ yayımlar: istemciler artık kopya tutmaz.
+        //
+        // Yetki: [Authorize] yeterli — burada kullanıcıya özel veri yok, yalnızca
+        // istemcinin zaten göndermek zorunda olduğu sabit değer kümeleri var.
+        [HttpGet("taxonomy")]
+        public IActionResult Taxonomy() => Ok(new
+        {
+            Levels     = IzinliDegerler.Seviyeler,
+            Categories = IzinliDegerler.Kategoriler,
+            Languages  = IzinliDegerler.Diller
+        });
 
         // GET /api/books/{id} — Kitap Detayı
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetBook(int id)
+        public async Task<IActionResult> GetBook([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id)
         {
             var book = await _db.Books
                 .Include(b => b.Chapters)
@@ -88,14 +123,20 @@ namespace EnglishReadingPlatform.Controllers
         }
 
         // GET /api/books/{id}/read?chapter=1&page=1
+        //
+        // KURAL-05: SORGU PARAMETRESİ DE İSTEMCİ GİRDİSİDİR.
+        // Bu iki değer doğrudan aritmetiğe girip ReadingProgress'e YAZILIYOR:
+        //   ProgressPercent = (float)page / toplam * 100
+        // Doğrulama olmadan ?chapter=-999999 isteği 200 dönüyor ve veritabanına
+        // progressPercent = -49999950 yazıyordu. Envanterde olmayan bir noktaydı.
         [HttpGet("{id}/read")]
-        public async Task<IActionResult> Read(int id, [FromQuery] int chapter = 1, [FromQuery] int page = 1, [FromQuery] bool reanalyze = false)
+        [EnableRateLimiting(HizSinirlari.Okuma)]   // KURAL-07: elle yazılan sayaçtan devralındı
+        public async Task<IActionResult> Read(
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Bölüm numarası 1'den küçük olamaz.")] int chapter = 1,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Sayfa numarası 1'den küçük olamaz.")] int page = 1,
+            [FromQuery] bool reanalyze = false)
         {
-            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_read", 60))
-            {
-                return StatusCode(429, new { error = "Sayfa okuma limitini aştınız. Lütfen birkaç saniye bekleyin." });
-            }
-
             var book = await _db.Books
                 .Include(b => b.Chapters)
                 .Include(b => b.Pages)
@@ -211,13 +252,29 @@ namespace EnglishReadingPlatform.Controllers
 
         public class AddWordRequest
         {
+            [Required(ErrorMessage = "Kelime zorunludur.")]
+            [StringLength(AlanSinirlari.Kelime, MinimumLength = 1,
+                ErrorMessage = "Kelime en fazla {1} karakter olabilir.")]
             public string Word { get; set; } = "";
+
+            [Required(ErrorMessage = "Çeviri zorunludur.")]
+            [StringLength(AlanSinirlari.Ceviri, MinimumLength = 1,
+                ErrorMessage = "Çeviri en fazla {1} karakter olabilir.")]
             public string Translation { get; set; } = "";
+
+            // Bağlam KULLANICI YAZISI DEĞİL, okuyucudaki cümle seçiminden TÜRETİLİR.
+            // 200 karakterlik kolona 300 karakterlik bir cümle gelmesi normaldir;
+            // kullanıcıya "cümlen çok uzun" demek özelliği kullanılamaz kılar.
+            // Bu yüzden girdi sınırı BaglamGirdi (400), kayıt sırasında Baglam'a (200)
+            // KirpEnCok ile kırpılır. 400'ün üstü ise artık kaza değil, kötüye kullanımdır.
+            [StringLength(AlanSinirlari.BaglamGirdi,
+                ErrorMessage = "Bağlam en fazla {1} karakter olabilir.")]
             public string Context { get; set; } = "";
         }
 
         // POST /api/books/addword — Kelime ekle
         [HttpPost("addword")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ — sınırsız satır yazımı → disk
         public async Task<IActionResult> AddWord([FromBody] AddWordRequest req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.Word) || string.IsNullOrWhiteSpace(req.Translation))
@@ -234,9 +291,10 @@ namespace EnglishReadingPlatform.Controllers
                 _db.WordListItems.Add(new WordListItem
                 {
                     UserId = userId,
-                    Word = req.Word.Trim(),
-                    Translation = req.Translation.Trim(),
-                    Context = req.Context?.Trim() ?? "",
+                    // KURAL-05: kolon sınırına yazılmadan önce SON savunma hattı.
+                    Word = req.Word.KirpEnCok(AlanSinirlari.Kelime),
+                    Translation = req.Translation.KirpEnCok(AlanSinirlari.Ceviri),
+                    Context = req.Context.KirpEnCok(AlanSinirlari.Baglam),
                     AddedAt = DateTime.UtcNow
                 });
                 await _db.SaveChangesAsync();
@@ -249,16 +307,21 @@ namespace EnglishReadingPlatform.Controllers
         [HttpGet("words")]
         public async Task<IActionResult> Words()
         {
-            var words = await _db.WordListItems
+            // KURAL-08: WordListItem entity'si User navigasyonu taşır. Bugün
+            // Include edilmediği için PasswordHash sızmıyor — ama bu bir tesadüf.
+            // DTO ile bu risk tasarımdan kalkar.
+            var kelimeler = await _db.WordListItems
                 .Where(w => w.UserId == CurrentUserId)
                 .OrderByDescending(w => w.AddedAt)
+                .Select(w => new KelimeYaniti(w.Id, w.Word, w.Translation, w.Context, w.AddedAt))
                 .ToListAsync();
-            return Ok(words);
+            return Ok(kelimeler);
         }
 
         // PUT /api/books/words/{id} — Kelime güncelleme
         [HttpPut("words/{id}")]
-        public async Task<IActionResult> UpdateWord(int id, [FromBody] AddWordRequest req)
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
+        public async Task<IActionResult> UpdateWord([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id, [FromBody] AddWordRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.Word) || string.IsNullOrWhiteSpace(req.Translation))
             {
@@ -272,11 +335,13 @@ namespace EnglishReadingPlatform.Controllers
                 return NotFound(new { error = "Kelime bulunamadı." });
             }
 
-            item.Word = req.Word.Trim();
-            item.Translation = req.Translation.Trim();
+            // KURAL-05: AddWord ile aynı kolonlara yazan KARDEŞ YOL — aynı kırpma uygulanır.
+            // Tek yolu düzeltip bunu atlamak, açığın yarısını açık bırakırdı.
+            item.Word = req.Word.KirpEnCok(AlanSinirlari.Kelime);
+            item.Translation = req.Translation.KirpEnCok(AlanSinirlari.Ceviri);
             if (req.Context != null)
             {
-                item.Context = req.Context.Trim();
+                item.Context = req.Context.KirpEnCok(AlanSinirlari.Baglam);
             }
 
             await _db.SaveChangesAsync();
@@ -285,7 +350,8 @@ namespace EnglishReadingPlatform.Controllers
 
         // DELETE /api/books/words/{id}
         [HttpDelete("words/{id}")]
-        public async Task<IActionResult> DeleteWord(int id)
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
+        public async Task<IActionResult> DeleteWord([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id)
         {
             var item = await _db.WordListItems
                 .FirstOrDefaultAsync(w => w.Id == id && w.UserId == CurrentUserId);
@@ -299,7 +365,7 @@ namespace EnglishReadingPlatform.Controllers
 
         // GET /api/books/quiz/{chapterId}
         [HttpGet("quiz/{chapterId}")]
-        public async Task<IActionResult> GetQuiz(int chapterId)
+        public async Task<IActionResult> GetQuiz([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int chapterId)
         {
             var chapter = await _db.Chapters.Include(c => c.Book).FirstOrDefaultAsync(c => c.Id == chapterId);
             if (chapter == null) return NotFound(new { error = "Bölüm bulunamadı." });
@@ -343,12 +409,28 @@ namespace EnglishReadingPlatform.Controllers
 
         public class SubmitQuizRequest
         {
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz quiz.")]
             public int QuizId { get; set; }
+
+            // Bir koleksiyon alanı İKİ sınır ister:
+            //   [MaxLength]      → kaç eleman (sınırsız sözlük belleği tüketir)
+            //   [OgeIzinliDeger] → her elemanın İÇERİĞİ
+            // İkincisi eksikti: "en fazla 100 cevap" kuralı varken tek bir cevabın
+            // 200.000 karakter olmasını hiçbir şey engellemiyordu. Değer
+            // kaydedilmiyordu ama sunucu onu okuyup ayrıştırmak zorunda kalıyordu.
+            //
+            // Whitelist zaten bir uzunluk tavanıdır (en uzun şık 1 karakter), bu
+            // yüzden ayrıca [OgeUzunlugu] gerekmez. Boş değere izin verilir:
+            // cevapsız soru bir hata değildir.
+            [Required]
+            [MaxLength(AlanSinirlari.QuizCevapSayisi, ErrorMessage = "Çok fazla cevap gönderildi.")]
+            [OgeIzinliDeger(nameof(IzinliDegerler.QuizSiklari))]
             public Dictionary<int, string> Answers { get; set; } = new();
         }
 
         // POST /api/books/submitquiz
         [HttpPost("submitquiz")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
         public async Task<IActionResult> SubmitQuiz([FromBody] SubmitQuizRequest req)
         {
             if (req == null) return BadRequest(new { error = "Geçersiz istek verisi." });
@@ -362,6 +444,9 @@ namespace EnglishReadingPlatform.Controllers
             foreach (var q in quiz.Questions)
             {
                 req.Answers.TryGetValue(q.Id, out var ans);
+                // KURAL-05: whitelist — A/B/C/D dışı bir şık "cevaplanmadı" sayılır.
+                if (ans is not null && !IzinliDegerler.QuizSiklari.Contains(ans, StringComparer.Ordinal))
+                    ans = null;
                 bool isCorrect = ans == q.CorrectAnswer;
                 if (isCorrect) correct++;
 

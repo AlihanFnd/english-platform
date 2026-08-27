@@ -4,8 +4,10 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using EnglishReadingPlatform.Data;
+using EnglishReadingPlatform.RateLimiting;
 using EnglishReadingPlatform.Models;
 using Microsoft.EntityFrameworkCore;
+using EnglishReadingPlatform.Logging;
 using EnglishReadingPlatform.Validation;
 
 namespace EnglishReadingPlatform.Services
@@ -53,6 +55,28 @@ namespace EnglishReadingPlatform.Services
 
         [JsonPropertyName("words")]
         public List<AnalyzedWord> Words { get; set; } = new();
+
+        /// <summary>
+        /// KURAL-06: false ise 'translation' alanı GERÇEK bir çeviri değildir
+        /// (çeviri servisi patladı, özgün metin geri döndü). Arayüz bunu
+        /// göstermezse kullanıcı hâlâ yanılır — teknik borç olarak raporlandı.
+        /// </summary>
+        [JsonPropertyName("ceviriBasarili")]
+        public bool CeviriBasarili { get; set; } = true;
+    }
+
+    /// <summary>
+    /// KURAL-06: çevirinin BAŞARILI OLUP OLMADIĞINI taşır.
+    ///
+    /// Eskiden TranslateSentenceAsync başarısızlıkta özgün İNGİLİZCE metni
+    /// döndürüyordu ve çağıran bunu Türkçe çeviri sanıyordu — kullanıcı da öyle.
+    /// Sessiz başarısızlık, yanlış cevabı doğru cevaptan ayırt edilemez kılar.
+    /// </summary>
+    public class CeviriSonucu
+    {
+        public string Metin { get; init; } = "";
+        public bool Basarili { get; init; }
+        public string Kaynak { get; init; } = "";   // "groq" | "google" | "onbellek" | "yok"
     }
 
     public class TextAnalysisResult
@@ -66,19 +90,46 @@ namespace EnglishReadingPlatform.Services
         private readonly IHttpClientFactory _httpFactory;
         private readonly IConfiguration _configuration;
         private readonly AppDbContext _db;
+        private readonly ILogger<TranslationService> _logger;   // KURAL-06
+        private readonly AgirIsKapisi _agirIsKapisi;            // KURAL-07
         private const string GT = "https://translate.googleapis.com/translate_a/single";
         private const string UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
 
-        public TranslationService(IHttpClientFactory httpFactory, IConfiguration configuration, AppDbContext db)
+        public TranslationService(IHttpClientFactory httpFactory, IConfiguration configuration,
+                                  AppDbContext db, ILogger<TranslationService> logger,
+                                  AgirIsKapisi agirIsKapisi)
         {
             _httpFactory = httpFactory;
             _configuration = configuration;
             _db = db;
+            _logger = logger;
+            _agirIsKapisi = agirIsKapisi;
+        }
+
+        /// <summary>
+        /// KURAL-07: Groq istemcisi TEK yerden gelir.
+        ///
+        /// Adlandırılmış istemci Program.cs'te 60 saniyelik TAVAN zaman aşımı ve
+        /// yanıt boyutu sınırı (MaxResponseContentBufferSize) taşır. Buradaki
+        /// <paramref name="butce"/> tek çağrıya daha DAR bir bütçe verir.
+        /// Varsayılan HttpCompletionOption.ResponseContentRead sayesinde bu süre
+        /// gövdenin indirilmesini de kapsar — yalnızca başlıkları değil.
+        /// </summary>
+        private HttpClient GroqIstemcisi(string apiKey, TimeSpan butce)
+        {
+            var client = _httpFactory.CreateClient(HizSinirlari.GroqIstemcisi);
+            client.Timeout = butce;
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+            return client;
         }
 
         private HttpClient CreateGoogleTranslateClient()
         {
-            var client = _httpFactory.CreateClient();
+            // KURAL-07: adlandırılmış istemci — zaman aşımı (10 sn) ve yanıt boyutu
+            // sınırı Program.cs'te TEK yerde tanımlı. Eskiden buradaki istemcinin
+            // hiç zaman aşımı ayarı yoktu; varsayılan 100 saniyeydi.
+            var client = _httpFactory.CreateClient(HizSinirlari.GoogleIstemcisi);
             client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
             client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
             client.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7");
@@ -86,9 +137,16 @@ namespace EnglishReadingPlatform.Services
             return client;
         }
 
-        public async Task<string> TranslateSentenceAsync(string text)
+        /// <summary>
+        /// KURAL-06: dönüş tipi string DEĞİL CeviriSonucu'dur.
+        /// Başarısızlıkta özgün metin yine döner (arayüz boş kalmasın diye) ama
+        /// Basarili=false ile birlikte — çağıran artık ayrımı yapabilir.
+        /// </summary>
+        public async Task<CeviriSonucu> TranslateSentenceAsync(string text)
         {
-            if (string.IsNullOrWhiteSpace(text)) return text;
+            if (string.IsNullOrWhiteSpace(text))
+                return new CeviriSonucu { Metin = text, Basarili = true, Kaynak = "yok" };
+
             try
             {
                 await Task.Delay(50); // Google translate rate-limit yememek için hafif gecikme
@@ -99,12 +157,19 @@ namespace EnglishReadingPlatform.Services
                 {
                     var json = await res.Content.ReadAsStringAsync();
                     var parsed = ParseSentence(json);
-                    if (!string.IsNullOrWhiteSpace(parsed)) return parsed;
+                    if (!string.IsNullOrWhiteSpace(parsed))
+                        return new CeviriSonucu { Metin = parsed, Basarili = true, Kaynak = "google" };
+                }
+                else
+                {
+                    // Durum kodu TEKNİK bir alandır, kullanıcı içeriği değil — düz yazılır.
+                    _logger.LogWarning("Google Translate {Durum} döndürdü. Uzunluk={Uzunluk}",
+                        (int)res.StatusCode, text.Length);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Google Translate Sentence Error]: {ex.Message}");
+                _logger.LogWarning(ex, "Google Translate cümle çevirisi başarısız.");
             }
 
             // Fallback: Google Translate patladıysa (Render IP ban vb.) Groq AI ile çevir
@@ -117,9 +182,7 @@ namespace EnglishReadingPlatform.Services
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
                     var model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
-                    var client = _httpFactory.CreateClient();
-                    client.Timeout = TimeSpan.FromSeconds(10);
-                    client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                    var client = GroqIstemcisi(apiKey, HizSinirlari.GroqKisaButce);
 
                     var payload = new
                     {
@@ -137,16 +200,24 @@ namespace EnglishReadingPlatform.Services
                         var responseJson = await response.Content.ReadAsStringAsync();
                         using var doc = JsonDocument.Parse(responseJson);
                         var trResult = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()?.Trim();
-                        if (!string.IsNullOrWhiteSpace(trResult)) return trResult;
+                        if (!string.IsNullOrWhiteSpace(trResult))
+                            return new CeviriSonucu { Metin = trResult, Basarili = true, Kaynak = "groq" };
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Groq cümle çevirisi {Durum} döndürdü.", (int)response.StatusCode);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Groq Sentence Fallback Error]: {ex.Message}");
+                _logger.LogWarning(ex, "Groq cümle çevirisi yedeği başarısız.");
             }
 
-            return text;
+            // KURAL-06: her iki yol da başarısız. Özgün metni "çeviri" diye SESSİZCE
+            // dönmüyoruz — metin dönüyor ama Basarili=false ile işaretli.
+            _logger.LogWarning("Cümle çevrilemedi, özgün metin işaretlenerek döndürülüyor. Uzunluk={Uzunluk}", text.Length);
+            return new CeviriSonucu { Metin = text, Basarili = false, Kaynak = "yok" };
         }
 
         public class WordTranslationResponse
@@ -183,7 +254,10 @@ namespace EnglishReadingPlatform.Services
                     
                     if (cached != null && !string.IsNullOrWhiteSpace(cached.Translation) && !cached.Translation.Trim().Equals(clean, StringComparison.OrdinalIgnoreCase))
                     {
-                        Console.WriteLine($"[Translation Cache HIT] Word: {clean}");
+                        // KURAL-06: kullanıcının hangi kelimeleri bilmediği bir
+                        // öğrenme profilidir. İçerik değil, uzunluk + kısa hash yazılır:
+                        // "aynı kelime tekrar mı geldi" sorusu yine yanıtlanabilir.
+                        _logger.LogDebug("Çeviri önbelleği isabet. Kelime={Kelime}", GuvenliLog.KullaniciMetni(clean));
                         
                         var parts = cached.Translation.Split("|||", StringSplitOptions.None);
                         if (parts.Length == 3)
@@ -215,7 +289,7 @@ namespace EnglishReadingPlatform.Services
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Translation Cache Read Error]: {ex.Message}");
+                    _logger.LogWarning(ex, "Çeviri önbelleği okunamadı.");
                 }
 
                 // 2. Önbellekte Yoksa ve Kullanıcı Butona Basarak Yapay Zekayı Zorladıysa (forceAI == true) Groq'tan Al
@@ -254,9 +328,7 @@ namespace EnglishReadingPlatform.Services
                         };
 
                         var jsonPayload = JsonSerializer.Serialize(payload);
-                        var client = _httpFactory.CreateClient();
-                        client.Timeout = TimeSpan.FromSeconds(20);
-                        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                        var client = GroqIstemcisi(apiKey, HizSinirlari.GroqKelimeButcesi);
 
                         using var reqContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                         var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", reqContent);
@@ -268,7 +340,12 @@ namespace EnglishReadingPlatform.Services
                             var root = doc.RootElement;
                             if (root.TryGetProperty("usage", out var usage))
                             {
-                                Console.WriteLine($"[Groq Token Usage (TranslateWord)] Prompt: {usage.GetProperty("prompt_tokens")}, Completion: {usage.GetProperty("completion_tokens")}, Total: {usage.GetProperty("total_tokens")}");
+                                _logger.LogInformation(
+                                    "Groq token kullanımı. Islem={Islem} Girdi={Girdi} Cikti={Cikti} Toplam={Toplam}",
+                                    "TranslateWord",
+                                    usage.GetProperty("prompt_tokens").ToString(),
+                                    usage.GetProperty("completion_tokens").ToString(),
+                                    usage.GetProperty("total_tokens").ToString());
                             }
                             var textResult = root.GetProperty("choices")[0]
                                                  .GetProperty("message")
@@ -312,7 +389,12 @@ namespace EnglishReadingPlatform.Services
                                     }
                                     catch (Exception ex)
                                     {
-                                        Console.WriteLine($"[Translation Cache Write Error]: {ex.Message}");
+                                        // Kota harcandı ama sonuç kaydedilmedi: bir sonraki
+                                        // aynı istek yeniden token yakacak. Warning seviyesi
+                                        // bilinçli — sessizce yutulursa maliyet fark edilmez.
+                                        _logger.LogWarning(ex,
+                                            "Çeviri önbelleğine yazılamadı — kota harcandı ama sonuç kaydedilmedi. Kelime={Kelime}",
+                                            GuvenliLog.KullaniciMetni(clean));
                                     }
 
                                     return new WordTranslationResult
@@ -329,7 +411,7 @@ namespace EnglishReadingPlatform.Services
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[Groq Word Context Translate Error]: {ex.Message}");
+                        _logger.LogWarning(ex, "Groq bağlamsal kelime çevirisi başarısız.");
                     }
                 }
             }
@@ -371,7 +453,7 @@ namespace EnglishReadingPlatform.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Google Translate Word Error]: {ex.Message}");
+                _logger.LogWarning(ex, "Google Translate kelime çevirisi başarısız.");
             }
 
             // 4. Fallback: Google Translate takıldıysa Groq AI ile kelimeyi çevir
@@ -384,9 +466,7 @@ namespace EnglishReadingPlatform.Services
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
                     var model = _configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
-                    var client = _httpFactory.CreateClient();
-                    client.Timeout = TimeSpan.FromSeconds(8);
-                    client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                    var client = GroqIstemcisi(apiKey, HizSinirlari.GroqKisaButce);
 
                     var prompt = $"Translate the English word/phrase '{clean}' to natural Turkish. Return ONLY the Turkish translation, nothing else.";
                     var payload = new
@@ -418,7 +498,7 @@ namespace EnglishReadingPlatform.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Groq Word Fallback Error]: {ex.Message}");
+                _logger.LogWarning(ex, "Groq kelime çevirisi yedeği başarısız.");
             }
 
             return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = defaultType };
@@ -575,16 +655,27 @@ namespace EnglishReadingPlatform.Services
             {
                 try
                 {
-                    return await AnalyzeTextWithGroqAsync(text, apiKey);
+                    // KURAL-07 İhlal 4: LLM analizi AĞIR iştir. Dakikalık kota
+                    // "aynı anda kaç tanesi bellekte" sorusunu yanıtlamaz —
+                    // eşzamanlılık kapısı onu yanıtlar. Kapı doluysa 503 döner.
+                    return await _agirIsKapisi.CalistirAsync(
+                        () => AnalyzeTextWithGroqAsync(text, apiKey));
+                }
+                catch (Exceptions.KullaniciHatasi)
+                {
+                    // Kapı reddi kullanıcıya AYNEN iletilmeli: "sistem yoğun, tekrar
+                    // deneyin". Yedek yola düşmek, ağır işten kaçınma amacını bozar
+                    // (yedek yol cümle başına bir Google isteği açar — daha da pahalı).
+                    throw;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Groq API Error, falling back to Google Translate]: {ex.Message}");
+                    _logger.LogWarning(ex, "Groq metin analizi başarısız, Google Translate yedeğine düşülüyor.");
                 }
             }
             else
             {
-                Console.WriteLine("[Groq API Key missing] No API key found in appsettings.json or environment variables (GROQ_API_KEY). Using fallback.");
+                _logger.LogWarning("Groq API anahtarı tanımlı değil, yedek çeviri yolu kullanılıyor.");
             }
 
             // Fallback to Google Translate + Regex
@@ -602,7 +693,9 @@ namespace EnglishReadingPlatform.Services
                 {
                     Index = i,
                     Original = s,
-                    Translation = sentTrs[i],
+                    Translation = sentTrs[i].Metin,
+                    // KURAL-06: çevrilemeyen satır artık işaretli geliyor.
+                    CeviriBasarili = sentTrs[i].Basarili,
                     IsHeading = isHead,
                     Alignment = isHead ? "center" : "left",
                     Indentation = 0,
@@ -665,9 +758,9 @@ namespace EnglishReadingPlatform.Services
 
             try
             {
-                var client = _httpFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(5);
-                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                // KURAL-07: 5 DAKİKALIK zaman aşımı kendisi bir açıktı — 20 eşzamanlı
+                // analiz isteği 5 dakika boyunca 20 bağlantıyı ve 20 thread'i tutuyordu.
+                var client = GroqIstemcisi(apiKey, HizSinirlari.GroqAgirButce);
 
                 using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
@@ -683,7 +776,12 @@ namespace EnglishReadingPlatform.Services
                 var root = doc.RootElement;
                 if (root.TryGetProperty("usage", out var usage))
                 {
-                    Console.WriteLine($"[Groq Token Usage (AnalyzeText)] Prompt: {usage.GetProperty("prompt_tokens")}, Completion: {usage.GetProperty("completion_tokens")}, Total: {usage.GetProperty("total_tokens")}");
+                    _logger.LogInformation(
+                        "Groq token kullanımı. Islem={Islem} Girdi={Girdi} Cikti={Cikti} Toplam={Toplam}",
+                        "AnalyzeText",
+                        usage.GetProperty("prompt_tokens").ToString(),
+                        usage.GetProperty("completion_tokens").ToString(),
+                        usage.GetProperty("total_tokens").ToString());
                 }
                 var textResult = root.GetProperty("choices")[0]
                                      .GetProperty("message")
@@ -713,7 +811,9 @@ namespace EnglishReadingPlatform.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Groq API call failed]: {ex.Message}");
+                // Yeniden fırlatılıyor: çağıran yedek yola düşecek. Log burada
+                // kalıyor çünkü asıl HTTP ayrıntısı yalnızca burada biliniyor.
+                _logger.LogWarning(ex, "Groq API çağrısı başarısız.");
                 throw;
             }
 

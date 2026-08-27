@@ -19,14 +19,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: englishreadingdb
-      POSTGRES_USER: ${POSTGRES_USER:-appuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-StrongPass@2026!}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER tanımlı değil — .env dosyasını doldurun}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD tanımlı değil — openssl rand -base64 24}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d englishreadingdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d englishreadingdb"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,8 +39,8 @@ services:
     container_name: english_pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:?PGADMIN_EMAIL tanımlı değil}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?PGADMIN_PASSWORD tanımlı değil}
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
     ports:
@@ -61,13 +61,15 @@ services:
     container_name: english_backend
     restart: unless-stopped
     environment:
-      ConnectionStrings__Default: "Host=postgres;Database=englishreadingdb;Username=${POSTGRES_USER:-appuser};Password=${POSTGRES_PASSWORD:-StrongPass@2026!}"
-      Jwt__Key: ${JWT_KEY:-EnglishPlatformSuperSecretKey2026_MustBe32Chars!!}
+      ConnectionStrings__Default: "Host=postgres;Database=englishreadingdb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Jwt__Key: ${JWT_KEY:?JWT_KEY tanımlı değil — openssl rand -base64 48 ile üretin}
       Jwt__Issuer: EnglishPlatform
       Jwt__Audience: EnglishPlatformUsers
       ASPNETCORE_ENVIRONMENT: Production
-      Gemini__ApiKey: ${GEMINI_API_KEY}
-      Groq__ApiKey: ${GROQ_API_KEY}
+      # İlk yönetici — boşsa hiç yönetici oluşturulmaz (uyarı loglanır).
+      Seed__AdminEmail: ${Seed__AdminEmail:-}
+      Seed__AdminPassword: ${Seed__AdminPassword:-}
+      Groq__ApiKey: ${GROQ_API_KEY:-}
     ports:
       - "5001:8080"
     depends_on:

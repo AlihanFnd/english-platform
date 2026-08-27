@@ -1,10 +1,18 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using EnglishReadingPlatform.Contracts;
+using EnglishReadingPlatform.Authorization;
 using EnglishReadingPlatform.Data;
+using EnglishReadingPlatform.Exceptions;
 using EnglishReadingPlatform.Models;
+using EnglishReadingPlatform.RateLimiting;
+using EnglishReadingPlatform.Security;
 using EnglishReadingPlatform.Services;
+using EnglishReadingPlatform.Validation;
+using System.ComponentModel.DataAnnotations;
 
 namespace EnglishReadingPlatform.Controllers
 {
@@ -21,12 +29,17 @@ namespace EnglishReadingPlatform.Controllers
         private readonly AppDbContext _db;
         private readonly PdfService _pdfService;
         private readonly TranslationService _transService;
+        private readonly ITokenIptalDeposu _iptalDeposu;   // KURAL-04
+        private readonly ILogger<AdminController> _logger;  // KURAL-06
 
-        public AdminController(AppDbContext db, PdfService pdfService, TranslationService transService)
+        public AdminController(AppDbContext db, PdfService pdfService, TranslationService transService,
+                               ITokenIptalDeposu iptalDeposu, ILogger<AdminController> logger)
         {
             _db = db;
             _pdfService = pdfService;
             _transService = transService;
+            _iptalDeposu = iptalDeposu;
+            _logger = logger;
         }
 
 
@@ -81,34 +94,44 @@ namespace EnglishReadingPlatform.Controllers
 
         // ── PUT /api/admin/users/{id}/role ──────────────────────
         /// <summary>Kullanıcı rolünü değiştir (student/teacher/admin)</summary>
-        public class UpdateRoleRequest { public string Role { get; set; } = ""; }
+        public class UpdateRoleRequest
+        {
+            [IzinliDeger(nameof(IzinliDegerler.Roller))]
+            public string Role { get; set; } = "";
+        }
 
         [HttpPut("users/{id}/role")]
-        public async Task<IActionResult> UpdateRole(int id, [FromBody] UpdateRoleRequest req)
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
+        public async Task<IActionResult> UpdateRole([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id, [FromBody] UpdateRoleRequest req)
         {
-            var allowedRoles = new[] { "student", "teacher", "admin" };
-            if (!allowedRoles.Contains(req.Role))
-                return BadRequest(new { error = "Geçersiz rol. Geçerli roller: student, teacher, admin" });
+            // KURAL-05: whitelist artık DTO'da [IzinliDeger] ile — elle tutulan
+            // ikinci bir kopya IzinliDegerler.Roller'den sessizce ayrışırdı.
 
             var user = await _db.Users.FindAsync(id);
             if (user == null) return NotFound(new { error = "Kullanıcı bulunamadı." });
 
             // Güvenlik: kendi hesabının rolünü değiştiremez
-            var callerId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var callerId = this.KullaniciId();   // KURAL-05: TryParse tabanlı
             if (user.Id == callerId)
                 return BadRequest(new { error = "Kendi hesabınızın rolünü değiştiremezsiniz." });
 
             user.Role = req.Role;
             await _db.SaveChangesAsync();
+
+            // ── KURAL-04: eski rolle üretilmiş tokenları geçersiz kıl ──
+            // Önce kaydet, sonra iptal et: kayıt başarısız olursa oturum boşuna düşmesin.
+            _iptalDeposu.KullaniciTumTokenlariniIptalEt(id);
+
             return Ok(new { success = true, userId = id, newRole = req.Role });
         }
 
         // ── DELETE /api/admin/users/{id} ────────────────────────
         /// <summary>Kullanıcıyı sil (kendi hesabını silemez)</summary>
         [HttpDelete("users/{id}")]
-        public async Task<IActionResult> DeleteUser(int id)
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
+        public async Task<IActionResult> DeleteUser([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id)
         {
-            var callerId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var callerId = this.KullaniciId();   // KURAL-05: TryParse tabanlı
             if (id == callerId)
                 return BadRequest(new { error = "Kendi hesabınızı silemezsiniz." });
 
@@ -117,6 +140,10 @@ namespace EnglishReadingPlatform.Controllers
 
             _db.Users.Remove(user);
             await _db.SaveChangesAsync();
+
+            // ── KURAL-04: silinen kullanıcının tokenları anında geçersiz ──
+            _iptalDeposu.KullaniciTumTokenlariniIptalEt(id);
+
             return Ok(new { success = true });
         }
 
@@ -125,8 +152,9 @@ namespace EnglishReadingPlatform.Controllers
         [HttpGet("books")]
         public async Task<IActionResult> GetBooks()
         {
+            // KURAL-08: Include(b => b.Chapters) projeksiyonun yanında GEREKSİZDİ —
+            // bölüm metinlerini belleğe çekiyordu, oysa yalnızca adet lazım.
             var books = await _db.Books
-                .Include(b => b.Chapters)
                 .Select(b => new
                 {
                     b.Id,
@@ -137,7 +165,8 @@ namespace EnglishReadingPlatform.Controllers
                     b.Level,
                     b.Category,
                     b.CreatedAt,
-                    ChapterCount = b.Chapters.Count
+                    ChapterCount = b.Chapters.Count,
+                    PageCount = b.Pages.Count
                 })
                 .ToListAsync();
 
@@ -151,18 +180,44 @@ namespace EnglishReadingPlatform.Controllers
         /// </summary>
         public class BookUploadRequest
         {
+            [Required(ErrorMessage = "Kitap başlığı zorunludur.")]
+            [StringLength(AlanSinirlari.KitapBasligi, MinimumLength = 1,
+                ErrorMessage = "Başlık en fazla {1} karakter olabilir.")]
             public string Title { get; set; } = "";
+
+            [StringLength(AlanSinirlari.KitapYazari,
+                ErrorMessage = "Yazar en fazla {1} karakter olabilir.")]
             public string Author { get; set; } = "";
+
+            [StringLength(AlanSinirlari.KitapAciklama,
+                ErrorMessage = "Açıklama en fazla {1} karakter olabilir.")]
             public string Description { get; set; } = "";
+
+            [IzinliDeger(nameof(IzinliDegerler.Diller))]
             public string Language { get; set; } = "en";
+
+            // Bu değer istemciye stil olarak geri dönüyor — serbest metin olmamalı.
+            [StringLength(AlanSinirlari.KapakRengi)]
+            [RegularExpression("^#[0-9a-fA-F]{6}$",
+                ErrorMessage = "Kapak rengi #rrggbb biçiminde olmalıdır.")]
             public string CoverColor { get; set; } = "#6366f1";
+
+            [IzinliDeger(nameof(IzinliDegerler.Seviyeler))]
             public string Level { get; set; } = "A1";
+
+            [IzinliDeger(nameof(IzinliDegerler.Kategoriler))]
             public string Category { get; set; } = "story";
+
+            // "1,3,5-12" — rakam, virgül, tire ve boşluk dışına izin yok.
+            [StringLength(AlanSinirlari.SayfaSecimiMetni)]
+            [RegularExpression(@"^[0-9,\s-]*$",
+                ErrorMessage = "Sayfa seçimi yalnızca rakam, virgül ve tire içerebilir.")]
             public string? PageSelection { get; set; }
         }
 
         [HttpPost("books/upload")]
         [RequestSizeLimit(52_428_800)] // 50 MB
+        [EnableRateLimiting(HizSinirlari.DosyaYukleme)]   // KURAL-07: YENİ — 50 MB × N eşzamanlı PDF ayrıştırma
         public async Task<IActionResult> UploadBook(
             [FromForm] BookUploadRequest meta,
             IFormFile file)
@@ -173,19 +228,13 @@ namespace EnglishReadingPlatform.Controllers
             if (string.IsNullOrWhiteSpace(meta.Title))
                 return BadRequest(new { error = "Kitap başlığı zorunludur." });
 
-            PdfExtractResult pdfData;
-            try
-            {
-                pdfData = await _pdfService.ExtractAndSplitAsync(file, meta.PageSelection);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { error = "Dosya işlenirken hata oluştu: " + ex.Message });
-            }
+            // KURAL-06: istisna metni yanıta KONMAZ.
+            // PdfService, kullanıcıya gösterilebilir hataları (yanlış uzantı, boyut
+            // aşımı, bozuk dosya) KullaniciHatasi olarak fırlatır; merkezî
+            // HataYakalamaMiddleware onları aynen 400 ile iletir. Beklenmeyen her
+            // şeyi de aynı middleware yakalar ve olay kimliğiyle 500 döner.
+            // Eskiden buradaki iki catch, Groq/Npgsql istisna metnini gövdeye yazıyordu.
+            var pdfData = await _pdfService.ExtractAndSplitAsync(file, meta.PageSelection);
 
             if (string.IsNullOrWhiteSpace(pdfData.FullText))
                 return BadRequest(new { error = "Dosyadan metin çıkarılamadı. Dosya görsel tabanlı (taranmış) olabilir." });
@@ -193,9 +242,9 @@ namespace EnglishReadingPlatform.Controllers
             // Kitabı DB'ye kaydet
             var book = new Book
             {
-                Title = meta.Title.Trim(),
-                Author = meta.Author.Trim(),
-                Description = meta.Description.Trim(),
+                Title = meta.Title.KirpEnCok(AlanSinirlari.KitapBasligi),
+                Author = meta.Author.KirpEnCok(AlanSinirlari.KitapYazari),
+                Description = meta.Description.KirpEnCok(AlanSinirlari.KitapAciklama),
                 Language = meta.Language,
                 CoverColor = meta.CoverColor,
                 Level = meta.Level ?? "A1",
@@ -211,7 +260,9 @@ namespace EnglishReadingPlatform.Controllers
             {
                 BookId = book.Id,
                 ChapterNumber = c.Number,
-                Title = c.Title,
+                // KURAL-05: bölüm başlığı PDF içeriğinden/LLM yanıtından TÜRETİLİYOR,
+                // yani sınırsız. Chapter.Title varchar(200) — kırpılmazsa yükleme 500 verir.
+                Title = c.Title.KirpEnCok(AlanSinirlari.BolumBasligi),
                 Content = c.Content
             }).ToList();
 
@@ -231,18 +282,43 @@ namespace EnglishReadingPlatform.Controllers
         // ── POST /api/admin/books/upload-pages ──────────────────
         public class BookUploadPagesRequest
         {
+            [Required(ErrorMessage = "Kitap başlığı zorunludur.")]
+            [StringLength(AlanSinirlari.KitapBasligi, MinimumLength = 1,
+                ErrorMessage = "Başlık en fazla {1} karakter olabilir.")]
             public string Title { get; set; } = "";
+
+            [StringLength(AlanSinirlari.KitapYazari,
+                ErrorMessage = "Yazar en fazla {1} karakter olabilir.")]
             public string Author { get; set; } = "";
+
+            [StringLength(AlanSinirlari.KitapAciklama,
+                ErrorMessage = "Açıklama en fazla {1} karakter olabilir.")]
             public string Description { get; set; } = "";
+
+            [IzinliDeger(nameof(IzinliDegerler.Diller))]
             public string Language { get; set; } = "en";
+
+            [StringLength(AlanSinirlari.KapakRengi)]
+            [RegularExpression("^#[0-9a-fA-F]{6}$",
+                ErrorMessage = "Kapak rengi #rrggbb biçiminde olmalıdır.")]
             public string CoverColor { get; set; } = "#6366f1";
+
+            [IzinliDeger(nameof(IzinliDegerler.Seviyeler))]
             public string Level { get; set; } = "A1";
+
+            [IzinliDeger(nameof(IzinliDegerler.Kategoriler))]
             public string Category { get; set; } = "story";
+
+            [Required(ErrorMessage = "Lütfen yüklenecek sayfaları seçin.")]
+            [StringLength(AlanSinirlari.SayfaSecimiMetni, MinimumLength = 1)]
+            [RegularExpression(@"^[0-9,\s-]+$",
+                ErrorMessage = "Sayfa seçimi yalnızca rakam, virgül ve tire içerebilir.")]
             public string SelectedPages { get; set; } = ""; // Comma-separated
         }
 
         [HttpPost("books/upload-pages")]
         [RequestSizeLimit(52_428_800)] // 50 MB
+        [EnableRateLimiting(HizSinirlari.DosyaYukleme)]   // KURAL-07: YENİ
         public async Task<IActionResult> UploadBookPages(
             [FromForm] BookUploadPagesRequest meta,
             IFormFile file)
@@ -269,9 +345,9 @@ namespace EnglishReadingPlatform.Controllers
 
             var book = new Book
             {
-                Title = meta.Title.Trim(),
-                Author = meta.Author.Trim(),
-                Description = meta.Description.Trim(),
+                Title = meta.Title.KirpEnCok(AlanSinirlari.KitapBasligi),
+                Author = meta.Author.KirpEnCok(AlanSinirlari.KitapYazari),
+                Description = meta.Description.KirpEnCok(AlanSinirlari.KitapAciklama),
                 Language = meta.Language,
                 CoverColor = meta.CoverColor,
                 Level = meta.Level ?? "A1",
@@ -292,15 +368,28 @@ namespace EnglishReadingPlatform.Controllers
                 {
                     pageText = _pdfService.ExtractSinglePageText(file, pageNum);
                 }
+                catch (KullaniciHatasi)
+                {
+                    // Bozuk/şifreli dosya: mesaj zaten kullanıcıya yönelik.
+                    // Yarım kalan kitap kaydı bırakılmaz — aksi hâlde listede
+                    // açılamayan bir kitap görünür (aşağıdaki "metin çıkarılamadı"
+                    // dalı bu temizliği zaten yapıyordu, bu dal yapmıyordu).
+                    _db.Books.Remove(book);
+                    await _db.SaveChangesAsync();
+                    throw;
+                }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[PDF UPLOAD ERROR] Sayfa {pageNum} okunurken hata: {ex.ToString()}");
-                    return BadRequest(new { error = $"{pageNum}. sayfa okunurken hata oluştu: {ex.Message}" });
+                    // KURAL-06: ayrıntı yalnızca loga; yanıt genel kalır.
+                    _logger.LogError(ex, "PDF sayfası okunamadı. Sayfa={Sayfa} KitapId={KitapId}", pageNum, book.Id);
+                    _db.Books.Remove(book);
+                    await _db.SaveChangesAsync();
+                    return BadRequest(new { error = $"{pageNum}. sayfa okunamadı. Dosya bozuk veya korumalı olabilir." });
                 }
 
                 if (string.IsNullOrWhiteSpace(pageText))
                 {
-                    Console.WriteLine($"[PDF UPLOAD WARNING] Sayfa {pageNum} bos veya metin cikarilamadi.");
+                    _logger.LogInformation("PDF sayfasından metin çıkarılamadı. Sayfa={Sayfa} KitapId={KitapId}", pageNum, book.Id);
                     continue;
                 }
 
@@ -317,7 +406,7 @@ namespace EnglishReadingPlatform.Controllers
             {
                 _db.Books.Remove(book);
                 await _db.SaveChangesAsync();
-                Console.WriteLine("[PDF UPLOAD ERROR] Secilen sayfalarin hicbirinden metin cikarilamadi.");
+                _logger.LogWarning("Seçilen sayfaların hiçbirinden metin çıkarılamadı. KitapId={KitapId} SayfaSayisi={SayfaSayisi}", book.Id, selectedPageNumbers.Count);
                 return BadRequest(new { error = "Seçilen sayfaların hiçbirinden metin çıkarılamadı. PDF dosyanız taranmış/görsel tabanlı olabilir." });
             }
 
@@ -336,16 +425,32 @@ namespace EnglishReadingPlatform.Controllers
         // ── PUT /api/admin/books/{id} ────────────────────────
         public class BookUpdateRequest
         {
+            [Required(ErrorMessage = "Kitap başlığı zorunludur.")]
+            [StringLength(AlanSinirlari.KitapBasligi, MinimumLength = 1,
+                ErrorMessage = "Başlık en fazla {1} karakter olabilir.")]
             public string Title { get; set; } = "";
+
+            [StringLength(AlanSinirlari.KitapYazari,
+                ErrorMessage = "Yazar en fazla {1} karakter olabilir.")]
             public string Author { get; set; } = "";
+
+            [StringLength(AlanSinirlari.KitapAciklama,
+                ErrorMessage = "Açıklama en fazla {1} karakter olabilir.")]
             public string Description { get; set; } = "";
+
+            [IzinliDeger(nameof(IzinliDegerler.Diller))]
             public string Language { get; set; } = "en";
+
+            [IzinliDeger(nameof(IzinliDegerler.Seviyeler))]
             public string Level { get; set; } = "A1";
+
+            [IzinliDeger(nameof(IzinliDegerler.Kategoriler))]
             public string Category { get; set; } = "story";
         }
 
         [HttpPut("books/{id}")]
-        public async Task<IActionResult> UpdateBook(int id, [FromBody] BookUpdateRequest request)
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
+        public async Task<IActionResult> UpdateBook([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id, [FromBody] BookUpdateRequest request)
         {
             var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == id);
             if (book == null)
@@ -354,21 +459,33 @@ namespace EnglishReadingPlatform.Controllers
             if (string.IsNullOrWhiteSpace(request.Title))
                 return BadRequest(new { error = "Kitap başlığı zorunludur." });
 
-            book.Title = request.Title.Trim();
-            book.Author = request.Author?.Trim() ?? "";
-            book.Description = request.Description?.Trim() ?? "";
+            book.Title = request.Title.KirpEnCok(AlanSinirlari.KitapBasligi);
+            book.Author = request.Author.KirpEnCok(AlanSinirlari.KitapYazari);
+            book.Description = request.Description.KirpEnCok(AlanSinirlari.KitapAciklama);
             book.Language = request.Language ?? "en";
             book.Level = request.Level ?? "A1";
             book.Category = request.Category ?? "story";
 
             await _db.SaveChangesAsync();
-            return Ok(new { success = true, book });
+
+            // KURAL-08: Book entity'si Chapters/Pages navigasyonlarını taşır ve
+            // ileride biri Include eklerse tüm kitap metni yanıta girer.
+            var bolumSayisi = await _db.Chapters.CountAsync(c => c.BookId == id);
+            var sayfaSayisi = await _db.BookPages.CountAsync(p => p.BookId == id);
+            return Ok(new
+            {
+                success = true,
+                book = new KitapYaniti(
+                    book.Id, book.Title, book.Author, book.CoverColor, book.Description,
+                    book.Level, book.Category, bolumSayisi, sayfaSayisi, 0f, 1)
+            });
         }
 
         // ── DELETE /api/admin/books/{id} ────────────────────────
         /// <summary>Kitabı ve tüm ilişkili verilerini (bölümler, sayfalar, quizler, ilerlemeler) sil</summary>
         [HttpDelete("books/{id}")]
-        public async Task<IActionResult> DeleteBook(int id)
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
+        public async Task<IActionResult> DeleteBook([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id)
         {
             var book = await _db.Books
                 .Include(b => b.Chapters)
@@ -422,14 +539,17 @@ namespace EnglishReadingPlatform.Controllers
         [HttpGet("groups")]
         public async Task<IActionResult> GetGroups()
         {
+            // KURAL-08 KARDEŞ YOL: bu uç her grubun davet kodunu döndürüyordu.
+            // Yönetici panelinde kod hiçbir yerde KULLANILMIYOR (grep: admin-panel
+            // içinde inviteCode geçmiyor) — yani saf fazla veriydi. Kodu görmenin
+            // tek meşru sahibi grubun kendi sahibidir.
+            // Include(g => g.Members) da projeksiyonun yanında gereksizdi.
             var groups = await _db.Groups
-                .Include(g => g.Members)
                 .Select(g => new
                 {
                     g.Id,
                     g.Name,
                     g.Description,
-                    g.InviteCode,
                     g.CreatedAt,
                     MemberCount = g.Members.Count
                 })

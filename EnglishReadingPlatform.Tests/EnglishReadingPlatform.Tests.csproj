@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- ZORUNLU: net8.0 runtime bulunamazsa üst majora roll-forward yapılır,
+         aksi hâlde "You must install or update .NET" hatası alınır.
+         DİKKAT: Burada "LatestMajor" KULLANILMAZ. LatestMajor, net8.0 runtime
+         kurulu OLSA BİLE her zaman en yüksek majoru (net10) seçer; o zaman
+         TestHost 8.x ile ASP.NET Core 10'un JSON biçimlendiricisi çakışır ve
+         gövde döndüren her uç 500 verir:
+         "The PipeWriter 'ResponseBodyPipeWriter' does not implement PipeWriter.UnflushedBytes"
+         "Major" ise net8.0 varsa onu kullanır, yoksa üst majora düşer. -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
+    <PackageReference Include="FluentAssertions" Version="6.12.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../EnglishReadingPlatform/EnglishReadingPlatform.csproj" />
+  </ItemGroup>
+
+</Project>

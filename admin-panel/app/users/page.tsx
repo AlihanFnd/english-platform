@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import AdminLayout from "../components/AdminLayout";
+import { useAdminKorumasi, adminTokenOku } from "../hooks/useAdminAuth";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
 
@@ -16,29 +16,14 @@ interface User {
   wordCount: number;
 }
 
-function useAdminAuth() {
-  const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const t = localStorage.getItem("admin_token");
-    if (!t) {
-      router.replace("/");
-    } else {
-      setToken(t);
-    }
-  }, [router]);
-
-  return token;
-}
-
 export default function UsersPage() {
-  const token = useAdminAuth();
+  useAdminKorumasi();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const token = adminTokenOku();
     if (!token) return;
 
     async function loadUsers() {
@@ -60,9 +45,10 @@ export default function UsersPage() {
     }
 
     loadUsers();
-  }, [token]);
+  }, []);
 
   async function toggleRole(id: number, currentRole: string) {
+    const token = adminTokenOku();
     if (!token) return;
     const newRole = currentRole === "admin" ? "student" : "admin";
     if (!confirm(`Kullanıcı rolünü "${newRole.toUpperCase()}" yapmak istediğinize emin misiniz?`)) return;
@@ -87,7 +73,7 @@ export default function UsersPage() {
     }
   }
 
-  if (!token || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <p className="text-sm text-gray-500">Yükleniyor...</p>
@@ -141,7 +127,7 @@ export default function UsersPage() {
                   <td className="py-4">
                     <button 
                       onClick={() => toggleRole(u.id, u.role)} 
-                      className="text-blue-400 hover:text-blue-300 text-xs px-2.5 py-1 rounded bg-blue-900/20 border border-blue-900/30 transition"
+                      className="text-blue-400 hover:text-blue-300 text-xs px-2.5 py-1 rounded-sm bg-blue-900/20 border border-blue-900/30 transition"
                     >
                       Rol Değiştir
                     </button>

@@ -1,18 +1,46 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using EnglishReadingPlatform.Configuration;
 using EnglishReadingPlatform.Data;
+using EnglishReadingPlatform.Middleware;
+using EnglishReadingPlatform.RateLimiting;
+using EnglishReadingPlatform.Security;
 using EnglishReadingPlatform.Services;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ─── KURAL-02: Sır doğrulaması — her şeyden önce ──────────────
+// Eksik/zayıf/sızmış sır varsa uygulama burada durur. Varsayılana
+// düşmek yerine hiç başlamamak bilinçli tercihtir.
+SirDogrulayici.Dogrula(builder.Configuration, builder.Environment);
+
+// ─── KURAL-05: istek gövdesi üst sınırı ───────────────────────
+// [StringLength] gövde ÇÖZÜMLENDİKTEN SONRA çalışır: 20.000 karakterlik bir
+// sınır, 30 MB'lık bir gövdenin önce belleğe alınıp JSON olarak ayrıştırılmasını
+// engellemez. Doğrulamadan ÖNCE devreye giren tek sınır budur.
+//
+// En büyük meşru JSON gövdesi OCR metnidir (50.000 karakter ≈ 300 KB en kötü
+// durumda). 2 MB rahat bir tavan bırakır. Dosya yükleme uçları kendi
+// [RequestSizeLimit(50 MB)] özniteliğiyle bu sınırı zaten geçersiz kılar.
+builder.WebHost.ConfigureKestrel(opt =>
+{
+    opt.Limits.MaxRequestBodySize = 2 * 1024 * 1024;
+});
 
 // ─── Veritabanı ───────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 // ─── JWT Authentication ───────────────────────────────────────
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "SuperSecretKey_ChangeInProduction_32chars!";
+var jwtKey      = builder.Configuration["Jwt:Key"]!;        // SirDogrulayici doğruladı, null olamaz
+var jwtIssuer   = builder.Configuration["Jwt:Issuer"]!;
+var jwtAudience = builder.Configuration["Jwt:Audience"]!;
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
@@ -21,65 +49,164 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "EnglishPlatform",
+            ValidIssuer = jwtIssuer,
             ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "EnglishPlatformUsers",
+            ValidAudience = jwtAudience,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
 
-        // Cookie'den token okuma (Fallback) ve Revokasyon (Suistimal Engelleme) Kontrolü
+        // ── KURAL-04: kimlik taşıyıcısı seçimi ve iptal kontrolü ──
         opt.Events = new JwtBearerEvents
         {
             OnMessageReceived = ctx =>
             {
-                var token = ctx.Request.Cookies["jwt_token"];
-                if (!string.IsNullOrEmpty(token))
-                    ctx.Token = token;
+                // Authorization başlığı HER ZAMAN önceliklidir.
+                // Cookie yalnızca başlık YOKSA kullanılır (tarayıcı navigasyonu senaryosu).
+                var authHeader = ctx.Request.Headers.Authorization.ToString();
+                if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    return Task.CompletedTask;      // başlığı olduğu gibi bırak
+
+                var cookie = ctx.Request.Cookies["jwt_token"];
+                if (!string.IsNullOrEmpty(cookie))
+                    ctx.Token = cookie;
+
                 return Task.CompletedTask;
             },
-            OnTokenValidated = async ctx =>
-            {
-                var tokenSecurity = ctx.HttpContext.RequestServices.GetRequiredService<TokenSecurityService>();
-                var principal = ctx.Principal;
-                if (principal != null)
-                {
-                    var jti = principal.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
-                    var userIdStr = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                    var iatStr = principal.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Iat)?.Value;
 
-                    if (int.TryParse(userIdStr, out int userId) && long.TryParse(iatStr, out long iatSec))
-                    {
-                        var issuedAt = DateTimeOffset.FromUnixTimeSeconds(iatSec).UtcDateTime;
-                        if (tokenSecurity.IsTokenRevoked(jti ?? ctx.SecurityToken?.ToString(), userId, issuedAt))
-                        {
-                            ctx.Fail("Bu token iptal edildi veya suistimal tespiti nedeniyle geçersiz kılındı.");
-                            return;
-                        }
-                    }
+            OnTokenValidated = ctx =>
+            {
+                var depo = ctx.HttpContext.RequestServices.GetRequiredService<ITokenIptalDeposu>();
+                var principal = ctx.Principal;
+                if (principal is null) { ctx.Fail("Kimlik bilgisi çözümlenemedi."); return Task.CompletedTask; }
+
+                var jti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+                var userIdStr = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var iatStr = principal.FindFirst(JwtRegisteredClaimNames.Iat)?.Value;
+
+                // jti YOKSA token'a güvenilmez.
+                // Eskiden ham token'a fallback yapılıyordu ve sessizce hiçbir zaman eşleşmiyordu.
+                if (string.IsNullOrEmpty(jti))
+                {
+                    ctx.Fail("Token 'jti' talebi taşımıyor — iptal kontrolü yapılamaz.");
+                    return Task.CompletedTask;
                 }
-                await Task.CompletedTask;
+
+                if (!int.TryParse(userIdStr, out var userId) || !long.TryParse(iatStr, out var iatSec))
+                {
+                    ctx.Fail("Token zorunlu talepleri taşımıyor.");
+                    return Task.CompletedTask;
+                }
+
+                var uretilme = DateTimeOffset.FromUnixTimeSeconds(iatSec).UtcDateTime;
+                if (depo.IptalEdilmisMi(jti, userId, uretilme))
+                    ctx.Fail("Bu oturum sonlandırılmış.");
+
+                return Task.CompletedTask;
             }
         };
     });
 
 builder.Services.AddAuthorization(options =>
 {
+    // ── KURAL-03: VARSAYILAN REDDET ────────────────────────────
+    // Öznitelik taşımayan her uç otomatik olarak kimlik doğrulaması ister.
+    // Bir ucun herkese açık olması İSTENİYORSA [AllowAnonymous] ile
+    // açıkça işaretlenmeli ve YetkilendirmeSozlesmesiTests beyaz listesine
+    // eklenmelidir. Unutulan bir öznitelik artık "sessizce açık" değil,
+    // "kapalı" anlamına gelir.
+    //
+    // DİKKAT: FallbackPolicy ≠ DefaultPolicy. DefaultPolicy yalnızca
+    // [Authorize] VARKEN hangi politikanın uygulanacağını söyler; özniteliksiz
+    // uçlara hiç dokunmaz. Kapatılmak istenen boşluk tam olarak orasıdır.
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+
     // Admin politikası — sadece "admin" rolüne sahip tokenlar geçer
     options.AddPolicy("AdminOnly", policy =>
         policy.RequireRole("admin"));
+
+    // Öğretmen VEYA admin gerektiren ileri kullanımlar için hazır politika.
+    options.AddPolicy("EgitmenVeyaAdmin", policy =>
+        policy.RequireRole("teacher", "admin"));
 });
 
 // ─── Web API Controllers ──────────────────────────────────────
 builder.Services.AddControllers();
 
+// ─── KURAL-05: doğrulama hatası biçimi ────────────────────────
+// [ApiController] varsayılan olarak RFC 7807 ProblemDetails döner
+// ({ type, title, status, errors }). Projenin TÜM hataları { error }
+// biçiminde ve istemciler bunu okuyor (frontend/app/api.ts → errorData.error).
+// Biçim korunmazsa kullanıcı "HTTP error! status: 400" görür ve neyin yanlış
+// olduğunu öğrenemez — yani doğrulama eklemek kullanıcı deneyimini bozar.
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = ctx =>
+    {
+        var ilkHata = ctx.ModelState
+            .Where(kv => kv.Value?.Errors.Count > 0)
+            .SelectMany(kv => kv.Value!.Errors)
+            .Select(e => e.ErrorMessage)
+            .FirstOrDefault(m => !string.IsNullOrWhiteSpace(m))
+            ?? "Gönderilen veri geçersiz.";
+
+        // Tüm hatalar da verilir (istemci isterse alan alan gösterebilir),
+        // ama 'error' alanı her zaman durur.
+        var tumHatalar = ctx.ModelState
+            .Where(kv => kv.Value?.Errors.Count > 0)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray());
+
+        return new BadRequestObjectResult(new { error = ilkHata, hatalar = tumHatalar });
+    };
+});
+
+// ─── KURAL-04: token iptal deposu ─────────────────────────────
+builder.Services.AddSingleton<ITokenIptalDeposu, BellekTokenIptalDeposu>();
+builder.Services.AddHostedService<TokenTemizlikServisi>();
+
+// ─── KURAL-07: kaynak tüketimi sınırları ──────────────────────
+// Hız sınırlama TEK merkezden kurulur. Elle yazılmış eski sayaç servisi emekliye
+// ayrıldı: sözlüğü hiç temizlenmiyordu (login_{ip} anahtarları IPv6 ile sınırsız
+// üretilebiliyordu) ve her çağrı yeri kendi sınır sayısını gövdesine gömüyordu.
+// Sınıfın adı bilinçli olarak yazılmadı: 'bu ad kod tabanında hiç geçmiyor'
+// tek satırlık bir grep ile doğrulanabilen bir bitti-kriteridir.
+builder.Services.HizSinirlamaEkle();
+
+// Hedef (e-posta) bazlı giriş sayacı — dağıtık credential-stuffing'e karşı.
+builder.Services.AddSingleton<HesapSayaci>();
+
+// Ağır iş (LLM analizi / PDF ayrıştırma) eşzamanlılık kapısı.
+builder.Services.AddSingleton<AgirIsKapisi>();
+
 // ─── Servisler ────────────────────────────────────────────────
-builder.Services.AddSingleton<TokenSecurityService>();
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddScoped<QuizGeneratorService>();
 builder.Services.AddScoped<PdfService>();
 builder.Services.AddScoped<TranslationService>();
 builder.Services.AddHttpClient();
+
+// ─── KURAL-07 İhlal 3: dış API çağrılarına zaman aşımı VE boyut sınırı ──
+// Adlandırılmamış CreateClient() 100 saniyelik varsayılan zaman aşımıyla gelir;
+// üstelik kod bazı yerlerde bunu 5 DAKİKAYA çıkarıyordu. 20 eşzamanlı analiz,
+// 5 dakika boyunca 20 bağlantı + 20 thread tutar. Tavan artık tek yerde.
+//
+// MaxResponseContentBufferSize: yanıt boyutu da bir kaynaktır. Sınırsız yanıt,
+// ele geçirilmiş ya da arızalı bir dış servisin belleği doldurmasına izin verir.
+builder.Services.AddHttpClient(HizSinirlari.GroqIstemcisi, c =>
+{
+    c.Timeout = HizSinirlari.GroqTavanZamanAsimi;
+    c.MaxResponseContentBufferSize = HizSinirlari.GroqEnCokYanitBayti;
+});
+
+builder.Services.AddHttpClient(HizSinirlari.GoogleIstemcisi, c =>
+{
+    c.Timeout = HizSinirlari.GoogleZamanAsimi;
+    c.MaxResponseContentBufferSize = HizSinirlari.GoogleEnCokYanitBayti;
+});
 
 // ─── CORS Configuration for Next.js & Admin Panel ────────────
 var corsOriginsEnv = Environment.GetEnvironmentVariable("CorsOrigins") 
@@ -101,17 +228,41 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     db.Database.Migrate();
+    // KURAL-02: yönetici hesabı koddan değil ortamdan tohumlanır.
+    await YoneticiTohumlayici.TohumlaAsync(db, app.Configuration, logger);
 }
 
 // ─── Middleware ───────────────────────────────────────────────
+
+// ─── KURAL-06: hata yakalama — ZİNCİRİN EN BAŞI ───────────────
+// Buradan SONRA gelen her katmanın istisnası yakalanır. UseRouting'in
+// ARKASINA konursa routing, model binding ve CORS istisnaları ASP.NET
+// Core'un varsayılan işleyicisine düşer ve Development'ta yığın izi döner.
+// scripts/guard/06-hata-log.sh bu sırayı denetliyor.
+app.HataYakalamayiKullan();
+
 app.UseStaticFiles();
 app.UseRouting();
 app.UseCors();
+
+// ─── KURAL-07: SIRA KRİTİKTİR ─────────────────────────────────
+// UseRateLimiter, UseAuthentication'dan SONRA gelmek ZORUNDA: bölümleme anahtarı
+// ctx.User'daki kullanıcı kimliğine bakıyor. Önce konursa User boş olur, bütün
+// sınırlar IP bazına düşer ve NAT arkasındaki bir okulun tüm öğrencileri
+// birbirinin kotasını tüketir. scripts/guard/07-hiz-siniri.sh bu sırayı denetler.
+//
+// UseAuthorization'dan ÖNCE gelmesi de bilinçlidir: sınırı aşan istek, yetki
+// kontrolünün ve controller'ın hiç çalıştırılmadan reddedilmesi gerekir.
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 // Map Web API Controllers
 app.MapControllers();
 
 app.Run();
+
+// Test projesinin WebApplicationFactory<Program> kullanabilmesi için.
+public partial class Program { }

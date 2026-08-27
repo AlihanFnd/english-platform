@@ -19,11 +19,30 @@ namespace EnglishReadingPlatform.Validation;
 /// <see cref="InvalidOperationException"/> fırlatılır ve
 /// IzinliDegerKullanimTests tüm kullanımları derleme sonrası tarar.
 /// </summary>
-[AttributeUsage(AttributeTargets.Property | AttributeTargets.Parameter)]
-public sealed class IzinliDegerAttribute : ValidationAttribute
+/// <summary>
+/// KURAL-05: Whitelist kümesini adıyla çözer. Hem <see cref="IzinliDegerAttribute"/>
+/// hem <see cref="OgeIzinliDegerAttribute"/> buradan okur — çözme mantığının iki
+/// kopyası olsaydı biri düzeltilip diğeri unutulurdu.
+/// </summary>
+internal static class IzinliDegerCozucu
 {
     private static readonly ConcurrentDictionary<string, string[]> Onbellek = new();
 
+    public static string[] Coz(string kumeAdi) => Onbellek.GetOrAdd(kumeAdi, ad =>
+    {
+        var alan = typeof(IzinliDegerler).GetField(ad, BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException(
+                $"IzinliDegerler.{ad} bulunamadı. Whitelist öznitelikleri yalnızca " +
+                $"IzinliDegerler içindeki bir string[] kümesine bağlanabilir.");
+
+        return alan.GetValue(null) as string[]
+            ?? throw new InvalidOperationException($"IzinliDegerler.{ad} bir string[] değil.");
+    });
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Parameter)]
+public sealed class IzinliDegerAttribute : ValidationAttribute
+{
     private readonly string _kumeAdi;
     private readonly bool _bosaIzinVer;
 
@@ -36,18 +55,7 @@ public sealed class IzinliDegerAttribute : ValidationAttribute
     /// <summary>Bağlandığı küme — testler ve guard için okunabilir.</summary>
     public string KumeAdi => _kumeAdi;
 
-    public string[] Kume => Coz(_kumeAdi);
-
-    private static string[] Coz(string kumeAdi) => Onbellek.GetOrAdd(kumeAdi, ad =>
-    {
-        var alan = typeof(IzinliDegerler).GetField(ad, BindingFlags.Public | BindingFlags.Static)
-            ?? throw new InvalidOperationException(
-                $"IzinliDegerler.{ad} bulunamadı. [IzinliDeger] yalnızca IzinliDegerler " +
-                $"içindeki bir string[] kümesine bağlanabilir.");
-
-        return alan.GetValue(null) as string[]
-            ?? throw new InvalidOperationException($"IzinliDegerler.{ad} bir string[] değil.");
-    });
+    public string[] Kume => IzinliDegerCozucu.Coz(_kumeAdi);
 
     protected override ValidationResult? IsValid(object? deger, ValidationContext ctx)
     {
@@ -58,7 +66,7 @@ public sealed class IzinliDegerAttribute : ValidationAttribute
                 ? ValidationResult.Success
                 : new ValidationResult($"{alanAdi} zorunludur.");
 
-        var izinliler = Coz(_kumeAdi);
+        var izinliler = IzinliDegerCozucu.Coz(_kumeAdi);
         var metin = deger.ToString()!;
 
         // Ordinal karşılaştırma bilinçli: kültüre duyarlı karşılaştırma

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using EnglishReadingPlatform.Validation;
 
 namespace EnglishReadingPlatform.Models
 {
@@ -7,8 +8,8 @@ namespace EnglishReadingPlatform.Models
     public class User
     {
         [Key] public int Id { get; set; }
-        [Required, MaxLength(100)] public string Username { get; set; } = "";
-        [Required, MaxLength(200)] public string Email { get; set; } = "";
+        [Required, MaxLength(AlanSinirlari.KullaniciAdi)] public string Username { get; set; } = "";
+        [Required, MaxLength(AlanSinirlari.Eposta)] public string Email { get; set; } = "";
         [Required] public string PasswordHash { get; set; } = "";
         public string Role { get; set; } = "student"; // "student" | "teacher" | "admin"
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -24,13 +25,13 @@ namespace EnglishReadingPlatform.Models
     public class Book
     {
         [Key] public int Id { get; set; }
-        [Required, MaxLength(200)] public string Title { get; set; } = "";
-        [MaxLength(200)] public string Author { get; set; } = "";
-        [MaxLength(500)] public string Description { get; set; } = "";
+        [Required, MaxLength(AlanSinirlari.KitapBasligi)] public string Title { get; set; } = "";
+        [MaxLength(AlanSinirlari.KitapYazari)] public string Author { get; set; } = "";
+        [MaxLength(AlanSinirlari.KitapAciklama)] public string Description { get; set; } = "";
         public string CoverColor { get; set; } = "#6366f1"; // fallback renk
         public string Language { get; set; } = "en";
-        [MaxLength(50)] public string Level { get; set; } = "A1"; // e.g. A1, A2, B1, B2, C1, C2, A1-A2, B1-B2 etc.
-        [MaxLength(50)] public string Category { get; set; } = "story"; // e.g. story, article
+        [MaxLength(AlanSinirlari.Seviye)] public string Level { get; set; } = "A1"; // e.g. A1, A2, B1, B2, C1, C2, A1-A2, B1-B2 etc.
+        [MaxLength(AlanSinirlari.Kategori)] public string Category { get; set; } = "story"; // e.g. story, article
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<Chapter> Chapters { get; set; } = new List<Chapter>();
@@ -43,7 +44,7 @@ namespace EnglishReadingPlatform.Models
         [Key] public int Id { get; set; }
         public int BookId { get; set; }
         [ForeignKey("BookId")] public Book Book { get; set; } = null!;
-        [Required, MaxLength(200)] public string Title { get; set; } = "";
+        [Required, MaxLength(AlanSinirlari.BolumBasligi)] public string Title { get; set; } = "";
         public int ChapterNumber { get; set; }
         [Required] public string Content { get; set; } = "";
     }
@@ -67,9 +68,9 @@ namespace EnglishReadingPlatform.Models
         [Key] public int Id { get; set; }
         public int UserId { get; set; }
         [ForeignKey("UserId")] public User User { get; set; } = null!;
-        [Required, MaxLength(200)] public string Word { get; set; } = "";
-        [MaxLength(500)] public string Translation { get; set; } = "";
-        [MaxLength(200)] public string Context { get; set; } = ""; // cümledeki bağlamı
+        [Required, MaxLength(AlanSinirlari.Kelime)] public string Word { get; set; } = "";
+        [MaxLength(AlanSinirlari.Ceviri)] public string Translation { get; set; } = "";
+        [MaxLength(AlanSinirlari.Baglam)] public string Context { get; set; } = ""; // cümledeki bağlamı
         public DateTime AddedAt { get; set; } = DateTime.UtcNow;
     }
 
@@ -116,8 +117,8 @@ namespace EnglishReadingPlatform.Models
     public class Group
     {
         [Key] public int Id { get; set; }
-        [Required, MaxLength(200)] public string Name { get; set; } = "";
-        [MaxLength(500)] public string Description { get; set; } = "";
+        [Required, MaxLength(AlanSinirlari.GrupAdi)] public string Name { get; set; } = "";
+        [MaxLength(AlanSinirlari.GrupAciklama)] public string Description { get; set; } = "";
         public int AdminUserId { get; set; }
         [ForeignKey("AdminUserId")] public User Admin { get; set; } = null!;
         public string InviteCode { get; set; } = "";
@@ -178,8 +179,8 @@ namespace EnglishReadingPlatform.Models
         [Key] public int Id { get; set; }
         public int UserId { get; set; }
         [ForeignKey("UserId")] public User User { get; set; } = null!;
-        [Required, MaxLength(50)] public string ActivityType { get; set; } = ""; // Login, Logout, PageView, Read, Quiz
-        [MaxLength(200)] public string Details { get; set; } = ""; // Hangi kitap, hangi bölüm vb.
+        [Required, MaxLength(AlanSinirlari.AktiviteTipi)] public string ActivityType { get; set; } = ""; // Login, Logout, PageView, Read, Quiz
+        [MaxLength(AlanSinirlari.AktiviteDetay)] public string Details { get; set; } = ""; // Hangi kitap, hangi bölüm vb.
         public int DurationSeconds { get; set; } = 0; // Bu aktivitede geçirilen süre
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
@@ -190,7 +191,7 @@ namespace EnglishReadingPlatform.Models
         [Key] public int Id { get; set; }
         public int UserId { get; set; }
         [ForeignKey("UserId")] public User User { get; set; } = null!;
-        [Required, MaxLength(1000)] public string Message { get; set; } = "";
+        [Required, MaxLength(AlanSinirlari.GeriBildirim)] public string Message { get; set; } = "";
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
@@ -198,10 +199,10 @@ namespace EnglishReadingPlatform.Models
     public class TranslationCache
     {
         [Key] public int Id { get; set; }
-        [Required, MaxLength(255)] public string QueryText { get; set; } = ""; // Çevrilmek istenen kelime/kalıp (küçük harfe normalize edilmiş)
+        [Required, MaxLength(AlanSinirlari.OnbellekSorgusu)] public string QueryText { get; set; } = ""; // Çevrilmek istenen kelime/kalıp (küçük harfe normalize edilmiş)
         public string? ContextText { get; set; } // İçinde geçtiği cümle (küçük harfe normalize edilmiş)
         [Required] public string Translation { get; set; } = ""; // Groq tarafından dönülen çeviri/açıklama
-        [Required, MaxLength(50)] public string WordType { get; set; } = "default"; // Kelime türü
+        [Required, MaxLength(AlanSinirlari.OnbellekTipi)] public string WordType { get; set; } = "default"; // Kelime türü
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

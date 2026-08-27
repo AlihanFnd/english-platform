@@ -66,8 +66,9 @@ export default function GroupsPage() {
       const data = await api.getGroupDetails(id);
       setGroupDetails(data);
       setSelectedGroupId(id);
+      // KURAL-08: allBooks yalnızca grup sahibine dolu gelir ve alan adı bookId'dir.
       if (data.allBooks.length > 0) {
-        setAssignBookId(data.allBooks[0].id);
+        setAssignBookId(data.allBooks[0].bookId);
       }
     } catch (err: any) {
       alert(err.message || 'Grup detayları yüklenemedi.');
@@ -140,7 +141,11 @@ export default function GroupsPage() {
 
   // DETAILED VIEW FOR GROUP
   if (selectedGroupId && groupDetails) {
-    const isTeacher = user?.role === 'teacher' || groupDetails.group.adminUserId === user?.id;
+    // KURAL-08: sunucu artık başka kullanıcıların kimliğini değil, isteği yapanın
+    // sahiplik durumunu döndürüyor. Kitap atama yetkisi zaten SAHİPLİĞE bağlı
+    // (POST /api/groups/assignbook sahibi olmayana 403 verir) — arayüz de aynı
+    // koşulu kullanmalı, yoksa öğretmen rolündeki bir üyeye çalışmayan form gösterilir.
+    const isOwner = groupDetails.group.sahipMiyim;
     return (
       <div className="space-y-8">
         {/* Detail Header */}
@@ -155,19 +160,27 @@ export default function GroupsPage() {
             <ArrowLeft className="h-4 w-4" /> Gruplara Geri Dön
           </button>
           
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider">Davet Kodu:</span>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-container border border-outline-variant text-primary font-mono font-bold text-sm">
-              <span>{groupDetails.group.inviteCode}</span>
-              <button
-                onClick={() => copyToClipboard(groupDetails.group.inviteCode)}
-                className="hover:text-primary transition-all ml-1"
-                title="Kodu Kopyala"
-              >
-                {copiedCode ? <Check className="h-4 w-4 text-primary" /> : <Clipboard className="h-4 w-4" />}
-              </button>
+          {/* KURAL-08: davet kodu yalnızca grup sahibine döner; diğerlerine null
+              gelir. Kodu boş bir kutuda göstermek yerine nedenini yazıyoruz. */}
+          {groupDetails.group.inviteCode ? (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider">Davet Kodu:</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-container border border-outline-variant text-primary font-mono font-bold text-sm">
+                <span>{groupDetails.group.inviteCode}</span>
+                <button
+                  onClick={() => copyToClipboard(groupDetails.group.inviteCode!)}
+                  className="hover:text-primary transition-all ml-1"
+                  title="Kodu Kopyala"
+                >
+                  {copiedCode ? <Check className="h-4 w-4 text-primary" /> : <Clipboard className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <span className="text-xs text-on-surface-variant font-medium">
+              Davet kodunu yalnızca grup yöneticisi görebilir.
+            </span>
+          )}
         </div>
 
         <div className="glass-card rounded-3xl p-6 md:p-8">
@@ -179,7 +192,7 @@ export default function GroupsPage() {
           {/* Members / Assign Book Sidebar */}
           <div className="space-y-6 lg:col-span-1">
             {/* Assign Book Form for Teacher */}
-            {isTeacher && (
+            {isOwner && (
               <div className="glass-card rounded-2xl p-6 space-y-4">
                 <h3 className="text-md font-bold text-on-surface flex items-center gap-2">
                   <BookOpen className="h-5 w-5 text-primary" /> Kitap Ata
@@ -191,7 +204,7 @@ export default function GroupsPage() {
                     className="glass-input block w-full px-4 py-3 rounded-xl text-sm"
                   >
                     {groupDetails.allBooks.map((b) => (
-                      <option key={b.id} value={b.id} className="bg-background text-on-surface">
+                      <option key={b.bookId} value={b.bookId} className="bg-background text-on-surface">
                         {b.title}
                       </option>
                     ))}
@@ -209,10 +222,10 @@ export default function GroupsPage() {
             {/* Members List */}
             <div className="glass-card rounded-2xl p-6 space-y-4">
               <h3 className="text-md font-bold text-on-surface flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" /> Üyeler ({groupDetails.group.members.length})
+                <Users className="h-5 w-5 text-primary" /> Üyeler ({groupDetails.members.length})
               </h3>
               <div className="space-y-3 divide-y divide-outline-variant/30 max-h-[300px] overflow-y-auto pr-1">
-                {groupDetails.group.members.map((member) => (
+                {groupDetails.members.map((member) => (
                   <div key={member.userId} className="flex items-center justify-between pt-3 first:pt-0">
                     <div className="flex items-center gap-2">
                       <div className="h-7 w-7 rounded-lg bg-primary/10 border border-primary/25 flex items-center justify-center text-xs font-bold text-primary">

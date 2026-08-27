@@ -1,10 +1,16 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using EnglishReadingPlatform.Authorization;
+using EnglishReadingPlatform.Contracts;
 using EnglishReadingPlatform.Data;
 using EnglishReadingPlatform.Models;
+using EnglishReadingPlatform.RateLimiting;
 using EnglishReadingPlatform.Services;
+using EnglishReadingPlatform.Validation;
+using System.ComponentModel.DataAnnotations;
 
 namespace EnglishReadingPlatform.Controllers
 {
@@ -20,62 +26,72 @@ namespace EnglishReadingPlatform.Controllers
             _db = db;
         }
 
-        private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        // KURAL-05: claim de bir GİRDİDİR. int.Parse(...!) bozuk bir claim'de
+        // FormatException/NullReferenceException fırlatıp 500 üretirdi.
+        private int CurrentUserId => this.KullaniciId();
 
         // GET /api/groups
         [HttpGet]
         public async Task<IActionResult> Index()
         {
             var userId = CurrentUserId;
+
+            // KURAL-08: davet kodu SORGUDA koşullanır. "Önce hepsini çek, sonra
+            // gereksizi ayıkla" deseni unutulmaya açıktır; koşul projeksiyonda
+            // olduğunda kod, sahibi olmayan kullanıcı için veritabanından hiç okunmaz.
+            // Include + bellek içi Select yerine .Select() projeksiyonu: yalnızca
+            // gereken kolonlar SQL'e iner, entity graf'ı belleğe hiç gelmez.
             var myGroups = await _db.GroupMembers
                 .Where(gm => gm.UserId == userId)
-                .Include(gm => gm.Group)
-                    .ThenInclude(g => g.Members)
-                .Include(gm => gm.Group)
-                    .ThenInclude(g => g.BookAssignments)
-                        .ThenInclude(a => a.Book)
                 .Select(gm => gm.Group)
+                .Select(g => new GrupOzetYaniti(
+                    g.Id,
+                    g.Name,
+                    g.Description,
+                    g.AdminUserId == userId ? g.InviteCode : null,
+                    g.AdminUserId == userId,
+                    g.Members.Count,
+                    g.BookAssignments
+                        .Select(a => new AtananKitapYaniti(a.BookId, a.Book.Title))
+                        .ToList()))
                 .ToListAsync();
 
             var adminGroups = await _db.Groups
                 .Where(g => g.AdminUserId == userId)
-                .Include(g => g.Members)
-                    .ThenInclude(m => m.User)
-                .Include(g => g.BookAssignments)
-                    .ThenInclude(a => a.Book)
+                .Select(g => new GrupOzetYaniti(
+                    g.Id,
+                    g.Name,
+                    g.Description,
+                    // Bu sorgu zaten yalnızca sahibi olunan grupları döner; koşul yine de
+                    // SATIR İÇİNDE tekrarlanıyor ki kapı (08-veri-minimizasyonu.sh)
+                    // "koşulsuz davet kodu" aramasını makineyle yapabilsin. Bir gün
+                    // yukarıdaki Where kaldırılırsa kod yine de sızmaz.
+                    g.AdminUserId == userId ? g.InviteCode : null,
+                    true,
+                    g.Members.Count,
+                    g.BookAssignments
+                        .Select(a => new AtananKitapYaniti(a.BookId, a.Book.Title))
+                        .ToList()))
                 .ToListAsync();
 
-            return Ok(new
-            {
-                MyGroups = myGroups.Select(g => new
-                {
-                    g.Id,
-                    g.Name,
-                    g.Description,
-                    g.InviteCode,
-                    MembersCount = g.Members.Count,
-                    Assignments = g.BookAssignments.Select(a => new { a.BookId, a.Book.Title })
-                }),
-                AdminGroups = adminGroups.Select(g => new
-                {
-                    g.Id,
-                    g.Name,
-                    g.Description,
-                    g.InviteCode,
-                    MembersCount = g.Members.Count,
-                    Assignments = g.BookAssignments.Select(a => new { a.BookId, a.Book.Title })
-                })
-            });
+            return Ok(new { MyGroups = myGroups, AdminGroups = adminGroups });
         }
 
         public class CreateGroupRequest
         {
+            [Required(ErrorMessage = "Grup adı zorunludur.")]
+            [StringLength(AlanSinirlari.GrupAdi, MinimumLength = 1,
+                ErrorMessage = "Grup adı en fazla {1} karakter olabilir.")]
             public string Name { get; set; } = "";
+
+            [StringLength(AlanSinirlari.GrupAciklama,
+                ErrorMessage = "Açıklama en fazla {1} karakter olabilir.")]
             public string Description { get; set; } = "";
         }
 
         // POST /api/groups
         [HttpPost]
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ — sınırsız grup açılabiliyordu
         public async Task<IActionResult> Create([FromBody] CreateGroupRequest req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.Name))
@@ -85,8 +101,8 @@ namespace EnglishReadingPlatform.Controllers
 
             var group = new Group
             {
-                Name = req.Name.Trim(),
-                Description = req.Description?.Trim() ?? "",
+                Name = req.Name.KirpEnCok(AlanSinirlari.GrupAdi),
+                Description = req.Description.KirpEnCok(AlanSinirlari.GrupAciklama),
                 AdminUserId = CurrentUserId,
                 InviteCode = Guid.NewGuid().ToString("N")[..8].ToUpper(),
                 CreatedAt = DateTime.UtcNow
@@ -105,16 +121,32 @@ namespace EnglishReadingPlatform.Controllers
             });
             await _db.SaveChangesAsync();
 
-            return Ok(group);
+            // KURAL-08: entity yerine DTO. Group entity'si AdminUserId ve Admin
+            // navigasyonunu taşır; kuruculuk bilgisi bayrakla, kimlikle değil verilir.
+            return Ok(new GrupOzetYaniti(
+                group.Id, group.Name, group.Description,
+                GrupKapsami.DavetKodu(group, CurrentUserId),   // kurucu = sahip, kodu görmeli
+                true,
+                1,
+                Array.Empty<AtananKitapYaniti>()));
         }
 
         public class JoinGroupRequest
         {
+            // Üretilen kod 8 karakterlik hex; 32 rahat bir üst sınır.
+            [Required(ErrorMessage = "Davet kodu zorunludur.")]
+            [StringLength(AlanSinirlari.DavetKodu, MinimumLength = 1,
+                ErrorMessage = "Davet kodu en fazla {1} karakter olabilir.")]
             public string InviteCode { get; set; } = "";
         }
 
         // POST /api/groups/join
+        //
+        // KURAL-07 ANA REGRESYON: burada HİÇ sınır yoktu. Davet kodu 8 karakterlik
+        // hex (Guid'in ilk 8 hanesi) — sınırsız deneme hakkıyla kaba kuvvetle
+        // bulunabilir ve saldırgan bir sınıfın grubuna sızabilirdi.
         [HttpPost("join")]
+        [EnableRateLimiting(HizSinirlari.DavetKodu)]   // KURAL-07: YENİ KORUMA
         public async Task<IActionResult> Join([FromBody] JoinGroupRequest req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.InviteCode))
@@ -147,78 +179,99 @@ namespace EnglishReadingPlatform.Controllers
 
         // GET /api/groups/{id}
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetGroupDetails(int id)
+        public async Task<IActionResult> GetGroupDetails([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id)
         {
-            var userId = CurrentUserId;
-            var group = await _db.Groups
-                .Include(g => g.Members).ThenInclude(m => m.User)
-                .Include(g => g.BookAssignments).ThenInclude(a => a.Book)
+            var kullaniciId = CurrentUserId;
+
+            // TUZAK: BookAssignments Include EDİLMEZSE GrupKapsami.GorunurKitapIdleri
+            // boş liste döner, hiçbir ilerleme görünmez ve "düzelttim" sanılır.
+            // Members da GorebilirMi için şart.
+            //
+            // KURAL-08: ThenInclude(m => m.User) KASTEN YOK. Onunla birlikte üretilen
+            // SQL, her üyenin User satırını — PasswordHash kolonu dâhil — sunucu
+            // belleğine çekiyordu. Yanıta girmiyordu ama minimizasyon "sızdırma"
+            // değil "gereksizi hiç alma" kuralıdır. Kullanıcı adları aşağıda ayrı
+            // bir projeksiyonla, yalnızca Username kolonu okunarak alınıyor.
+            var grup = await _db.Groups
+                .Include(g => g.Members)           // UserId + Role: yetki ve kapsam için yeter
+                .Include(g => g.BookAssignments)   // BookId: kapsam için yeter
                 .FirstOrDefaultAsync(g => g.Id == id);
 
-            if (group == null) return NotFound(new { error = "Grup bulunamadı." });
+            if (grup == null) return NotFound(new { error = "Grup bulunamadı." });
 
-            // Sadece grup üyeleri veya admin erişebilir
-            var isMember = group.Members.Any(m => m.UserId == userId) || group.AdminUserId == userId;
-            if (!isMember) return Forbid();
+            // KURAL-03: kim erişebilir. KURAL-08: eriştiğinde ne görür.
+            if (!GrupKapsami.GorebilirMi(grup, kullaniciId)) return Forbid();
 
-            var books = await _db.Books.ToListAsync();
-            
-            // Üye ilerlemeleri
-            var memberIds = group.Members.Select(m => m.UserId).ToList();
-            var progresses = await _db.ReadingProgresses
-                .Where(p => memberIds.Contains(p.UserId))
-                .Include(p => p.Book)
-                .Include(p => p.User)
+            // ── KURAL-08 KAPSAM FİLTRESİ ────────────────────────────────
+            // Eskiden burada YALNIZCA "memberIds.Contains(...)" vardı: gruba katılan
+            // herkes, diğer üyelerin gruptan bağımsız KİŞİSEL okuma geçmişini
+            // görüyordu. Davet kodunu ele geçiren biri tüm sınıfın verisini
+            // toplayabilirdi. Artık yalnızca gruba ATANMIŞ kitaplar görünür.
+            var gorunurKitaplar = GrupKapsami.GorunurKitapIdleri(grup);
+            var uyeIdleri = grup.Members.Select(m => m.UserId).ToList();
+            var sahipMi = GrupKapsami.SahipMi(grup, kullaniciId);
+
+            var ilerlemeler = await _db.ReadingProgresses
+                .Where(p => uyeIdleri.Contains(p.UserId)
+                         && gorunurKitaplar.Contains(p.BookId))          // ← KAPSAM
+                .Select(p => new GrupIlerlemeYaniti(
+                    p.UserId, p.User.Username, p.Book.Title,
+                    p.ProgressPercent, p.CurrentChapter, p.LastRead))
                 .ToListAsync();
 
-            // Quiz sonuçları
-            var quizResults = await _db.QuizResults
-                .Where(r => memberIds.Contains(r.UserId))
-                .Include(r => r.User)
-                .Include(r => r.Quiz).ThenInclude(q => q.Book)
+            var quizSonuclari = await _db.QuizResults
+                .Where(r => uyeIdleri.Contains(r.UserId)
+                         && gorunurKitaplar.Contains(r.Quiz.BookId))     // ← KAPSAM
+                .Select(r => new GrupQuizYaniti(
+                    r.User.Username, r.Quiz.Book.Title, r.Quiz.Title,
+                    r.Score, r.TotalQuestions, r.TakenAt))
                 .ToListAsync();
 
-            return Ok(new
-            {
-                Group = new
-                {
-                    group.Id,
-                    group.Name,
-                    group.Description,
-                    group.InviteCode,
-                    group.AdminUserId,
-                    Members = group.Members.Select(m => new { m.UserId, m.User.Username, m.Role })
-                },
-                AllBooks = books.Select(b => new { b.Id, b.Title }),
-                Progresses = progresses.Select(p => new
-                {
-                    p.UserId,
-                    p.User.Username,
-                    BookTitle = p.Book.Title,
-                    p.ProgressPercent,
-                    p.CurrentChapter,
-                    p.LastRead
-                }),
-                QuizResults = quizResults.Select(r => new
-                {
-                    r.User.Username,
-                    BookTitle = r.Quiz.Book.Title,
-                    QuizTitle = r.Quiz.Title,
-                    r.Score,
-                    r.TotalQuestions,
-                    r.TakenAt
-                })
-            });
+            // AllBooks kasten kapsam DIŞIDIR: sahibin kitap atayabilmesi için tüm
+            // katalogu görmesi gerekir ve başlıklar zaten /api/books ile açıktır.
+            // Ama sıradan üyenin bu listeye grup bağlamında ihtiyacı yok — atama
+            // formunu yalnızca sahip görüyor.
+            var tumKitaplar = sahipMi
+                ? await _db.Books
+                    .OrderBy(b => b.Title)
+                    .Select(b => new AtananKitapYaniti(b.Id, b.Title))
+                    .ToListAsync()
+                : new List<AtananKitapYaniti>();
+
+            // Üye adları: yalnızca Username kolonu okunur (PasswordHash asla).
+            var uyeler = await _db.GroupMembers
+                .Where(m => m.GroupId == grup.Id)
+                .Select(m => new UyeYaniti(m.UserId, m.User.Username, m.Role))
+                .ToListAsync();
+
+            var atananKitaplar = await _db.GroupBookAssignments
+                .Where(a => a.GroupId == grup.Id)
+                .Select(a => new AtananKitapYaniti(a.BookId, a.Book.Title))
+                .ToListAsync();
+
+            var ozet = new GrupOzetYaniti(
+                grup.Id, grup.Name, grup.Description,
+                GrupKapsami.DavetKodu(grup, kullaniciId),   // ← yalnızca sahibe
+                sahipMi,
+                grup.Members.Count,
+                atananKitaplar);
+
+            return Ok(new GrupDetayYaniti(
+                ozet, uyeler, tumKitaplar, ilerlemeler, quizSonuclari));
         }
 
         public class AssignBookRequest
         {
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz grup.")]
             public int GroupId { get; set; }
+
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kitap.")]
             public int BookId { get; set; }
         }
 
         // POST /api/groups/assignbook
         [HttpPost("assignbook")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ
         public async Task<IActionResult> AssignBook([FromBody] AssignBookRequest req)
         {
             if (req == null) return BadRequest(new { error = "Geçersiz veri." });
@@ -250,26 +303,62 @@ namespace EnglishReadingPlatform.Controllers
     public class TranslateController : ControllerBase
     {
         private readonly TranslationService _transService;
-        private readonly TokenSecurityService _tokenSecurity;
         private readonly AppDbContext _db;
 
-        public TranslateController(TranslationService transService, TokenSecurityService tokenSecurity, AppDbContext db)
+        public TranslateController(TranslationService transService, AppDbContext db)
         {
             _transService = transService;
-            _tokenSecurity = tokenSecurity;
             _db = db;
         }
 
-        private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        // KURAL-05: claim de bir GİRDİDİR. int.Parse(...!) bozuk bir claim'de
+        // FormatException/NullReferenceException fırlatıp 500 üretirdi.
+        private int CurrentUserId => this.KullaniciId();
 
-        public record TReq(string Text, string? Context = null, bool UseAI = false);
+        // KURAL-05: tek paylasilan record uc ucta birden kullaniliyordu. Tek sinir
+        // koymak ya kelime ucuna 20.000 karakter kabul ettirir ya analiz ucunu
+        // 300'de keser. Ayrica konumsal record parametrelerine oznitelik yazmak
+        // ([property: ...]) okunmaz; dogrulanacak DTO'lar normal sinif yapildi.
+
+        /// <summary>POST /api/translate/word — tek kelime veya kısa kalıp.</summary>
+        public class KelimeCeviriIstegi
+        {
+            // Sınır TranslationCache.QueryText kolonundan (255) küçük seçildi:
+            // bu değer önbelleğe ANAHTAR olarak yazılıyor.
+            [Required(ErrorMessage = "Metin zorunludur.")]
+            [StringLength(AlanSinirlari.CeviriKelime, MinimumLength = 1,
+                ErrorMessage = "Kelime en fazla {1} karakter olabilir.")]
+            public string Text { get; set; } = "";
+
+            [StringLength(AlanSinirlari.CeviriBaglami,
+                ErrorMessage = "Bağlam cümlesi en fazla {1} karakter olabilir.")]
+            public string? Context { get; set; }
+
+            public bool UseAI { get; set; }
+        }
+
+        /// <summary>POST /api/translate/sentence — tek cümle.</summary>
+        public class CumleCeviriIstegi
+        {
+            [Required(ErrorMessage = "Metin zorunludur.")]
+            [StringLength(AlanSinirlari.CeviriMetni, MinimumLength = 1,
+                ErrorMessage = "Metin en fazla {1} karakter olabilir.")]
+            public string Text { get; set; } = "";
+        }
+
+        /// <summary>POST /api/translate/analyze — sayfa/paragraf analizi (LLM maliyeti).</summary>
+        public class MetinAnaliziIstegi
+        {
+            [Required(ErrorMessage = "Metin zorunludur.")]
+            [StringLength(AlanSinirlari.CeviriMetni, MinimumLength = 1,
+                ErrorMessage = "Metin en fazla {1} karakter olabilir.")]
+            public string Text { get; set; } = "";
+        }
 
         [HttpPost("word")]
-        public async Task<IActionResult> Word([FromBody] TReq req)
+        [EnableRateLimiting(HizSinirlari.Ceviri)]   // KURAL-07: elle yazılan sayaçtan devralındı
+        public async Task<IActionResult> Word([FromBody] KelimeCeviriIstegi req)
         {
-            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_trans", 100))
-                return StatusCode(429, new { error = "Dakika başına çeviri limitini aştınız." });
-
             if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "" });
 
             var clean = System.Text.RegularExpressions.Regex.Replace(req.Text, @"[^a-zA-Z0-9'\ -]", "").Trim().ToLower();
@@ -297,7 +386,12 @@ namespace EnglishReadingPlatform.Controllers
                     {
                         UserId = CurrentUserId,
                         ActivityType = "ai_word_translation",
-                        Details = $"Word: {clean}",
+                        // KURAL-06: kullanıcının HANGİ kelimeleri bilmediği bir öğrenme
+                        // profilidir — kişisel veridir ve kalıcı olarak saklanmasının
+                        // hiçbir işlevsel karşılığı yoktu. Kota sayacı yalnızca
+                        // ActivityType'a bakıyor (yukarıdaki CountAsync), Details'e değil.
+                        // KURAL-05: sabit metin olduğu için varchar(200) taşması da imkânsız.
+                        Details = "ai_kelime_cevirisi",
                         Timestamp = DateTime.UtcNow
                     };
                     _db.UserActivityLogs.Add(activityLog);
@@ -316,31 +410,32 @@ namespace EnglishReadingPlatform.Controllers
         }
 
         [HttpPost("sentence")]
-        public async Task<IActionResult> Sentence([FromBody] TReq req)
+        [EnableRateLimiting(HizSinirlari.Ceviri)]   // KURAL-07: word ucuyla AYNI kovayı paylaşır
+        public async Task<IActionResult> Sentence([FromBody] CumleCeviriIstegi req)
         {
-            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_trans", 100))
-                return StatusCode(429, new { error = "Dakika başına çeviri limitini aştınız." });
+            if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "", ceviriBasarili = true, kaynak = "yok" });
 
-            if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "" });
-            var tr = await _transService.TranslateSentenceAsync(req.Text.Trim());
-            return Ok(new { translation = tr });
+            // KURAL-06: çeviri başarısızsa servis ARTIK bunu söylüyor. Eskiden
+            // İngilizce metin, Türkçe çevirisiymiş gibi 200 ile geri dönüyordu.
+            var sonuc = await _transService.TranslateSentenceAsync(req.Text.Trim());
+            return Ok(new { translation = sonuc.Metin, ceviriBasarili = sonuc.Basarili, kaynak = sonuc.Kaynak });
         }
 
         [HttpPost("analyze")]
-        public async Task<IActionResult> Analyze([FromBody] TReq req)
+        [EnableRateLimiting(HizSinirlari.AgirAnaliz)]   // KURAL-07: LLM maliyeti — en dar kova
+        public async Task<IActionResult> Analyze([FromBody] MetinAnaliziIstegi req)
         {
-            if (_tokenSecurity.IsRateLimitExceeded($"user_{CurrentUserId}_analyze", 20))
-                return StatusCode(429, new { error = "Dakika başına yapay zeka analiz limitini aştınız. Lütfen biraz bekleyip tekrar deneyin." });
-
             if (string.IsNullOrWhiteSpace(req.Text)) return BadRequest(new { error = "Metin boş." });
-            try
-            {
-                var sentences = await _transService.AnalyzeTextAsync(req.Text.Trim());
-                if (!sentences.Any()) return BadRequest(new { error = "Metinde cümle bulunamadı." });
 
-                return Ok(new { sentences });
-            }
-            catch (Exception ex) { return StatusCode(500, new { error = "Çeviri hatası: " + ex.Message }); }
+            // KURAL-06: buradaki catch, TranslationService'in fırlattığı
+            // $"HTTP {durum} from Groq: {errContent}" metnini — yani Groq'un HAM
+            // yanıt gövdesini — doğrudan istemciye yazıyordu. İstisna artık merkezî
+            // HataYakalamaMiddleware'e gidiyor: kullanıcı genel mesaj + olay kimliği
+            // alıyor, ayrıntı yalnızca sunucu loguna düşüyor.
+            var sentences = await _transService.AnalyzeTextAsync(req.Text.Trim());
+            if (!sentences.Any()) return BadRequest(new { error = "Metinde cümle bulunamadı." });
+
+            return Ok(new { sentences });
         }
     }
 
@@ -358,7 +453,9 @@ namespace EnglishReadingPlatform.Controllers
             _db = db;
         }
 
-        private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        // KURAL-05: claim de bir GİRDİDİR. int.Parse(...!) bozuk bir claim'de
+        // FormatException/NullReferenceException fırlatıp 500 üretirdi.
+        private int CurrentUserId => this.KullaniciId();
 
         // GET /api/dashboard/stats
         [HttpGet("stats")]
@@ -368,11 +465,20 @@ namespace EnglishReadingPlatform.Controllers
             var user = await _db.Users.FindAsync(userId);
             if (user == null) return NotFound(new { error = "Kullanıcı bulunamadı." });
 
+            // KURAL-08: Include(p => p.Book) tüm Book satırını (açıklama dâhil)
+            // belleğe çekiyordu; gereken tek alan başlıktı.
             var recentProgress = await _db.ReadingProgresses
                 .Where(p => p.UserId == userId)
-                .Include(p => p.Book)
                 .OrderByDescending(p => p.LastRead)
                 .Take(3)
+                .Select(p => new
+                {
+                    p.BookId,
+                    BookTitle = p.Book.Title,
+                    p.ProgressPercent,
+                    p.CurrentChapter,
+                    p.LastRead
+                })
                 .ToListAsync();
 
             var wordCount = await _db.WordListItems.CountAsync(w => w.UserId == userId);
@@ -380,15 +486,10 @@ namespace EnglishReadingPlatform.Controllers
 
             return Ok(new
             {
-                User = new { user.Id, user.Username, user.Email, user.Role },
-                RecentProgress = recentProgress.Select(p => new
-                {
-                    p.BookId,
-                    BookTitle = p.Book.Title,
-                    p.ProgressPercent,
-                    p.CurrentChapter,
-                    p.LastRead
-                }),
+                // KURAL-08: kendi bilgisi — DTO ile. Entity'nin PasswordHash'i
+                // buraya kazayla bile giremez.
+                User = new KullaniciYaniti(user.Id, user.Username, user.Email, user.Role),
+                RecentProgress = recentProgress,
                 WordCount = wordCount,
                 QuizCount = quizCount
             });
@@ -399,20 +500,29 @@ namespace EnglishReadingPlatform.Controllers
         public async Task<IActionResult> OCR()
         {
             var userId = CurrentUserId;
-            var records = await _db.OcrRecords
+
+            // KURAL-08: OcrRecord entity'si User navigasyonu ve ImagePath (sunucu
+            // dosya yolu) taşır. Projeksiyon SQL'e iner: o kolonlar hiç okunmaz.
+            var kayitlar = await _db.OcrRecords
                 .Where(r => r.UserId == userId)
                 .OrderByDescending(r => r.ScannedAt)
+                .Select(r => new OcrYaniti(r.Id, r.ExtractedText, r.ScannedAt))
                 .ToListAsync();
-            return Ok(records);
+            return Ok(kayitlar);
         }
 
         public class SaveOcrRequest
         {
+            // Kolon 'text' — taşma yok, ama sınırsız gövde bellek/depolama tüketir.
+            [Required(ErrorMessage = "Metin boş olamaz.")]
+            [StringLength(AlanSinirlari.OcrMetni, MinimumLength = 1,
+                ErrorMessage = "Metin en fazla {1} karakter olabilir.")]
             public string Text { get; set; } = "";
         }
 
         // POST /api/dashboard/ocr
         [HttpPost("ocr")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ — 50.000 karakterlik metin sınırsız kaydedilebiliyordu
         public async Task<IActionResult> SaveOcr([FromBody] SaveOcrRequest req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.Text))
@@ -430,7 +540,9 @@ namespace EnglishReadingPlatform.Controllers
 
             _db.OcrRecords.Add(record);
             await _db.SaveChangesAsync();
-            return Ok(record);
+
+            // KURAL-08: entity yerine DTO — ImagePath ve User navigasyonu dönmez.
+            return Ok(new OcrYaniti(record.Id, record.ExtractedText, record.ScannedAt));
         }
     }
 }

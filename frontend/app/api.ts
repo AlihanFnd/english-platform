@@ -24,6 +24,9 @@ export interface Book {
   level?: string;
   category?: string;
   chaptersCount?: number;
+  // KURAL-08: sayfa modundaki kitapların chaptersCount'u 0'dır. Bu alan olmadan
+  // arayüz onları "1 Bölüm" diye gösteriyordu.
+  pagesCount?: number;
   progress?: number;
   currentChapter?: number;
 }
@@ -39,7 +42,10 @@ export interface Group {
   id: number;
   name: string;
   description: string;
-  inviteCode: string;
+  // KURAL-08: davet kodunu yalnızca grubun sahibi görür. Sahibi olmayan
+  // kullanıcı için sunucu null döner — tip bunu yansıtmak zorunda.
+  inviteCode: string | null;
+  sahipMiyim: boolean;
   membersCount: number;
   assignments: Array<{ bookId: number; title: string }>;
 }
@@ -51,15 +57,14 @@ export interface GroupMember {
 }
 
 export interface GroupDetails {
-  group: {
-    id: number;
-    name: string;
-    description: string;
-    inviteCode: string;
-    adminUserId: number;
-    members: GroupMember[];
-  };
-  allBooks: Array<{ id: number; title: string }>;
+  // KURAL-08: yanıt biçimi GrupDetayYaniti'dır.
+  //  - adminUserId KALDIRILDI: başka bir kullanıcının kimliği yerine türetilmiş
+  //    sahipMiyim bayrağı gelir.
+  //  - members üst seviyeye taşındı.
+  //  - allBooks yalnızca grup sahibine dolu gelir (atama formu için).
+  group: Group;
+  members: GroupMember[];
+  allBooks: Array<{ bookId: number; title: string }>;
   progresses: Array<{
     userId: number;
     username: string;
@@ -104,6 +109,16 @@ export interface OcrRecord {
   id: number;
   extractedText: string;
   scannedAt: string;
+}
+
+/**
+ * KURAL-05 — Taksonomi (seviye/kategori/dil) tek kaynaktan gelir.
+ * Bu listeler backend'deki IzinliDegerler whitelist'inin ta kendisidir.
+ */
+export interface Taxonomy {
+  levels: string[];
+  categories: string[];
+  languages: string[];
 }
 
 // Simple fetch wrapper
@@ -219,14 +234,21 @@ export const api = {
       synonyms?: string; 
     }>('/translate/word', 'POST', { text, context, useAI }),
   
+  // KURAL-06: ceviriBasarili=false ise 'translation' GERÇEK bir çeviri değildir —
+  // çeviri servisi patlamış, özgün İngilizce metin geri dönmüştür. Arayüz bunu
+  // göstermezse kullanıcı İngilizce cümleyi Türkçe çevirisi sanır.
   translateSentence: (text: string) =>
-    apiRequest<{ translation: string }>('/translate/sentence', 'POST', { text }),
+    apiRequest<{ translation: string; ceviriBasarili: boolean; kaynak: string }>(
+      '/translate/sentence', 'POST', { text }),
   
   analyzeText: (text: string) =>
     apiRequest<{
       sentences: Array<{
         original: string;
         translation: string;
+        // Eski önbelleklenmiş kayıtlarda bu alan YOKTUR; okuyan taraf
+        // eksikse 'true' varsaymalıdır (geçmiş veriyi hatalı işaretleme).
+        ceviriBasarili?: boolean;
         words: Array<{
           word: string;
           translation: string;
@@ -271,4 +293,8 @@ export const api = {
 
   submitFeedback: (message: string) =>
     apiRequest<{ success: boolean }>('/feedback', 'POST', { message }),
+
+  // KURAL-05: seviye/kategori listeleri artık istemcide kopyalanmaz.
+  getTaxonomy: () =>
+    apiRequest<Taxonomy>('/books/taxonomy'),
 };

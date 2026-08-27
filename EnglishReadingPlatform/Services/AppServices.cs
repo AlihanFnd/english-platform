@@ -9,12 +9,13 @@ namespace EnglishReadingPlatform.Services
     public class JwtService
     {
         private readonly IConfiguration _config;
-        private readonly TokenSecurityService _tokenSecurity;
 
-        public JwtService(IConfiguration config, TokenSecurityService tokenSecurity)
+        // KURAL-04: elle token doğrulayan ölü metot silindi — hiçbir yerden çağrılmıyordu
+        // ve içindeki iptal kontrolü ham token anahtarıyla çalıştığı için hiç eşleşmiyordu.
+        // Doğrulama tek noktadan, JwtBearer ara katmanı üzerinden yapılır.
+        public JwtService(IConfiguration config)
         {
             _config = config;
-            _tokenSecurity = tokenSecurity;
         }
 
         public string GenerateToken(User user)
@@ -53,43 +54,6 @@ namespace EnglishReadingPlatform.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        public ClaimsPrincipal? ValidateToken(string token)
-        {
-            try
-            {
-                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
-                var handler = new JwtSecurityTokenHandler();
-                var principal = handler.ValidateToken(token, new TokenValidationParameters
-                {
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = key,
-                    ValidateIssuer = true,
-                    ValidIssuer = _config["Jwt:Issuer"],
-                    ValidateAudience = true,
-                    ValidAudience = _config["Jwt:Audience"],
-                    ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero
-                }, out var validatedToken);
-
-                // Check revocation
-                var jtiClaim = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
-                var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (int.TryParse(userIdClaim, out int userId))
-                {
-                    var iat = validatedToken.ValidFrom;
-                    if (_tokenSecurity.IsTokenRevoked(jtiClaim ?? token, userId, iat))
-                    {
-                        return null; // Token revoked!
-                    }
-                }
-
-                return principal;
-            }
-            catch
-            {
-                return null;
-            }
-        }
     }
 
     public class QuizGeneratorService

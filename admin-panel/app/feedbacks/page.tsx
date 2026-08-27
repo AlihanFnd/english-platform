@@ -1,26 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import AdminLayout from "../components/AdminLayout";
+import { useAdminKorumasi, adminTokenOku } from "../hooks/useAdminAuth";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
-
-function useAdminAuth() {
-  const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const t = localStorage.getItem("admin_token");
-    if (!t) {
-      router.replace("/");
-    } else {
-      setToken(t);
-    }
-  }, [router]);
-
-  return token;
-}
 
 interface FeedbackItem {
   id: number;
@@ -31,11 +15,12 @@ interface FeedbackItem {
 }
 
 export default function FeedbacksPage() {
-  const token = useAdminAuth();
+  useAdminKorumasi();
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token = adminTokenOku();
     if (!token) return;
 
     async function loadFeedbacks() {
@@ -55,9 +40,9 @@ export default function FeedbacksPage() {
     }
 
     loadFeedbacks();
-  }, [token]);
+  }, []);
 
-  if (!token || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <p className="text-sm text-gray-500">Yükleniyor...</p>

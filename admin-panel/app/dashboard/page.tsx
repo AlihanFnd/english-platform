@@ -1,26 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import AdminLayout from "../components/AdminLayout";
+import { useAdminKorumasi, adminTokenOku } from "../hooks/useAdminAuth";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
-
-function useAdminAuth() {
-  const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const t = localStorage.getItem("admin_token");
-    if (!t) {
-      router.replace("/");
-    } else {
-      setToken(t);
-    }
-  }, [router]);
-
-  return token;
-}
 
 interface Stats {
   totalUsers: number;
@@ -40,12 +24,13 @@ interface ActivityLog {
 }
 
 export default function DashboardPage() {
-  const token = useAdminAuth();
+  useAdminKorumasi();
   const [stats, setStats] = useState<Stats | null>(null);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token = adminTokenOku();
     if (!token) return;
 
     async function loadDashboardData() {
@@ -73,9 +58,9 @@ export default function DashboardPage() {
     }
 
     loadDashboardData();
-  }, [token]);
+  }, []);
 
-  if (!token || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <p className="text-sm text-gray-500">Yükleniyor...</p>
@@ -106,7 +91,7 @@ export default function DashboardPage() {
               </div>
               <div className="text-2xl">{s.icon}</div>
             </div>
-            <div className={`absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${s.color}`} />
+            <div className={`absolute bottom-0 left-0 right-0 h-1 bg-linear-to-r ${s.color}`} />
           </div>
         ))}
       </div>

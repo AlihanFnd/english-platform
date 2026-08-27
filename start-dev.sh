@@ -13,7 +13,10 @@ PROJECT_DIR="$(pwd)"
 echo "⚡ Servisler yeni terminal pencerelerinde başlatılıyor..."
 
 # Backend (ASP.NET Core - dotnet watch)
-osascript -e "tell app \"Terminal\" to do script \"cd '$PROJECT_DIR/EnglishReadingPlatform' && ../dotnet_sdk/dotnet watch run\""
+# KURAL-02: Sırlar artık appsettings.json'da değil. Backend .env dosyasını
+# kendisi okumaz, bu yüzden değişkenler kabuktan dışa aktarılarak veriliyor.
+# .env eksik/boşsa uygulama kasten başlamaz — hata mesajı ne yapılacağını söyler.
+osascript -e "tell app \"Terminal\" to do script \"cd '$PROJECT_DIR' && set -a && source .env && set +a && export ConnectionStrings__Default='Host=localhost;Database=englishreadingdb;Username=\$POSTGRES_USER;Password=\$POSTGRES_PASSWORD' && export Jwt__Key=\$JWT_KEY && cd EnglishReadingPlatform && dotnet watch run\""
 
 # Admin Panel (Next.js - dev mode)
 osascript -e "tell app \"Terminal\" to do script \"cd '$PROJECT_DIR/admin-panel' && npm run dev\""

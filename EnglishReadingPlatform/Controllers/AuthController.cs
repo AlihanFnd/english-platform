@@ -1,8 +1,18 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using EnglishReadingPlatform.Contracts;
+using EnglishReadingPlatform.Authorization;
 using EnglishReadingPlatform.Data;
+using EnglishReadingPlatform.Logging;
 using EnglishReadingPlatform.Models;
+using EnglishReadingPlatform.RateLimiting;
+using EnglishReadingPlatform.Security;
+using System.IdentityModel.Tokens.Jwt;
 using EnglishReadingPlatform.Services;
+using EnglishReadingPlatform.Validation;
+using System.ComponentModel.DataAnnotations;
 
 namespace EnglishReadingPlatform.Controllers
 {
@@ -12,49 +22,96 @@ namespace EnglishReadingPlatform.Controllers
     {
         private readonly AppDbContext _db;
         private readonly JwtService _jwt;
-        private readonly TokenSecurityService _tokenSecurity;
+        private readonly HesapSayaci _hesapSayaci;              // KURAL-07: hedef bazlı giriş sınırı
+        private readonly ITokenIptalDeposu _iptalDeposu;        // KURAL-04
         private readonly IWebHostEnvironment _env;
+        private readonly ILogger<AuthController> _logger;       // KURAL-06
 
-        public AuthController(AppDbContext db, JwtService jwt, TokenSecurityService tokenSecurity, IWebHostEnvironment env)
+        public AuthController(AppDbContext db, JwtService jwt, HesapSayaci hesapSayaci,
+                              ITokenIptalDeposu iptalDeposu, IWebHostEnvironment env,
+                              ILogger<AuthController> logger)
         {
             _db = db;
             _jwt = jwt;
-            _tokenSecurity = tokenSecurity;
+            _hesapSayaci = hesapSayaci;
+            _iptalDeposu = iptalDeposu;
             _env = env;
+            _logger = logger;
         }
 
         public class LoginRequest
         {
+            [Required(ErrorMessage = "Email zorunludur.")]
+            [StringLength(AlanSinirlari.Eposta, MinimumLength = 1,
+                ErrorMessage = "Email en fazla {1} karakter olabilir.")]
             public string Email { get; set; } = "";
+
+            // GİRİŞTE alt sınır YOK — mevcut kullanıcıların şifresi kısa olabilir;
+            // burada uzunluk zorlamak onları kilitler. Üst sınır BCrypt'i uzun
+            // girdilerle meşgul etmemek içindir (DoS).
+            [Required(ErrorMessage = "Şifre zorunludur.")]
+            [StringLength(AlanSinirlari.SifreEnCok, MinimumLength = 1,
+                ErrorMessage = "Şifre en fazla {1} karakter olabilir.")]
             public string Password { get; set; } = "";
         }
 
         public class RegisterRequest
         {
+            [Required(ErrorMessage = "Kullanıcı adı zorunludur.")]
+            [StringLength(AlanSinirlari.KullaniciAdi, MinimumLength = 3,
+                ErrorMessage = "Kullanıcı adı 3-{1} karakter olmalıdır.")]
             public string Username { get; set; } = "";
+
+            [Required(ErrorMessage = "Email zorunludur.")]
+            [EmailAddress(ErrorMessage = "Geçerli bir e-posta adresi girin.")]
+            [StringLength(AlanSinirlari.Eposta,
+                ErrorMessage = "Email en fazla {1} karakter olabilir.")]
             public string Email { get; set; } = "";
+
+            [Required(ErrorMessage = "Şifre zorunludur.")]
+            [StringLength(AlanSinirlari.SifreEnCok, MinimumLength = AlanSinirlari.SifreEnAz,
+                ErrorMessage = "Şifre {2}-{1} karakter olmalıdır.")]
             public string Password { get; set; } = "";
+
+            // KayitRolleri whitelist'inde "admin" YOK: kendine admin rolü
+            // yazdırma denemesi sessizce "student"a düşmek yerine 400 alır.
+            [IzinliDeger(nameof(IzinliDegerler.KayitRolleri))]
             public string Role { get; set; } = "student";
         }
 
         // POST /api/auth/login
         [HttpPost("login")]
+        [AllowAnonymous]   // KURAL-03: token alınmadan ÖNCE çağrılır, anonim kalmalı
+        [EnableRateLimiting(HizSinirlari.KimlikDogrulama)]   // KURAL-07: IP bazlı sınır
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
-            var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown_ip";
-            if (_tokenSecurity.IsRateLimitExceeded($"login_{ip}", 10))
-            {
-                return StatusCode(429, new { error = "Çok fazla başarısız giriş denemesi. Lütfen 1 dakika bekleyip tekrar deneyin." });
-            }
-
             if (req == null || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             {
                 return BadRequest(new { error = "Email ve şifre zorunludur." });
             }
 
+            // ── KURAL-07: HEDEF bazlı ikinci savunma hattı ──
+            // [EnableRateLimiting] IP başına sayar; her IP'den 10 deneme yapan bir
+            // botnet o sınırı hiç görmez. Bu sayaç HEDEFİ (e-postayı) sayar ve
+            // middleware'de yapılamaz — e-posta istek GÖVDESİNDEDİR.
+            // Kontrol şifre doğrulamasından ÖNCE: bütçe dolduysa doğru şifre bile geçmez.
+            var hedefAnahtar = HesapSayaci.GirisAnahtari(req.Email);
+            if (!_hesapSayaci.IzinVar(hedefAnahtar))
+            {
+                _logger.LogWarning("Hesap bazlı giriş sınırı aşıldı. Eposta={Eposta}",
+                    GuvenliLog.Eposta(req.Email));
+                Response.Headers.RetryAfter =
+                    ((int)HizSinirlari.GirisHedefPenceresi.TotalSeconds).ToString();
+                return StatusCode(429, new { error = "Bu hesap için çok fazla başarısız deneme yapıldı. Lütfen bir süre sonra tekrar deneyin." });
+            }
+
             var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email.Trim().ToLower());
             if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             {
+                // YALNIZCA başarısız deneme sayılır. Başarılı girişleri de saymak,
+                // üç cihazdan giren meşru kullanıcıyı kilitler ve saldırgana hiçbir
+                // maliyet getirmez — brute-force zaten yanlış şifrelerden oluşur.
+                _hesapSayaci.BasarisizDenemeKaydet(hedefAnahtar);
                 return Unauthorized(new { error = "Email veya şifre hatalı." });
             }
 
@@ -69,35 +126,19 @@ namespace EnglishReadingPlatform.Controllers
                 Expires = user.Role == "admin" ? DateTimeOffset.UtcNow.AddHours(1) : DateTimeOffset.UtcNow.AddHours(24)
             });
 
-            return Ok(new { 
-                token, 
-                user = new { 
-                    id = user.Id, 
-                    username = user.Username, 
-                    email = user.Email, 
-                    role = user.Role 
-                } 
-            });
+            // KURAL-08: elle yazılan anonim nesne yerine tek kaynaklı DTO.
+            return Ok(new { token, user = new KullaniciYaniti(user.Id, user.Username, user.Email, user.Role) });
         }
 
         // POST /api/auth/register
         [HttpPost("register")]
+        [AllowAnonymous]   // KURAL-03: token alınmadan ÖNCE çağrılır, anonim kalmalı
+        [EnableRateLimiting(HizSinirlari.KimlikDogrulama)]   // KURAL-07
         public async Task<IActionResult> Register([FromBody] RegisterRequest req)
         {
-            var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown_ip";
-            if (_tokenSecurity.IsRateLimitExceeded($"register_{ip}", 5))
-            {
-                return StatusCode(429, new { error = "Çok fazla kayıt isteği. Lütfen biraz bekleyin." });
-            }
-
             if (req == null || string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
             {
                 return BadRequest(new { error = "Tüm alanlar zorunludur." });
-            }
-
-            if (req.Password.Length < 6)
-            {
-                return BadRequest(new { error = "Şifre en az 6 karakter olmalıdır." });
             }
 
             var existingUser = await _db.Users.AnyAsync(u => u.Email == req.Email.Trim().ToLower() || u.Username == req.Username.Trim());
@@ -108,8 +149,8 @@ namespace EnglishReadingPlatform.Controllers
 
             var newUser = new User
             {
-                Username = req.Username.Trim(),
-                Email = req.Email.Trim().ToLower(),
+                Username = req.Username.KirpEnCok(AlanSinirlari.KullaniciAdi),
+                Email = req.Email.KirpEnCok(AlanSinirlari.Eposta).ToLower(),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
                 Role = req.Role == "teacher" ? "teacher" : "student",
                 CreatedAt = DateTime.UtcNow
@@ -127,65 +168,61 @@ namespace EnglishReadingPlatform.Controllers
                 Expires = DateTimeOffset.UtcNow.AddHours(24)
             });
 
-            return Ok(new { 
-                token, 
-                user = new { 
-                    id = newUser.Id, 
-                    username = newUser.Username, 
-                    email = newUser.Email, 
-                    role = newUser.Role 
-                } 
-            });
+            return Ok(new { token, user = new KullaniciYaniti(newUser.Id, newUser.Username, newUser.Email, newUser.Role) });
         }
 
         // POST /api/auth/logout
         [HttpPost("logout")]
+        [Authorize]        // KURAL-03: geçerli token gerektirir (KURAL-04 jti claim'ini okuyacak)
         public IActionResult Logout()
         {
-            var authHeader = Request.Headers["Authorization"].ToString();
-            var tokenStr = Request.Cookies["jwt_token"];
-            if (string.IsNullOrEmpty(tokenStr) && !string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            {
-                tokenStr = authHeader.Substring("Bearer ".Length).Trim();
-            }
+            // ── KURAL-04: iptal anahtarı SÖZLEŞMESİ jti'dir. ──
+            // Eskiden ham JWT stringi yazılıyor, okuma tarafı jti arıyordu:
+            // hiçbir dalda eşleşme olmuyordu, uç 200 dönüp hiçbir şey yapmıyordu.
+            var jti = User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
 
-            if (!string.IsNullOrEmpty(tokenStr))
+            if (!string.IsNullOrEmpty(jti))
             {
-                // Kalıcı olarak blacklist'e al (suistimali önlemek için 24 saat koru)
-                _tokenSecurity.RevokeToken(tokenStr, DateTime.UtcNow.AddHours(24));
+                // Token'ın kendi son geçerlilik anına kadar iptal listesinde tut.
+                var expStr = User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
+                var son = long.TryParse(expStr, out var expSec)
+                    ? DateTimeOffset.FromUnixTimeSeconds(expSec).UtcDateTime
+                    : DateTime.UtcNow.AddHours(24);
+
+                _iptalDeposu.JtiIptalEt(jti, son);
+            }
+            else if (this.KullaniciIdAl(out var kullaniciId))
+            {
+                // Savunma katmanı: Program.cs jti taşımayan tokenı zaten reddediyor,
+                // yani bu dala normalde ULAŞILMAZ. Ama o kontrol ileride gevşetilirse
+                // burada sessizce hiçbir şey yapmamak yerine kullanıcının tüm
+                // tokenlarını kesiyoruz — "iptal ettim" deyip etmemek yasak.
+                _iptalDeposu.KullaniciTumTokenlariniIptalEt(kullaniciId);
             }
 
             Response.Cookies.Delete("jwt_token", new CookieOptions { HttpOnly = true, Secure = !_env.IsDevelopment(), SameSite = SameSiteMode.Lax });
-            return Ok(new { message = "Başarıyla çıkış yapıldı ve token iptal edildi." });
+            return Ok(new { message = "Oturum sonlandırıldı." });
         }
 
         // GET /api/auth/me
         [HttpGet("me")]
+        [Authorize]        // KURAL-03: yetkilendirme gövdede elle değil, öznitelikle yapılır
         public async Task<IActionResult> Me()
         {
-            // Simple validation to get current user from token
-            var claimsPrincipal = User;
-            var userIdClaim = claimsPrincipal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (userIdClaim == null)
+            // [Authorize] sayesinde claim'in varlığı garanti; yine de savunmacı TryParse.
+            // int.Parse + "!" kullanılsaydı bozuk claim 500 üretirdi.
+            if (!this.KullaniciIdAl(out var userId))
             {
-                return Unauthorized(new { error = "Oturum açık değil." });
+                return Unauthorized(new { error = "Oturum bilgisi geçersiz." });
             }
 
-            var userId = int.Parse(userIdClaim.Value);
             var user = await _db.Users.FindAsync(userId);
             if (user == null)
             {
                 return NotFound(new { error = "Kullanıcı bulunamadı." });
             }
 
-            return Ok(new { 
-                user = new { 
-                    id = user.Id, 
-                    username = user.Username, 
-                    email = user.Email, 
-                    role = user.Role 
-                } 
-            });
+            return Ok(new { user = new KullaniciYaniti(user.Id, user.Username, user.Email, user.Role) });
         }
     }
 }

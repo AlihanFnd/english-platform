@@ -7,6 +7,9 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using System.Net.Http;
 using System.Text;
+using EnglishReadingPlatform.Exceptions;
+using EnglishReadingPlatform.RateLimiting;
+using EnglishReadingPlatform.Validation;
 
 namespace EnglishReadingPlatform.Services
 {
@@ -43,13 +46,18 @@ namespace EnglishReadingPlatform.Services
     {
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpFactory;
+        private readonly ILogger<PdfService> _logger;   // KURAL-06
+        private readonly AgirIsKapisi _agirIsKapisi;   // KURAL-07
         private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
         private static readonly string[] AllowedExtensions = { ".pdf", ".docx" };
 
-        public PdfService(IConfiguration configuration, IHttpClientFactory httpFactory)
+        public PdfService(IConfiguration configuration, IHttpClientFactory httpFactory,
+                          ILogger<PdfService> logger, AgirIsKapisi agirIsKapisi)
         {
             _configuration = configuration;
             _httpFactory = httpFactory;
+            _logger = logger;
+            _agirIsKapisi = agirIsKapisi;
         }
 
         public string ExtractSinglePageText(IFormFile file, int pageNumber)
@@ -62,11 +70,39 @@ namespace EnglishReadingPlatform.Services
             }
 
             using var stream = file.OpenReadStream();
-            using var document = PdfDocument.Open(stream);
+            using var document = PdfAc(stream);
             if (pageNumber < 1 || pageNumber > document.NumberOfPages) return "";
             var page = document.GetPage(pageNumber);
             
             return ExtractTextFromPage(page);
+        }
+
+        /// <summary>
+        /// KURAL-06: bozuk/şifreli bir dosya SUNUCU arızası değil, KULLANICI hatasıdır.
+        /// Sarmalanmazsa PdfPig'in ham istisnası merkezî middleware'e düşer: kullanıcı
+        /// ne yapacağını söylemeyen "beklenmeyen bir hata" görür ve her bozuk yükleme
+        /// üretimde bir LogError üretip gerçek arızaları gürültüye boğar.
+        /// İstisna metni yine dışarı ÇIKMAZ; yerine elle yazılmış bir cümle konur.
+        /// </summary>
+        private static PdfDocument PdfAc(Stream stream)
+        {
+            try { return PdfDocument.Open(stream); }
+            catch (Exception)
+            {
+                throw new KullaniciHatasi(
+                    "PDF dosyası okunamadı. Dosya bozuk, şifreli veya desteklenmeyen bir biçimde olabilir.");
+            }
+        }
+
+        /// <summary>KURAL-06: PdfAc ile aynı gerekçe, DOCX tarafı için.</summary>
+        private static WordprocessingDocument DocxAc(Stream stream)
+        {
+            try { return WordprocessingDocument.Open(stream, false); }
+            catch (Exception)
+            {
+                throw new KullaniciHatasi(
+                    "DOCX dosyası okunamadı. Dosya bozuk veya desteklenmeyen bir biçimde olabilir.");
+            }
         }
 
         private string ExtractTextFromPage(UglyToad.PdfPig.Content.Page page)
@@ -92,7 +128,7 @@ namespace EnglishReadingPlatform.Services
         private string ExtractDocxText(IFormFile file)
         {
             using var stream = file.OpenReadStream();
-            using var wordDoc = WordprocessingDocument.Open(stream, false);
+            using var wordDoc = DocxAc(stream);
             var body = wordDoc.MainDocumentPart?.Document.Body;
             if (body == null) return "";
 
@@ -103,14 +139,23 @@ namespace EnglishReadingPlatform.Services
         /// <summary>
         /// PDF veya DOCX dosyasını doğrular, metnini çıkarır ve bölümlere böler.
         /// </summary>
-        public async Task<PdfExtractResult> ExtractAndSplitAsync(IFormFile file, string? pageSelection = null)
+        public Task<PdfExtractResult> ExtractAndSplitAsync(IFormFile file, string? pageSelection = null)
+            // KURAL-07 İhlal 4: PDF ayrıştırma AĞIR iştir — 50 MB'lık bir dosya
+            // ayrıştırılırken bellekte durur. 10 eşzamanlı yükleme dakikalık kotayı
+            // hiç aşmadan sunucuyu düşürebilirdi. Kapı doluysa istek 503 alır.
+            => _agirIsKapisi.CalistirAsync(() => AyristirVeBolAsync(file, pageSelection));
+
+        private async Task<PdfExtractResult> AyristirVeBolAsync(IFormFile file, string? pageSelection)
         {
             var ext = System.IO.Path.GetExtension(file.FileName).ToLower();
+            // KURAL-06: bu iki mesaj KASTEN kullanıcıya yöneliktir; içlerinde iç
+            // detay yoktur. Tipli istisna, "gösterilebilir" ile "gösterilemez"
+            // hataları ayırır — eskiden ikisi de ex.Message ile aynı yoldan dönüyordu.
             if (!AllowedExtensions.Contains(ext))
-                throw new InvalidOperationException("Sadece PDF veya DOCX dosyaları yüklenebilir.");
+                throw new KullaniciHatasi("Sadece PDF veya DOCX dosyaları yüklenebilir.");
 
             if (file.Length > MaxFileSizeBytes)
-                throw new InvalidOperationException("Dosya boyutu 50 MB sınırını aşıyor.");
+                throw new KullaniciHatasi("Dosya boyutu 50 MB sınırını aşıyor.");
 
             var result = new PdfExtractResult();
             var pageTexts = new List<string>();
@@ -134,45 +179,10 @@ namespace EnglishReadingPlatform.Services
             else
             {
                 using var stream = file.OpenReadStream();
-                using var document = PdfDocument.Open(stream);
+                using var document = PdfAc(stream);
                 result.PageCount = document.NumberOfPages;
 
-                var targetPages = new HashSet<int>();
-                if (!string.IsNullOrWhiteSpace(pageSelection))
-                {
-                    var parts = pageSelection.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var part in parts)
-                    {
-                        var cleanPart = part.Trim();
-                        if (cleanPart.Contains('-'))
-                        {
-                            var rangeParts = cleanPart.Split('-', StringSplitOptions.RemoveEmptyEntries);
-                            if (rangeParts.Length == 2 && int.TryParse(rangeParts[0], out int startRange) && int.TryParse(rangeParts[1], out int endRange))
-                            {
-                                var rStart = Math.Min(startRange, endRange);
-                                var rEnd = Math.Max(startRange, endRange);
-                                for (int p = rStart; p <= rEnd; p++)
-                                {
-                                    targetPages.Add(p);
-                                }
-                            }
-                        }
-                        else if (int.TryParse(cleanPart, out int singlePage))
-                        {
-                            targetPages.Add(singlePage);
-                        }
-                    }
-                }
-
-                if (targetPages.Count == 0)
-                {
-                    for (int i = 1; i <= document.NumberOfPages; i++)
-                    {
-                        targetPages.Add(i);
-                    }
-                }
-
-                var sortedPages = targetPages.Where(p => p >= 1 && p <= document.NumberOfPages).OrderBy(p => p).ToList();
+                var sortedPages = SayfaSeciminiCoz(pageSelection, document.NumberOfPages);
 
                 foreach (int pageNumber in sortedPages)
                 {
@@ -245,8 +255,11 @@ namespace EnglishReadingPlatform.Services
                 };
 
                 var jsonPayload = JsonSerializer.Serialize(payload);
-                var client = _httpFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(5);
+                // KURAL-07: adlandırılmış istemci (yanıt boyutu sınırlı) + 60 sn bütçe.
+                // Eskiden 5 dakikaydı: aynı anda yüklenen N PDF, N bağlantıyı ve
+                // N thread'i beş dakika boyunca tutuyordu.
+                var client = _httpFactory.CreateClient(HizSinirlari.GroqIstemcisi);
+                client.Timeout = HizSinirlari.GroqAgirButce;
                 client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
                 using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
@@ -263,7 +276,12 @@ namespace EnglishReadingPlatform.Services
                 var root = doc.RootElement;
                 if (root.TryGetProperty("usage", out var usage))
                 {
-                    Console.WriteLine($"[Groq Token Usage (PdfChapterSplit)] Prompt: {usage.GetProperty("prompt_tokens")}, Completion: {usage.GetProperty("completion_tokens")}, Total: {usage.GetProperty("total_tokens")}");
+                    _logger.LogInformation(
+                        "Groq token kullanımı. Islem={Islem} Girdi={Girdi} Cikti={Cikti} Toplam={Toplam}",
+                        "PdfChapterSplit",
+                        usage.GetProperty("prompt_tokens").ToString(),
+                        usage.GetProperty("completion_tokens").ToString(),
+                        usage.GetProperty("total_tokens").ToString());
                 }
                 var textResult = root.GetProperty("choices")[0]
                                      .GetProperty("message")
@@ -313,7 +331,7 @@ namespace EnglishReadingPlatform.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Groq Chapter Split Error, falling back to regex]: {ex.Message}");
+                _logger.LogWarning(ex, "Bölüm ayırma başarısız, regex yedeğine düşülüyor.");
             }
 
             return SplitIntoChaptersRegex(pages);
@@ -344,8 +362,10 @@ namespace EnglishReadingPlatform.Services
                         Content = currentContent.ToString().Trim()
                     });
                     currentContent.Clear();
-                    currentTitle = page.Split('\n').FirstOrDefault(l => l.Length > 2)?.Trim()
-                                   ?? $"Chapter {chapterNum + 1}";
+                    // KURAL-05: PDF sayfasının ilk satırı sınırsız uzunlukta olabilir;
+                    // Chapter.Title varchar(200). Kırpılmazsa yükleme 500 verir.
+                    currentTitle = (page.Split('\n').FirstOrDefault(l => l.Length > 2)?.Trim()
+                                   ?? $"Chapter {chapterNum + 1}").KirpEnCok(AlanSinirlari.BolumBasligi);
                 }
                 currentContent.AppendLine(page);
             }
@@ -377,6 +397,62 @@ namespace EnglishReadingPlatform.Services
             }
 
             return chapters;
+        }
+    
+        /// <summary>
+        /// KURAL-05: "1,3,5-12" biçimli sayfa seçimini çözer.
+        ///
+        /// ESKİ HÂLİNDEKİ AÇIK: aralık ÖNCE genişletiliyor, geçerlilik filtresi
+        /// SONRA uygulanıyordu. "1-2000000000" (12 karakterlik bir alan) 2 milyar
+        /// yinelemeli bir döngü ve o boyutta bir HashSet doğuruyordu — tek sayfalık
+        /// bir PDF'te bile. Filtreye sıra hiç gelmiyordu.
+        ///
+        /// YENİ KURAL: aralık genişletilmeden ÖNCE [1, toplamSayfa] aralığına
+        /// kırpılır. Böylece üretilebilecek azami eleman sayısı, istemcinin
+        /// gönderdiği metne değil, belgenin gerçek sayfa sayısına bağlıdır.
+        /// </summary>
+        public static List<int> SayfaSeciminiCoz(string? secim, int toplamSayfa)
+        {
+            if (toplamSayfa <= 0) return new List<int>();
+
+            var hedef = new HashSet<int>();
+
+            if (!string.IsNullOrWhiteSpace(secim))
+            {
+                // Parça sayısı da sınırlı: "1,1,1,1,..." ile milyonlarca parça gönderilemesin.
+                var parcalar = secim.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                    .Take(AlanSinirlari.SayfaSecimiParcaSayisi);
+
+                foreach (var parca in parcalar)
+                {
+                    var temiz = parca.Trim();
+                    if (temiz.Length == 0) continue;
+
+                    if (temiz.Contains('-'))
+                    {
+                        var uclar = temiz.Split('-', StringSplitOptions.RemoveEmptyEntries);
+                        if (uclar.Length == 2
+                            && int.TryParse(uclar[0], out var bas)
+                            && int.TryParse(uclar[1], out var son))
+                        {
+                            // ── KRİTİK SIRA: önce kırp, sonra genişlet ──
+                            var alt = Math.Max(1, Math.Min(bas, son));
+                            var ust = Math.Min(toplamSayfa, Math.Max(bas, son));
+                            for (var p = alt; p <= ust; p++) hedef.Add(p);
+                        }
+                    }
+                    else if (int.TryParse(temiz, out var tekSayfa))
+                    {
+                        if (tekSayfa >= 1 && tekSayfa <= toplamSayfa) hedef.Add(tekSayfa);
+                    }
+                }
+            }
+
+            // Seçim yoksa veya hiçbiri geçerli değilse: tüm belge.
+            if (hedef.Count == 0)
+                for (var i = 1; i <= toplamSayfa; i++) hedef.Add(i);
+
+            return hedef.OrderBy(p => p).ToList();
         }
     }
 }

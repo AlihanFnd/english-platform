@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+
 interface AdminLayoutProps {
   children: React.ReactNode;
 }
@@ -24,12 +26,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Mobile Top Header */}
       <header className="md:hidden bg-gray-900/80 backdrop-blur-md border-b border-gray-800 fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 z-30">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 to-violet-500 rounded-lg flex items-center justify-center text-sm shadow-md">🛡️</div>
+          <div className="w-9 h-9 bg-linear-to-tr from-indigo-500 to-violet-500 rounded-lg flex items-center justify-center text-sm shadow-md">🛡️</div>
           <span className="font-bold text-white text-sm tracking-wide">ADMIN PORTAL</span>
         </div>
         <button 
           onClick={() => setMenuOpen(!menuOpen)}
-          className="p-2 text-gray-400 hover:text-white focus:outline-none"
+          className="p-2 text-gray-400 hover:text-white focus:outline-hidden"
         >
           {menuOpen ? (
             <span className="text-xl">✕</span>
@@ -43,7 +45,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {menuOpen && (
         <div 
           onClick={() => setMenuOpen(false)}
-          className="fixed inset-0 bg-black/70 z-30 md:hidden backdrop-blur-sm transition-opacity duration-300"
+          className="fixed inset-0 bg-black/70 z-30 md:hidden backdrop-blur-xs transition-opacity duration-300"
         />
       )}
 
@@ -53,7 +55,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       }`}>
         <div className="p-6 border-b border-gray-800/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-lg">🛡️</div>
+            <div className="w-10 h-10 bg-linear-to-tr from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-lg">🛡️</div>
             <div>
               <p className="font-bold text-white text-sm tracking-wide">ADMIN PORTAL</p>
               <p className="text-[10px] text-gray-400 font-semibold tracking-widest uppercase mt-0.5">Control Center</p>
@@ -81,7 +83,21 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         </nav>
         <div className="p-4 border-t border-gray-800/80">
           <button 
-            onClick={() => { localStorage.clear(); router.replace("/"); }} 
+            onClick={async () => {
+              // KURAL-04: çıkış sunucuya bildirilmeli — yoksa token iptal edilmez,
+              // yalnızca tarayıcıdan silinir ve süresi dolana kadar geçerli kalır.
+              const t = localStorage.getItem("admin_token");
+              try {
+                await fetch(`${API}/api/auth/logout`, {
+                  method: "POST",
+                  headers: t ? { Authorization: `Bearer ${t}` } : {},
+                });
+              } catch { /* ağ hatası çıkışı engellemesin */ }
+              // localStorage.clear() yerine hedefli silme: aynı origin'deki diğer veriler kalsın.
+              localStorage.removeItem("admin_token");
+              localStorage.removeItem("admin_user");
+              router.replace("/");
+            }} 
             className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-red-950/20 text-red-400 hover:bg-red-900/25 border border-red-900/30 transition-all duration-200 text-sm font-bold"
           >
             <span>🚪</span><span>Oturumu Kapat</span>

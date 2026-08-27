@@ -1,31 +1,52 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { api, Book } from '../api';
+import { api, Book, Taxonomy } from '../api';
 import { BookOpen, Search, ArrowRight, Layers, FileText, Bookmark, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 
-const LEVELS = [
-  { id: 'all', label: 'Tüm Seviyeler', color: 'gray' },
-  { id: 'A1', label: 'A1', subtitle: 'Beginner', color: 'emerald' },
-  { id: 'A1-A2', label: 'A1 - A2', subtitle: 'Elementary', color: 'emerald' },
-  { id: 'A2', label: 'A2', subtitle: 'Pre-Intermediate', color: 'emerald' },
-  { id: 'A2-B1', label: 'A2 - B1', subtitle: 'Pre to Inter', color: 'sky' },
-  { id: 'B1', label: 'B1', subtitle: 'Intermediate', color: 'sky' },
-  { id: 'B1-B2', label: 'B1 - B2', subtitle: 'Upper Inter', color: 'indigo' },
-  { id: 'B2', label: 'B2', subtitle: 'Upper Inter+', color: 'indigo' },
-  { id: 'B2-C1', label: 'B2 - C1', subtitle: 'Adv Transition', color: 'purple' },
-  { id: 'C1', label: 'C1', subtitle: 'Advanced', color: 'purple' },
-  { id: 'C1-C2', label: 'C1 - C2', subtitle: 'Prof Transition', color: 'rose' },
-  { id: 'C2', label: 'C2', subtitle: 'Mastery', color: 'rose' },
-];
+/**
+ * KURAL-05 — Taksonomi sunucudan gelir, görünüm burada kalır.
+ *
+ * Bu iki şey karıştırılmamalı:
+ *   • HANGİ seviyeler/kategoriler var  → backend whitelist'i (tek kaynak)
+ *   • Nasıl GÖRÜNÜRLER (etiket, renk)  → tamamen arayüz kararı, burada durur
+ *
+ * Eskiden ikisi tek bir dizide iç içeydi; o yüzden liste sunucudan alınamıyor,
+ * kopya olarak burada tutuluyordu. Backend'e yeni bir seviye eklendiğinde bu
+ * dosyayı güncellemeyi unutmak, o seviyedeki kitapların filtrede sessizce
+ * kaybolması demekti — hata mesajı bile çıkmadan.
+ */
+const SEVIYE_GORUNUM: Record<string, { label: string; subtitle?: string }> = {
+  'A1':    { label: 'A1',      subtitle: 'Beginner' },
+  'A1-A2': { label: 'A1 - A2', subtitle: 'Elementary' },
+  'A2':    { label: 'A2',      subtitle: 'Pre-Intermediate' },
+  'A2-B1': { label: 'A2 - B1', subtitle: 'Pre to Inter' },
+  'B1':    { label: 'B1',      subtitle: 'Intermediate' },
+  'B1-B2': { label: 'B1 - B2', subtitle: 'Upper Inter' },
+  'B2':    { label: 'B2',      subtitle: 'Upper Inter+' },
+  'B2-C1': { label: 'B2 - C1', subtitle: 'Adv Transition' },
+  'C1':    { label: 'C1',      subtitle: 'Advanced' },
+  'C1-C2': { label: 'C1 - C2', subtitle: 'Prof Transition' },
+  'C2':    { label: 'C2',      subtitle: 'Mastery' },
+};
 
-const CATEGORIES = [
-  { id: 'all', label: 'Tümü', icon: Layers },
-  { id: 'story', label: 'Hikayeler', icon: BookOpen },
-  { id: 'article', label: 'Makaleler', icon: FileText },
-  { id: 'other', label: 'Diğer', icon: Bookmark },
-];
+const KATEGORI_GORUNUM: Record<string, { label: string; icon: typeof BookOpen }> = {
+  story:   { label: 'Hikayeler', icon: BookOpen },
+  article: { label: 'Makaleler', icon: FileText },
+  other:   { label: 'Diğer',     icon: Bookmark },
+};
+
+/**
+ * Yalnızca taksonomi ucu erişilemezse kullanılır — filtreler asla boş kalmasın.
+ * Backend whitelist'iyle birebir aynıdır; AlanSinirlariTests bunu karşılaştırır,
+ * sessizce ayrışamaz.
+ */
+const YEDEK_TAKSONOMI: Taxonomy = {
+  levels: ['A1', 'A1-A2', 'A2', 'A2-B1', 'B1', 'B1-B2', 'B2', 'B2-C1', 'C1', 'C1-C2', 'C2'],
+  categories: ['story', 'article', 'other'],
+  languages: ['en'],
+};
 
 export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -34,6 +55,7 @@ export default function BooksPage() {
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [taksonomi, setTaksonomi] = useState<Taxonomy>(YEDEK_TAKSONOMI);
 
   useEffect(() => {
     async function loadBooks() {
@@ -47,7 +69,34 @@ export default function BooksPage() {
       }
     }
     loadBooks();
+
+    // Taksonomi ayrı yüklenir: başarısız olursa kitap listesi yine de gelsin,
+    // filtreler de YEDEK_TAKSONOMI ile çalışmaya devam etsin.
+    api.getTaxonomy()
+      .then((t) => {
+        if (t?.levels?.length) setTaksonomi(t);
+      })
+      .catch(() => { /* yedekte kalınır */ });
   }, []);
+
+  // Filtre seçenekleri: 'all' bir taksonomi değeri DEĞİL, arayüz seçeneğidir.
+  const LEVELS = useMemo(() => [
+    { id: 'all', label: 'Tüm Seviyeler', subtitle: undefined as string | undefined },
+    ...taksonomi.levels.map((id) => ({
+      id,
+      label: SEVIYE_GORUNUM[id]?.label ?? id,
+      subtitle: SEVIYE_GORUNUM[id]?.subtitle,
+    })),
+  ], [taksonomi]);
+
+  const CATEGORIES = useMemo(() => [
+    { id: 'all', label: 'Tümü', icon: Layers },
+    ...taksonomi.categories.map((id) => ({
+      id,
+      label: KATEGORI_GORUNUM[id]?.label ?? id,
+      icon: KATEGORI_GORUNUM[id]?.icon ?? Bookmark,
+    })),
+  ], [taksonomi]);
 
   const filteredBooks = useMemo(() => {
     return books.filter(b => {
@@ -239,7 +288,13 @@ export default function BooksPage() {
                       <div className="flex items-center gap-2 mt-3">
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-on-surface-variant bg-surface-container/80 border border-outline-variant/60 rounded-lg px-2.5 py-1">
                           <BookOpen className="w-3 h-3 text-primary" />
-                          <span>{book.chaptersCount || 1} Bölüm</span>
+                          {/* KURAL-08: sayfa modundaki kitapların chaptersCount'u 0'dır.
+                              Eskiden "|| 1" yüzünden hepsi "1 Bölüm" görünüyordu. */}
+                          <span>
+                            {book.pagesCount && book.pagesCount > 0
+                              ? `${book.pagesCount} Sayfa`
+                              : `${book.chaptersCount || 1} Bölüm`}
+                          </span>
                         </span>
                       </div>
                     </div>
