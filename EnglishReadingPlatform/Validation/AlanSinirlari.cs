@@ -16,6 +16,8 @@ public static class AlanSinirlari
     public const int Eposta       = 200;   // User.Email
     public const int SifreEnAz    = 10;    // KURAL-09 bunu sertleştirecek
     public const int SifreEnCok   = 128;   // BCrypt 72 bayt sonrasını yok sayar; DoS'a karşı üst sınır
+    public const int SifirlamaJetonu = 128;   // KURAL-09: sıfırlama jetonu 64 hex; tavan bol tutuldu
+    public const int JetonHash       = 64;    // KURAL-09: SHA-256 hex çıktısı tam 64 karakter
 
     // ── Kitap ────────────────────────────────────────────────
     public const int KitapBasligi  = 200;  // Book.Title

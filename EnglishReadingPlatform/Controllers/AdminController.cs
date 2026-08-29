@@ -7,6 +7,7 @@ using EnglishReadingPlatform.Contracts;
 using EnglishReadingPlatform.Authorization;
 using EnglishReadingPlatform.Data;
 using EnglishReadingPlatform.Exceptions;
+using EnglishReadingPlatform.Files;
 using EnglishReadingPlatform.Models;
 using EnglishReadingPlatform.RateLimiting;
 using EnglishReadingPlatform.Security;
@@ -31,15 +32,20 @@ namespace EnglishReadingPlatform.Controllers
         private readonly TranslationService _transService;
         private readonly ITokenIptalDeposu _iptalDeposu;   // KURAL-04
         private readonly ILogger<AdminController> _logger;  // KURAL-06
+        private readonly DosyaDogrulayici _dogrulayici;     // KURAL-10
+        private readonly AgirIsKapisi _agirIsKapisi;        // KURAL-07
 
         public AdminController(AppDbContext db, PdfService pdfService, TranslationService transService,
-                               ITokenIptalDeposu iptalDeposu, ILogger<AdminController> logger)
+                               ITokenIptalDeposu iptalDeposu, ILogger<AdminController> logger,
+                               DosyaDogrulayici dogrulayici, AgirIsKapisi agirIsKapisi)
         {
             _db = db;
             _pdfService = pdfService;
             _transService = transService;
             _iptalDeposu = iptalDeposu;
             _logger = logger;
+            _dogrulayici = dogrulayici;
+            _agirIsKapisi = agirIsKapisi;
         }
 
 
@@ -216,14 +222,16 @@ namespace EnglishReadingPlatform.Controllers
         }
 
         [HttpPost("books/upload")]
-        [RequestSizeLimit(52_428_800)] // 50 MB
+        [RequestSizeLimit(DosyaDogrulayici.EnBuyukBoyut)]   // KURAL-10: sabit tek kaynaktan
         [EnableRateLimiting(HizSinirlari.DosyaYukleme)]   // KURAL-07: YENİ — 50 MB × N eşzamanlı PDF ayrıştırma
         public async Task<IActionResult> UploadBook(
             [FromForm] BookUploadRequest meta,
             IFormFile file)
         {
-            if (file == null || file.Length == 0)
-                return BadRequest(new { error = "PDF veya DOCX dosyası seçilmedi." });
+            // KURAL-10: tür İÇERİKTEN doğrulanır — dosya adından değil.
+            // Ağır iş kapısına girmeden ÖNCE elenir: geçersiz bir dosya, meşru
+            // yüklemelerin sırasını işgal etmemeli.
+            _dogrulayici.Dogrula(file);
 
             if (string.IsNullOrWhiteSpace(meta.Title))
                 return BadRequest(new { error = "Kitap başlığı zorunludur." });
@@ -317,32 +325,54 @@ namespace EnglishReadingPlatform.Controllers
         }
 
         [HttpPost("books/upload-pages")]
-        [RequestSizeLimit(52_428_800)] // 50 MB
+        [RequestSizeLimit(DosyaDogrulayici.EnBuyukBoyut)]   // KURAL-10: sabit tek kaynaktan
         [EnableRateLimiting(HizSinirlari.DosyaYukleme)]   // KURAL-07: YENİ
         public async Task<IActionResult> UploadBookPages(
             [FromForm] BookUploadPagesRequest meta,
-            IFormFile file)
+            IFormFile file,
+            CancellationToken iptal)
         {
-            if (file == null || file.Length == 0)
-                return BadRequest(new { error = "PDF veya DOCX dosyası seçilmedi." });
+            // ── KURAL-10, 1. adım: tür İÇERİKTEN belirlenir ──
+            // Fırlatılan KullaniciHatasi'yı KURAL-06 middleware'i 400 + temiz
+            // mesaja çevirir; iç detay sızmaz.
+            var tur = _dogrulayici.Dogrula(file);
 
             if (string.IsNullOrWhiteSpace(meta.Title))
                 return BadRequest(new { error = "Kitap başlığı zorunludur." });
 
-            if (string.IsNullOrWhiteSpace(meta.SelectedPages))
-                return BadRequest(new { error = "Lütfen yüklenecek sayfaları seçin." });
+            // ── 2. adım: UCUZ eleme, dosya HİÇ açılmadan ──
+            // Sayfa üst sınırı ayrıştırıcıdan ÖNCE uygulanır. Tersi sırada
+            // "100.000 sayfa seç" isteği önce ayrıştırıcıyı meşgul eder,
+            // sınır ancak ondan sonra devreye girerdi.
+            //
+            // DOCX'te sayfa kavramı yoktur (KURAL-10 adım 10 / seçenek A):
+            // seçim yok sayılır, tüm belge tek sayfa olarak kaydedilir.
+            // Eski kod seçilen HER sayfaya AYNI metni yazıyordu — sessiz hata.
+            var istenenSayfalar = tur == DosyaTuru.Docx
+                ? (IReadOnlyList<int>)new[] { 1 }
+                : _dogrulayici.SecimiCoz(meta.SelectedPages);
 
-            var selectedPageNumbers = meta.SelectedPages.Split(',')
-                .Select(p => p.Trim())
-                .Where(p => int.TryParse(p, out _))
-                .Select(int.Parse)
-                .OrderBy(p => p)
-                .Distinct()
-                .ToList();
+            // ── 3. adım: PAHALI iş, tamamı ağır iş kapısının içinde (KURAL-07) ──
+            // Sayfa sayısını okumak da PDF'i ayrıştırmak demektir; kapının
+            // dışında bırakılırsa korumanın bir kanadı açık kalırdı.
+            var metinler = await _agirIsKapisi.CalistirAsync(async () =>
+            {
+                var toplamSayfa = _pdfService.SayfaSayisiniOku(file);
+                var sayfalar = _dogrulayici.AraligaKirp(istenenSayfalar, toplamSayfa);
+                return await _pdfService.SayfalariCikarAsync(file, sayfalar, iptal);
+            }, iptal);
 
-            if (!selectedPageNumbers.Any())
-                return BadRequest(new { error = "Geçerli bir sayfa seçilmedi." });
+            if (metinler.Count == 0)
+            {
+                _logger.LogInformation("Seçilen sayfaların hiçbirinden metin çıkarılamadı. SayfaSayisi={SayfaSayisi}",
+                    istenenSayfalar.Count);
+                return BadRequest(new { error = "Seçilen sayfaların hiçbirinden metin çıkarılamadı. Dosyanız taranmış/görsel tabanlı olabilir." });
+            }
 
+            // ── 4. adım: kitap ANCAK metin çıkarıldıktan SONRA oluşturulur ──
+            // Eski akış kitabı önce yaratıp hata hâlinde "geri siliyordu"; her
+            // yeni hata dalı o temizliği tekrar yazmayı gerektiriyordu ve biri
+            // zaten unutulmuştu. Yetim kayıt riski artık tasarımdan kalktı.
             var book = new Book
             {
                 Title = meta.Title.KirpEnCok(AlanSinirlari.KitapBasligi),
@@ -358,60 +388,23 @@ namespace EnglishReadingPlatform.Controllers
             _db.Books.Add(book);
             await _db.SaveChangesAsync();
 
-            var bookPages = new List<BookPage>();
-            int displayPageNumber = 1;
-
-            foreach (var pageNum in selectedPageNumbers)
-            {
-                string pageText = "";
-                try
-                {
-                    pageText = _pdfService.ExtractSinglePageText(file, pageNum);
-                }
-                catch (KullaniciHatasi)
-                {
-                    // Bozuk/şifreli dosya: mesaj zaten kullanıcıya yönelik.
-                    // Yarım kalan kitap kaydı bırakılmaz — aksi hâlde listede
-                    // açılamayan bir kitap görünür (aşağıdaki "metin çıkarılamadı"
-                    // dalı bu temizliği zaten yapıyordu, bu dal yapmıyordu).
-                    _db.Books.Remove(book);
-                    await _db.SaveChangesAsync();
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    // KURAL-06: ayrıntı yalnızca loga; yanıt genel kalır.
-                    _logger.LogError(ex, "PDF sayfası okunamadı. Sayfa={Sayfa} KitapId={KitapId}", pageNum, book.Id);
-                    _db.Books.Remove(book);
-                    await _db.SaveChangesAsync();
-                    return BadRequest(new { error = $"{pageNum}. sayfa okunamadı. Dosya bozuk veya korumalı olabilir." });
-                }
-
-                if (string.IsNullOrWhiteSpace(pageText))
-                {
-                    _logger.LogInformation("PDF sayfasından metin çıkarılamadı. Sayfa={Sayfa} KitapId={KitapId}", pageNum, book.Id);
-                    continue;
-                }
-
-                bookPages.Add(new BookPage
+            var gorunenNo = 1;
+            var bookPages = metinler
+                .OrderBy(g => g.Key)
+                .Select(g => new BookPage
                 {
                     BookId = book.Id,
-                    PageNumber = displayPageNumber++,
-                    Content = pageText.Trim(),
-                    SentencesJson = "[]" // JIT çeviri için boş bırakıyoruz
-                });
-            }
-
-            if (!bookPages.Any())
-            {
-                _db.Books.Remove(book);
-                await _db.SaveChangesAsync();
-                _logger.LogWarning("Seçilen sayfaların hiçbirinden metin çıkarılamadı. KitapId={KitapId} SayfaSayisi={SayfaSayisi}", book.Id, selectedPageNumbers.Count);
-                return BadRequest(new { error = "Seçilen sayfaların hiçbirinden metin çıkarılamadı. PDF dosyanız taranmış/görsel tabanlı olabilir." });
-            }
+                    PageNumber = gorunenNo++,
+                    Content = g.Value,
+                    SentencesJson = "[]"   // JIT çeviri için boş bırakıyoruz
+                })
+                .ToList();
 
             _db.BookPages.AddRange(bookPages);
             await _db.SaveChangesAsync();
+
+            _logger.LogInformation("Kitap sayfalarıyla yüklendi. KitapId={KitapId} Sayfa={Sayfa}",
+                book.Id, bookPages.Count);
 
             return Ok(new
             {

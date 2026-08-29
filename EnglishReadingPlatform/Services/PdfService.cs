@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using System.Net.Http;
 using System.Text;
 using EnglishReadingPlatform.Exceptions;
+using EnglishReadingPlatform.Files;
 using EnglishReadingPlatform.RateLimiting;
 using EnglishReadingPlatform.Validation;
 
@@ -48,33 +49,97 @@ namespace EnglishReadingPlatform.Services
         private readonly IHttpClientFactory _httpFactory;
         private readonly ILogger<PdfService> _logger;   // KURAL-06
         private readonly AgirIsKapisi _agirIsKapisi;   // KURAL-07
-        private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
-        private static readonly string[] AllowedExtensions = { ".pdf", ".docx" };
+        private readonly DosyaDogrulayici _dogrulayici;   // KURAL-10
+
+        // KURAL-10: boyut/uzantı sabitleri BURADA DEĞİL. Eskiden bu sınıf kendi
+        // MaxFileSizeBytes ve AllowedExtensions listesini tutuyordu; aynı sayılar
+        // AdminController'daki [RequestSizeLimit] ile ayrı ayrı yaşıyordu.
+        // Tek kaynak artık DosyaDogrulayici.
 
         public PdfService(IConfiguration configuration, IHttpClientFactory httpFactory,
-                          ILogger<PdfService> logger, AgirIsKapisi agirIsKapisi)
+                          ILogger<PdfService> logger, AgirIsKapisi agirIsKapisi,
+                          DosyaDogrulayici dogrulayici)
         {
             _configuration = configuration;
             _httpFactory = httpFactory;
             _logger = logger;
             _agirIsKapisi = agirIsKapisi;
+            _dogrulayici = dogrulayici;
         }
 
-        public string ExtractSinglePageText(IFormFile file, int pageNumber)
+        /// <summary>
+        /// KURAL-10: PDF'i BİR KEZ açar, istenen sayfaları tek geçişte çıkarır.
+        ///
+        /// SİLİNEN tek-sayfa API'si her sayfa için PdfDocument.Open çağırıyordu:
+        /// 500 sayfalık bir seçimde dosya 500 KEZ ayrıştırılıyordu. Sayfa sayısı
+        /// istemcinin verdiği bir sayı olduğu için maliyet de istemcinin elindeydi.
+        ///
+        /// KAPI ALMAZ: çağıranın zaten AgirIsKapisi içinde olduğu varsayılır.
+        /// Burada ikinci kez alınsaydı, kapıyı tutan istek kendi içinde tekrar
+        /// sıraya girer ve dört eşzamanlı yükleme birbirini kilitlerdi.
+        /// </summary>
+        public async Task<IReadOnlyDictionary<int, string>> SayfalariCikarAsync(
+            IFormFile dosya, IReadOnlyList<int> sayfaNumaralari, CancellationToken iptal = default)
         {
-            var ext = System.IO.Path.GetExtension(file.FileName).ToLower();
-            if (ext == ".docx")
+            var tur = _dogrulayici.Dogrula(dosya);
+
+            if (tur == DosyaTuru.Docx)
             {
-                // Word belgelerinde sayfa kavramı değişken olduğundan tüm metni tek sayfa veya bölümler halinde alırız.
-                return ExtractDocxText(file);
+                // DOCX'te sayfa kavramı yok — tüm metin tek "sayfa" olarak döner.
+                // Eski kod seçilen HER sayfaya AYNI metni koyuyordu (sessiz hata).
+                // Zip-bomb kontrolünü ExtractDocxText'in kendisi yapıyor.
+                var docxMetni = ExtractDocxText(dosya);
+
+                // BOŞ metin sonuca KONMAZ — PDF dalı da böyle davranıyor.
+                // Aksi hâlde metni okunamayan bir DOCX, çağırana "1 sayfa çıkardım"
+                // der; kullanıcı "metin çıkarılamadı" uyarısı yerine tek boş sayfalı
+                // bir kitap görür. Bu sessiz başarısızlık mutasyon C sırasında yakalandı.
+                return string.IsNullOrWhiteSpace(docxMetni)
+                    ? new Dictionary<int, string>()
+                    : new Dictionary<int, string> { [1] = docxMetni.Trim() };
             }
 
-            using var stream = file.OpenReadStream();
-            using var document = PdfAc(stream);
-            if (pageNumber < 1 || pageNumber > document.NumberOfPages) return "";
-            var page = document.GetPage(pageNumber);
-            
-            return ExtractTextFromPage(page);
+            // Zaman aşımı: PdfPig senkron çalışır, bu yüzden bütçe DÖNGÜ İÇİNDE
+            // kontrol edilir. Task.Run'a token vermek tek başına hiçbir şeyi durdurmaz.
+            using var zamanAsimi = CancellationTokenSource.CreateLinkedTokenSource(iptal);
+            zamanAsimi.CancelAfter(DosyaDogrulayici.AyristirmaSuresi);
+            var butce = zamanAsimi.Token;
+
+            return await Task.Run<IReadOnlyDictionary<int, string>>(() =>
+            {
+                var sonuc = new Dictionary<int, string>();
+                using var akis = dosya.OpenReadStream();
+                using var belge = PdfAc(akis);          // ← TEK AÇIŞ
+
+                foreach (var no in sayfaNumaralari)
+                {
+                    // Sıra önemli: önce istemcinin vazgeçmesi (bu bir arıza değil),
+                    // sonra bütçe aşımı (bu kullanıcıya söylenecek bir durum).
+                    iptal.ThrowIfCancellationRequested();
+                    if (butce.IsCancellationRequested)
+                        throw new KullaniciHatasi(
+                            "Dosya işlenirken izin verilen süre aşıldı. Daha az sayfa seçerek tekrar deneyin.");
+
+                    if (no < 1 || no > belge.NumberOfPages) continue;
+                    var metin = ExtractTextFromPage(belge.GetPage(no));
+                    if (!string.IsNullOrWhiteSpace(metin)) sonuc[no] = metin.Trim();
+                }
+
+                return sonuc;
+            }, iptal);
+        }
+
+        /// <summary>
+        /// PDF'in sayfa sayısını okur (seçim doğrulaması için).
+        /// DOCX'te sayfa kavramı olmadığından 1 döner.
+        /// </summary>
+        public int SayfaSayisiniOku(IFormFile dosya)
+        {
+            if (_dogrulayici.TuruBelirle(dosya) != DosyaTuru.Pdf) return 1;
+
+            using var akis = dosya.OpenReadStream();
+            using var belge = PdfAc(akis);
+            return belge.NumberOfPages;
         }
 
         /// <summary>
@@ -125,9 +190,19 @@ namespace EnglishReadingPlatform.Services
             return rawText ?? "";
         }
 
-        private string ExtractDocxText(IFormFile file)
+        /// <summary>
+        /// KURAL-10: DOCX metin çıkarmanın TEK boğazı — zip-bomb kontrolü de burada.
+        ///
+        /// Kontrolü çağrı yerlerine dağıtmak yerine buraya koymak bilinçli:
+        /// iki ayrı yükleme yolu (ExtractAndSplitAsync ve SayfalariCikarAsync)
+        /// DOCX'i buradan okuyor. Çağrı yerine konsaydı, ileride eklenecek üçüncü
+        /// bir yol kontrolü atlamayı kolayca başarırdı.
+        /// </summary>
+        private string ExtractDocxText(IFormFile dosya)
         {
-            using var stream = file.OpenReadStream();
+            _dogrulayici.ZipBombKontrolu(dosya);
+
+            using var stream = dosya.OpenReadStream();
             using var wordDoc = DocxAc(stream);
             var body = wordDoc.MainDocumentPart?.Document.Body;
             if (body == null) return "";
@@ -147,20 +222,17 @@ namespace EnglishReadingPlatform.Services
 
         private async Task<PdfExtractResult> AyristirVeBolAsync(IFormFile file, string? pageSelection)
         {
-            var ext = System.IO.Path.GetExtension(file.FileName).ToLower();
-            // KURAL-06: bu iki mesaj KASTEN kullanıcıya yöneliktir; içlerinde iç
-            // detay yoktur. Tipli istisna, "gösterilebilir" ile "gösterilemez"
-            // hataları ayırır — eskiden ikisi de ex.Message ile aynı yoldan dönüyordu.
-            if (!AllowedExtensions.Contains(ext))
-                throw new KullaniciHatasi("Sadece PDF veya DOCX dosyaları yüklenebilir.");
-
-            if (file.Length > MaxFileSizeBytes)
-                throw new KullaniciHatasi("Dosya boyutu 50 MB sınırını aşıyor.");
+            // KURAL-10: uzantı/boyut/içerik kontrolü tek merkezde. Eskiden burada
+            // elle yapılıyordu ve türü DOSYA ADINDAN belirliyordu — yani istemcinin
+            // yazdığı metinden. Artık belirleyici olan sihirli baytlar.
+            // KURAL-06: fırlatılan KullaniciHatasi mesajları kasten kullanıcıya
+            // yöneliktir; iç detay içermez.
+            var tur = _dogrulayici.Dogrula(file);
 
             var result = new PdfExtractResult();
             var pageTexts = new List<string>();
 
-            if (ext == ".docx")
+            if (tur == DosyaTuru.Docx)
             {
                 var fullText = ExtractDocxText(file);
                 result.PageCount = 1;
@@ -178,20 +250,16 @@ namespace EnglishReadingPlatform.Services
             }
             else
             {
-                using var stream = file.OpenReadStream();
-                using var document = PdfAc(stream);
-                result.PageCount = document.NumberOfPages;
+                // KURAL-10: bu dal da SayfalariCikarAsync'e bağlandı. Böylece zaman
+                // aşımı bütçesi ve tek açış garantisi iki yükleme yolunda da geçerli
+                // — sertleştirme yalnızca upload-pages'e uygulanmış olmuyor.
+                var toplamSayfa = SayfaSayisiniOku(file);
+                result.PageCount = toplamSayfa;
 
-                var sortedPages = SayfaSeciminiCoz(pageSelection, document.NumberOfPages);
+                var sortedPages = SayfaSeciminiCoz(pageSelection, toplamSayfa);
+                var metinler = await SayfalariCikarAsync(file, sortedPages);
 
-                foreach (int pageNumber in sortedPages)
-                {
-                    var page = document.GetPage(pageNumber);
-                    string text = ExtractTextFromPage(page);
-
-                    if (!string.IsNullOrWhiteSpace(text))
-                        pageTexts.Add(text.Trim());
-                }
+                pageTexts.AddRange(sortedPages.Where(metinler.ContainsKey).Select(no => metinler[no]));
             }
 
             result.FullText = string.Join("\n\n", pageTexts);

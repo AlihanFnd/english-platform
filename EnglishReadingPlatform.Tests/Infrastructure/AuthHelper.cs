@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using EnglishReadingPlatform.Data;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EnglishReadingPlatform.Tests.Infrastructure;
 
@@ -67,6 +69,57 @@ public static class AuthHelper
         res.EnsureSuccessStatusCode();
         var body = await res.Content.ReadFromJsonAsync<KayitYaniti>();
         return new TokenSonucu(body!.token, body.user.id, body.user.role);
+    }
+
+    /// <summary>
+    /// Teste ÖZEL, YENİ bir yönetici hesabı açar ve token'ını döner.
+    ///
+    /// NEDEN GEREKLİ: hız sınırı bölümleri KULLANICI kimliğine göre ayrılıyor
+    /// (HizSinirlamaKurulumu.KullaniciVeyaIp). Tohumlanan yönetici tek olduğu için
+    /// onunla çalışan BÜTÜN testler aynı kovayı paylaşıyordu; dosya yükleme kotası
+    /// dakikada 5 olduğundan, altıncı yükleme testi -- hangi dosyada yazılmış
+    /// olursa olsun -- uzaktaki başka bir testi 429 ile kırıyordu. Test eklemenin
+    /// alakasız bir testi bozması, bulunması en pahalı kırılganlık türüdür.
+    /// Her testin kendi yöneticisi olunca bu bağ tamamen kopar.
+    ///
+    /// Rol yükseltmesi doğrudan veritabanında yapılır, ardından TEKRAR giriş
+    /// yapılır: roldeki değişiklik elde duran token'ın claim'ine yansımaz.
+    /// </summary>
+    public static async Task<TokenSonucu> YeniYoneticiOlarakGirisYapAsync(
+        HttpClient client, TestAppFactory fabrika)
+    {
+        var benzersiz = Guid.NewGuid().ToString("N")[..8];
+        var eposta = $"yon_{benzersiz}@test.local";
+        const string sifre = "TestSifre123!";
+
+        var kayit = await IpIleGonderAsync(client, "/api/auth/register", new
+        {
+            username = $"yon_{benzersiz}",
+            email    = eposta,
+            password = sifre,
+            role     = "student"
+        });
+        kayit.EnsureSuccessStatusCode();
+        var kayitGovde = await kayit.Content.ReadFromJsonAsync<KayitYaniti>();
+
+        using (var kapsam = fabrika.Services.CreateScope())
+        {
+            var db = kapsam.ServiceProvider.GetRequiredService<AppDbContext>();
+            var kullanici = await db.Users.FindAsync(kayitGovde!.user.id);
+            kullanici!.Role = "admin";
+            await db.SaveChangesAsync();
+        }
+
+        var giris = await IpIleGonderAsync(client, "/api/auth/login",
+            new { email = eposta, password = sifre });
+        giris.EnsureSuccessStatusCode();
+        var girisGovde = await giris.Content.ReadFromJsonAsync<KayitYaniti>();
+
+        if (girisGovde!.user.role != "admin")
+            throw new InvalidOperationException(
+                $"Rol yükseltmesi token'a yansımadı (gelen rol: {girisGovde.user.role}).");
+
+        return new TokenSonucu(girisGovde.token, girisGovde.user.id, girisGovde.user.role);
     }
 
     public static HttpClient TokenIle(this HttpClient client, string token)

@@ -24,6 +24,12 @@ public class YetkilendirmeSozlesmesiTests
     {
         "AuthController.Login",     // giriş: token almadan önce çağrılır
         "AuthController.Register",  // kayıt: token almadan önce çağrılır
+        // KURAL-09: şifresini unutan kullanıcının token'ı YOKTUR; bu iki uç
+        // zorunlu olarak anonimdir. Karşılığında: hız sınırı (KimlikDogrulama),
+        // her durumda aynı yanıt (enumerasyon yok) ve tek kullanımlık,
+        // 30 dakika ömürlü, hash'lenmiş saklanan jeton.
+        "AuthController.SifremiUnuttum",  // şifre sıfırlama talebi
+        "AuthController.SifreSifirla",    // jetonla şifre belirleme
     };
 
     /// <summary>Yalnızca yönetici erişebilmesi gereken uçlar.</summary>

@@ -205,4 +205,24 @@ namespace EnglishReadingPlatform.Models
         [Required, MaxLength(AlanSinirlari.OnbellekTipi)] public string WordType { get; set; } = "default"; // Kelime türü
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
+
+    // ─── Şifre Sıfırlama Jetonu (KURAL-09) ──────────────────────
+    /// <summary>
+    /// Şifre sıfırlama bağlantısının jetonu. Ham jeton BURADA SAKLANMAZ —
+    /// yalnızca SHA-256 hash'i tutulur. Veritabanı okuma yetkisi olan biri
+    /// (veya bir yedek dosyası) jetonlarla hesap ele geçiremesin diye.
+    /// </summary>
+    public class SifreSifirlamaJetonu
+    {
+        [Key] public int Id { get; set; }
+        public int UserId { get; set; }
+        [ForeignKey("UserId")] public User User { get; set; } = null!;
+
+        /// <summary>Ham jetonun SHA-256 hash'i (64 hex karakter).</summary>
+        [Required, MaxLength(AlanSinirlari.JetonHash)] public string JetonHash { get; set; } = "";
+
+        public DateTime GecerlilikSonu { get; set; }
+        public DateTime? KullanildiAt { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
 }

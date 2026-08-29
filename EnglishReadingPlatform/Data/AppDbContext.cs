@@ -23,6 +23,8 @@ namespace EnglishReadingPlatform.Data
         public DbSet<UserActivityLog> UserActivityLogs => Set<UserActivityLog>();
         public DbSet<Feedback> Feedbacks => Set<Feedback>();
         public DbSet<TranslationCache> TranslationCaches => Set<TranslationCache>();
+        // KURAL-09: şifre sıfırlama jetonları
+        public DbSet<SifreSifirlamaJetonu> SifreSifirlamaJetonlari => Set<SifreSifirlamaJetonu>();
 
         /// <summary>
         /// KURAL-05: tohum verisinin zaman damgası SABİT olmalıdır.
@@ -46,6 +48,8 @@ namespace EnglishReadingPlatform.Data
             modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
             modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
             modelBuilder.Entity<Group>().HasIndex(g => g.InviteCode).IsUnique();
+            // KURAL-09: aynı hash iki kez yazılamaz
+            modelBuilder.Entity<SifreSifirlamaJetonu>().HasIndex(j => j.JetonHash).IsUnique();
             
             // Index for Translation Cache
             modelBuilder.Entity<TranslationCache>().HasIndex(tc => new { tc.QueryText, tc.ContextText });
