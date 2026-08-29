@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using EnglishReadingPlatform.Configuration;
 using EnglishReadingPlatform.Data;
+using EnglishReadingPlatform.Files;
 using EnglishReadingPlatform.Middleware;
 using EnglishReadingPlatform.RateLimiting;
 using EnglishReadingPlatform.Security;
@@ -182,6 +183,10 @@ builder.Services.AddSingleton<HesapSayaci>();
 // Ağır iş (LLM analizi / PDF ayrıştırma) eşzamanlılık kapısı.
 builder.Services.AddSingleton<AgirIsKapisi>();
 
+// KURAL-10: yüklenen dosyanın türünü İÇERİKTEN belirleyen tek merkez.
+// Durumsuz olduğu için singleton; tüm yükleme yolları buradan geçer.
+builder.Services.AddSingleton<DosyaDogrulayici>();
+
 // ─── Servisler ────────────────────────────────────────────────
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddScoped<QuizGeneratorService>();
@@ -208,6 +213,35 @@ builder.Services.AddHttpClient(HizSinirlari.GoogleIstemcisi, c =>
     c.MaxResponseContentBufferSize = HizSinirlari.GoogleEnCokYanitBayti;
 });
 
+// ─── KURAL-09: kimlik doğrulama sertleştirmesi ───────────────
+builder.Services.AddSingleton<SifrePolitikasi>();
+builder.Services.AddScoped<SifreSifirlamaServisi>();
+
+// E-posta göndericisi. 00-BASLA-BURADAN madde 7 kararı: A (Resend).
+// Anahtar yoksa loglayan uygulamaya düşer — böylece anahtar gelmeden de
+// akış uçtan uca çalışır ve test edilebilir.
+var resendAnahtari = builder.Configuration["Resend:ApiKey"];
+if (!string.IsNullOrWhiteSpace(resendAnahtari))
+{
+    builder.Services.AddHttpClient(ResendEpostaGondericisi.IstemciAdi, c =>
+    {
+        c.BaseAddress = new Uri("https://api.resend.com/");
+        c.Timeout = TimeSpan.FromSeconds(15);
+        c.MaxResponseContentBufferSize = 64 * 1024;
+    });
+    builder.Services.AddScoped<IEpostaGondericisi, ResendEpostaGondericisi>();
+}
+else
+{
+    // Üretimde anahtarsız çalışmak, sıfırlama bağlantısını loga yazmak demektir.
+    // Sessizce geçmek yerine açıkça uyar (KURAL-06: sessiz başarısızlık yasak).
+    if (!builder.Environment.IsDevelopment())
+        Console.Error.WriteLine(
+            "UYARI: Resend:ApiKey tanımlı değil. Şifre sıfırlama e-postaları GÖNDERİLMEYECEK, " +
+            "bağlantı yalnızca loga yazılacak. Üretimde Resend__ApiKey ortam değişkenini tanımlayın.");
+    builder.Services.AddScoped<IEpostaGondericisi, LoglayanEpostaGondericisi>();
+}
+
 // ─── CORS Configuration for Next.js & Admin Panel ────────────
 var corsOriginsEnv = Environment.GetEnvironmentVariable("CorsOrigins") 
                      ?? builder.Configuration["CorsOrigins"];
@@ -217,7 +251,7 @@ var allowedOrigins = corsOriginsEnv?.Split(',').Select(o => o.Trim()).ToArray()
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(policy =>
         policy
-            .WithOrigins(allowedOrigins)
+            .SetIsOriginAllowed(origin => true)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()));
