@@ -36,8 +36,18 @@ public static class YoneticiTohumlayici
                 "Seed:AdminPassword sürüm kontrolüne sızmış bir değer. Yeni bir şifre belirleyin.");
 
         var normalize = email.Trim().ToLowerInvariant();
-        if (await db.Users.AnyAsync(u => u.Email == normalize)) return;   // idempotent
+        var existingUser = await db.Users.FirstOrDefaultAsync(u => u.Email == normalize);
 
+        if (existingUser != null)
+        {
+            if (existingUser.Role != "admin" && !await db.Users.AnyAsync(u => u.Role == "admin" || u.Role == "Admin"))
+            {
+                existingUser.Role = "admin";
+                await db.SaveChangesAsync();
+                logger.LogInformation("Sistemde hiç yönetici olmadığı için mevcut kullanıcı ({Email}) yöneticiye yükseltildi.", normalize);
+            }
+            return;
+        }
         db.Users.Add(new User
         {
             Username     = TekilKullaniciAdiUret(db, normalize),
