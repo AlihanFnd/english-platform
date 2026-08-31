@@ -92,7 +92,7 @@ Güvenlik bu projede opsiyonel değildir; tüm katmanlarda en yüksek öncelik o
 ### [2026-07-07] - Admin Paneli, PDF Yükleme ve Docker Entegrasyonu
 - **Admin JWT Güvenliği**: Admin tokenları 2 saatlik, normal kullanıcı tokenları 7 günlük süreyle sınırlandırıldı.
 - **AdminController**: `/api/admin/` prefix'i altında tüm yönetici endpointleri (`[Authorize(Roles = "admin")]` korumalı) oluşturuldu.
-- **Varsayılan Admin Seed**: `admin@platform.com` / `Admin@2026!` bilgileriyle otomatik seed admin kullanıcısı eklendi.
+- **Varsayılan Admin Seed**: `admin@platform.com` / `<eski-sır-kaldırıldı — KURAL-02>` bilgileriyle otomatik seed admin kullanıcısı eklendi.
 - **PDF Yükleme Servisi**: `PdfService.cs` — iTextSharp/PdfSharpCore ile PDF metin çıkarımı, 50MB limit, MIME türü doğrulama.
 - **Ayrı Admin Paneli**: `admin-panel/` klasöründe tamamen bağımsız Next.js uygulaması (port 3001) — Login, Dashboard, Kitap Yönetimi, Kullanıcı Yönetimi sayfaları.
 - **Docker Compose**: 5 servis (postgres, pgadmin, backend, frontend, admin) tek `docker-compose.yml` dosyasıyla yönetilir.

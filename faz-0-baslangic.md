@@ -55,7 +55,7 @@ npm run dev -- -p 3001
 | Alan | Değer |
 |---|---|
 | E-posta | `admin@platform.com` |
-| Şifre | `Admin@2026!` |
+| Şifre | `<eski-sır-kaldırıldı — KURAL-02>` |
 
 ---
 
@@ -120,7 +120,7 @@ Veritabanı Docker'da ilk kez ayağa kalktığında, EF Core `EnsureCreated()` y
 | Giriş Alanı | Değer |
 |---|---|
 | **E-posta** | `admin@platform.com` |
-| **Şifre** | `Admin@2026!` |
+| **Şifre** | `<eski-sır-kaldırıldı — KURAL-02>` |
 
 *Bu bilgilerle doğrudan [http://localhost:3001](http://localhost:3001) adresinden giriş yapıp PDF kitap yüklemeye başlayabilirsiniz.*
 
@@ -147,13 +147,13 @@ docker-compose ps
 
 ### pgAdmin'e Bağlanma
 1. http://localhost:8080 aç
-2. Giriş: `admin@admin.com` / `admin123`
+2. Giriş: `admin@admin.com` / `<eski-sır-kaldırıldı — KURAL-02>`
 3. **Add New Server** → Connection sekmesi:
    - Host: `postgres`
    - Port: `5432`
    - Database: `englishreadingdb`
    - Username: `appuser`
-   - Password: `StrongPass@2026!`
+   - Password: `<eski-sır-kaldırıldı — KURAL-02>`
 
 ### Servisleri Durdurma
 ```bash

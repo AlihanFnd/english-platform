@@ -47,3 +47,8 @@ EnglishReadingPlatform/appsettings.Production.json
 EnglishReadingPlatform/appsettings.Local.json
 *.pfx
 *.p12
+
+# KURAL-12: eski SQLite kalıntısı — gerçek şifre hash'leri içeriyor, repoya girmez
+EnglishReadingPlatform/englishplatform.db
+EnglishReadingPlatform/englishplatform.db-shm
+EnglishReadingPlatform/englishplatform.db-wal
