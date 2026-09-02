@@ -288,6 +288,12 @@ export const api = {
   saveOcrRecord: (text: string) =>
     apiRequest<OcrRecord>('/dashboard/ocr', 'POST', { text }),
 
+  // KURAL-12: kullanıcı kendi taradığı metni silebilmeli. Saklama süresi
+  // yalnızca otomatik temizlikle değil, kullanıcının kendi kararıyla da
+  // sınırlanır. Uç idempotenttir: olmayan kayıt da 200 döner.
+  deleteOcrRecord: (id: number) =>
+    apiRequest<{ success: boolean }>(`/dashboard/ocr/${id}`, 'DELETE'),
+
   logActivity: (activityType: string, details: string, durationSeconds: number) =>
     apiRequest<{ success: boolean }>('/activity/log', 'POST', { activityType, details, durationSeconds }),
 

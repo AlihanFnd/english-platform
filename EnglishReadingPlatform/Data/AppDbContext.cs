@@ -50,9 +50,78 @@ namespace EnglishReadingPlatform.Data
             modelBuilder.Entity<Group>().HasIndex(g => g.InviteCode).IsUnique();
             // KURAL-09: aynı hash iki kez yazılamaz
             modelBuilder.Entity<SifreSifirlamaJetonu>().HasIndex(j => j.JetonHash).IsUnique();
-            
-            // Index for Translation Cache
-            modelBuilder.Entity<TranslationCache>().HasIndex(tc => new { tc.QueryText, tc.ContextText });
+
+            // ── KURAL-12: mantıksal tekillik VERİTABANINDA zorlanır ─────────────
+            //
+            // Bu kısıtların hepsinin uygulama katmanında bir "AnyAsync + Add"
+            // karşılığı vardı. O desen tek başına yeterli değildir: iki eşzamanlı
+            // istek aynı anda AnyAsync'ten 'false' alır ve iki satır açar.
+            // Kontrolün TEK doğru yeri, eşzamanlılığı gerçekten seri hale getiren
+            // yerdir — yani veritabanı. Uygulama tarafındaki kontrol kalır
+            // (gereksiz istisna üretmemek için) ama artık TEK savunma değildir.
+
+            modelBuilder.Entity<ReadingProgress>()
+                .HasIndex(p => new { p.UserId, p.BookId }).IsUnique();
+
+            modelBuilder.Entity<TranslationCache>()
+                .HasIndex(tc => new { tc.QueryText, tc.ContextText }).IsUnique();
+
+            modelBuilder.Entity<GroupMember>()
+                .HasIndex(m => new { m.GroupId, m.UserId }).IsUnique();
+
+            modelBuilder.Entity<GroupBookAssignment>()
+                .HasIndex(a => new { a.GroupId, a.BookId }).IsUnique();
+
+            modelBuilder.Entity<WordListItem>()
+                .HasIndex(w => new { w.UserId, w.Word }).IsUnique();
+
+            modelBuilder.Entity<BookPage>()
+                .HasIndex(p => new { p.BookId, p.PageNumber }).IsUnique();
+
+            modelBuilder.Entity<Quiz>()
+                .HasIndex(q => q.ChapterId).IsUnique();
+
+            // Saklama temizliğinin (SaklamaTemizligiServisi) sildiği kolonlar.
+            // İndekssiz bir ExecuteDelete, büyük log tablosunda tam tablo taraması
+            // yapar ve üretimi kilitler — temizlik kendisi bir kesinti sebebi olur.
+            modelBuilder.Entity<UserActivityLog>()
+                .HasIndex(l => new { l.UserId, l.ActivityType, l.Timestamp });
+            modelBuilder.Entity<UserActivityLog>().HasIndex(l => l.Timestamp);
+            modelBuilder.Entity<TranslationCache>().HasIndex(tc => tc.CreatedAt);
+            modelBuilder.Entity<SifreSifirlamaJetonu>().HasIndex(j => j.CreatedAt);
+
+            // ── KURAL-12: silme davranışı BİLİNÇLİ seçilir ──────────────────────
+            //
+            // Grup yöneticisi silinirse grup SİLİNMEZ. EF varsayılanı (zorunlu
+            // ilişki → Cascade) burada sessiz veri kaybıdır: bir öğretmen hesabı
+            // silindiğinde yönettiği bütün gruplar, üyelikleri ve kitap atamaları
+            // da giderdi. Restrict, kaybı bir HATAYA çevirir; AdminController
+            // o hatayı yakalayıp yöneticiye ne yapması gerektiğini söyler.
+            modelBuilder.Entity<Group>()
+                .HasOne(g => g.Admin)
+                .WithMany()
+                .HasForeignKey(g => g.AdminUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Kullanıcıya ait kişisel veriler kullanıcıyla birlikte gider —
+            // cascade burada DOĞRU davranıştır. Yine de AÇIKÇA yazılır ki
+            // EF'in varsayılanı değişse bile davranış sabit kalsın.
+            modelBuilder.Entity<ReadingProgress>().HasOne(p => p.User).WithMany(u => u.ReadingProgresses)
+                .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<WordListItem>().HasOne(w => w.User).WithMany(u => u.WordListItems)
+                .HasForeignKey(w => w.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<UserActivityLog>().HasOne(l => l.User).WithMany(u => u.ActivityLogs)
+                .HasForeignKey(l => l.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<OcrRecord>().HasOne(o => o.User).WithMany()
+                .HasForeignKey(o => o.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Feedback>().HasOne(f => f.User).WithMany()
+                .HasForeignKey(f => f.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<QuizResult>().HasOne(r => r.User).WithMany(u => u.QuizResults)
+                .HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<GroupMember>().HasOne(m => m.User).WithMany(u => u.GroupMemberships)
+                .HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<SifreSifirlamaJetonu>().HasOne(j => j.User).WithMany()
+                .HasForeignKey(j => j.UserId).OnDelete(DeleteBehavior.Cascade);
 
             // KURAL-02: Yönetici tohumu buradan kaldırıldı.
             // Şifre koda gömülüydü ve BCrypt her tuzda farklı hash ürettiği için

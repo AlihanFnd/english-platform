@@ -71,8 +71,11 @@ public static class AlanSinirlari
     // ── Sayısal sınırlar ─────────────────────────────────────
     public const int QuizCevapSayisi   = 100;    // tek quiz'de makul üst sınır
     public const int AktiviteSuresiEnCok = 3600; // saniye — 1 saatlik tek kayıt
-    public const int SayfaSecimiMetni  = 2_000;  // "1,2,3-10" biçimli seçim dizesi
-    public const int SayfaSecimiParcaSayisi = 500;  // virgülle ayrılmış azami parça
+    // DİKKAT: bu iki sayı DosyaDogrulayici.EnCokSayfa ile BİRLİKTE hareket eder.
+    // Sayfa sınırı büyütülüp bunlar unutulursa seçim sessizce kırpılır:
+    // 1500 sayfa seçilir, 500'ü işlenir, kullanıcıya hiçbir uyarı gitmez.
+    public const int SayfaSecimiMetni  = 8_000;  // "1,2,3-10" biçimli seçim dizesi
+    public const int SayfaSecimiParcaSayisi = 1_500;  // virgülle ayrılmış azami parça
 }
 
 /// <summary>

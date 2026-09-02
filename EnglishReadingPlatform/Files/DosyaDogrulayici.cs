@@ -19,10 +19,10 @@ public enum DosyaTuru { Bilinmeyen, Pdf, Docx }
 /// </summary>
 public class DosyaDogrulayici
 {
-    public const long EnBuyukBoyut        = 50L * 1024 * 1024;   // 50 MB (sıkıştırılmış)
-    public const long EnBuyukAcilmisBoyut = 200L * 1024 * 1024;  // 200 MB (zip-bomb koruması)
-    public const int  EnCokSayfa          = 500;
-    public static readonly TimeSpan AyristirmaSuresi = TimeSpan.FromSeconds(60);
+    public const long EnBuyukBoyut        = 100L * 1024 * 1024;  // 100 MB (sıkıştırılmış)
+    public const long EnBuyukAcilmisBoyut = 400L * 1024 * 1024;  // 400 MB (zip-bomb koruması)
+    public const int  EnCokSayfa          = 1_500;
+    public static readonly TimeSpan AyristirmaSuresi = TimeSpan.FromSeconds(180);
 
     /// <summary>Bir DOCX arşivinde izin verilen azami giriş sayısı.</summary>
     public const int EnCokZipGirisi = 5_000;

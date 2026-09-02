@@ -171,7 +171,12 @@ namespace EnglishReadingPlatform.Controllers
                     Role = "member",
                     JoinedAt = DateTime.UtcNow
                 });
-                await _db.SaveChangesAsync();
+
+                // KURAL-12: (GroupId, UserId) artık veritabanında TEKİL. Yukarıdaki
+                // AnyAsync yarışta yanılır; aynı davet kodunu iki kez tıklayan
+                // kullanıcı eskiden gruba İKİ kez üye oluyordu (üye sayısı şişiyor,
+                // grup listesinde grup iki kez görünüyordu). Katılım idempotenttir.
+                await _db.BenzersizKaydetAsync();
             }
 
             return Ok(new { success = true, groupId = group.Id, groupName = group.Name });
@@ -289,7 +294,10 @@ namespace EnglishReadingPlatform.Controllers
                     BookId = req.BookId,
                     AssignedAt = DateTime.UtcNow
                 });
-                await _db.SaveChangesAsync();
+
+                // KURAL-12: (GroupId, BookId) artık veritabanında TEKİL.
+                // Atama idempotenttir: aynı kitabı iki kez atamak hata değildir.
+                await _db.BenzersizKaydetAsync();
             }
 
             return Ok(new { success = true });
@@ -543,6 +551,36 @@ namespace EnglishReadingPlatform.Controllers
 
             // KURAL-08: entity yerine DTO — ImagePath ve User navigasyonu dönmez.
             return Ok(new OcrYaniti(record.Id, record.ExtractedText, record.ScannedAt));
+        }
+
+        // DELETE /api/dashboard/ocr/{id}
+        //
+        // KURAL-12: OCR kayıtları kullanıcının taradığı HAM METİNDİR — ders notu,
+        // kimlik fotokopisi, bir mektup olabilir. Bu veriyi silmenin hiçbir yolu
+        // yoktu: ne kullanıcı için bir uç, ne otomatik bir saklama süresi.
+        // "Kullanıcı kendi verisini silebilir" bir saklama gereğidir.
+        //
+        // Sahiplik SORGUNUN İÇİNDE: Id tek başına yeterli olsaydı, sıradaki
+        // sayı denenerek başkasının taradığı metin silinebilirdi (IDOR).
+        [HttpDelete("ocr/{id}")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]
+        public async Task<IActionResult> OcrSil(
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id)
+        {
+            var userId = CurrentUserId;
+            var kayit = await _db.OcrRecords
+                .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId);
+
+            if (kayit is not null)
+            {
+                _db.OcrRecords.Remove(kayit);
+                await _db.SaveChangesAsync();
+            }
+
+            // Idempotent VE kasıtlı olarak ayrım yapmaz: "kayıt yok" ile
+            // "kayıt başkasının" aynı yanıtı döner. Farklı yanıtlar, başkasının
+            // kaç kaydı olduğunu sayan bir numaralandırma aracı olurdu.
+            return Ok(new { success = true });
         }
     }
 }

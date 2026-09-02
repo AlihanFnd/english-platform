@@ -19,7 +19,7 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 COPY --from=build /app/publish .
 
-# wwwroot ve upload dizinleri için izin
+# upload dizini için izin (wwwroot KURAL-11'de silindi)
 RUN mkdir -p /app/uploads && chown -R appuser:appgroup /app
 
 USER appuser

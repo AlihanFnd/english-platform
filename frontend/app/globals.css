@@ -1,5 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+/* KURAL-11: Yazı tipleri artık fonts.googleapis.com'dan ÇALIŞMA ZAMANINDA
+   çekilmiyor. İki sebep: (1) CSP'de style-src/font-src için üçüncü taraf alan
+   adı açmak gerekiyordu; (2) her ziyaretçinin IP'si ve Referer'ı Google'a
+   gidiyordu. next/font/google dosyaları DERLEME sırasında indirip kendi
+   origin'imizden servis ediyor — aile adları app/layout.tsx'te tanımlı
+   --font-jakarta / --font-inter değişkenlerine bağlı.
+   "Material Symbols Outlined" içe aktarımı da kaldırıldı: kod tabanında
+   material-symbols sınıfını kullanan tek bir bileşen bile yok. */
 
 @import "tailwindcss";
 
@@ -46,13 +52,13 @@
   --color-inverse-surface: var(--inverse-surface);
   --color-inverse-on-surface: var(--inverse-on-surface);
 
-  --font-display-lg: "Plus Jakarta Sans", sans-serif;
-  --font-headline-lg: "Plus Jakarta Sans", sans-serif;
-  --font-headline-md: "Plus Jakarta Sans", sans-serif;
-  --font-body-lg: "Inter", sans-serif;
-  --font-body-md: "Inter", sans-serif;
-  --font-label-md: "Inter", sans-serif;
-  --font-label-sm: "Inter", sans-serif;
+  --font-display-lg: var(--font-jakarta), sans-serif;
+  --font-headline-lg: var(--font-jakarta), sans-serif;
+  --font-headline-md: var(--font-jakarta), sans-serif;
+  --font-body-lg: var(--font-inter), sans-serif;
+  --font-body-md: var(--font-inter), sans-serif;
+  --font-label-md: var(--font-inter), sans-serif;
+  --font-label-sm: var(--font-inter), sans-serif;
 }
 
 :root,
@@ -715,7 +721,7 @@ body {
 }
 
 .bk-tr-text {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 0.85rem;
   font-style: italic;
   color: var(--on-surface);

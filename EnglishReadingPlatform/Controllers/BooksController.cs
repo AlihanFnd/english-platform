@@ -34,6 +34,50 @@ namespace EnglishReadingPlatform.Controllers
         // FormatException/NullReferenceException fırlatıp 500 üretirdi.
         private int CurrentUserId => this.KullaniciId();
 
+        /// <summary>
+        /// KURAL-12: okuma ilerlemesini TEK satır olacak şekilde yazar.
+        ///
+        /// Eskiden bu mantık Read() içinde iki kez kopyalanmıştı ve tek savunması
+        /// "önce FirstOrDefault, yoksa Add" idi. Aynı kullanıcı iki sekmede aynı
+        /// kitabı açtığında iki istek de 'yok' cevabını alıp İKİ ilerleme satırı
+        /// açıyordu; kitap panoda iki kez görünüyor, yüzdeler birbirini eziyordu.
+        ///
+        /// Artık (UserId, BookId) veritabanında tekil. Yarışı kaybeden istek
+        /// benzersizlik ihlali alır, satırını izlemeden çıkarır ve kazananın
+        /// açtığı satırı GÜNCELLEYEREK devam eder — kullanıcı hiçbir hata görmez.
+        /// </summary>
+        private async Task IlerlemeyiYazAsync(int kitapId, int konum, float yuzde)
+        {
+            var kullaniciId = CurrentUserId;
+
+            var ilerleme = await _db.ReadingProgresses
+                .FirstOrDefaultAsync(p => p.UserId == kullaniciId && p.BookId == kitapId);
+
+            if (ilerleme is null)
+            {
+                _db.ReadingProgresses.Add(new ReadingProgress
+                {
+                    UserId = kullaniciId,
+                    BookId = kitapId,
+                    CurrentChapter = konum,
+                    ProgressPercent = yuzde,
+                    LastRead = DateTime.UtcNow
+                });
+
+                if (await _db.BenzersizKaydetAsync()) return;
+
+                // Yarışı kaybettik: satırı bu arada başka bir istek açtı.
+                ilerleme = await _db.ReadingProgresses
+                    .FirstOrDefaultAsync(p => p.UserId == kullaniciId && p.BookId == kitapId);
+                if (ilerleme is null) return;   // araya silme girdiyse sessizce geç
+            }
+
+            ilerleme.CurrentChapter = konum;
+            ilerleme.ProgressPercent = yuzde;
+            ilerleme.LastRead = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+
         // GET /api/books — Kitaplık
         [HttpGet]
         public async Task<IActionResult> Index()
@@ -153,28 +197,9 @@ namespace EnglishReadingPlatform.Controllers
 
                 if (currentPage == null) return NotFound(new { error = "Sayfa bulunamadı." });
 
-                var userId = CurrentUserId;
-                var progress = await _db.ReadingProgresses
-                    .FirstOrDefaultAsync(p => p.UserId == userId && p.BookId == id);
-
-                if (progress == null)
-                {
-                    progress = new ReadingProgress
-                    {
-                        UserId = userId,
-                        BookId = id,
-                        CurrentChapter = page, // map page to currentChapter for progress compatibility
-                        ProgressPercent = (float)page / book.Pages.Count * 100,
-                        LastRead = DateTime.UtcNow
-                    };
-                    _db.ReadingProgresses.Add(progress);
-                }
-                else
-                {
-                    progress.CurrentChapter = page;
-                    progress.ProgressPercent = (float)page / book.Pages.Count * 100;
-                    progress.LastRead = DateTime.UtcNow;
-                }
+                // KURAL-12: (UserId, BookId) artık veritabanında TEKİL.
+                // Konum, sayfa numarasıyla eşlenir (ilerleme sözleşmesi korunur).
+                await IlerlemeyiYazAsync(id, page, (float)page / book.Pages.Count * 100);
 
                 // JIT (Just-In-Time) Translation or Forced Re-analysis
                 if (reanalyze || string.IsNullOrWhiteSpace(currentPage.SentencesJson) || currentPage.SentencesJson == "[]")
@@ -209,28 +234,8 @@ namespace EnglishReadingPlatform.Controllers
 
                 if (currentChapter == null) return NotFound(new { error = "Bölüm bulunamadı." });
 
-                var userId = CurrentUserId;
-                var progress = await _db.ReadingProgresses
-                    .FirstOrDefaultAsync(p => p.UserId == userId && p.BookId == id);
-
-                if (progress == null)
-                {
-                    progress = new ReadingProgress
-                    {
-                        UserId = userId,
-                        BookId = id,
-                        CurrentChapter = chapter,
-                        ProgressPercent = (float)chapter / book.Chapters.Count * 100,
-                        LastRead = DateTime.UtcNow
-                    };
-                    _db.ReadingProgresses.Add(progress);
-                }
-                else
-                {
-                    progress.CurrentChapter = chapter;
-                    progress.ProgressPercent = (float)chapter / book.Chapters.Count * 100;
-                    progress.LastRead = DateTime.UtcNow;
-                }
+                // KURAL-12: (UserId, BookId) artık veritabanında TEKİL.
+                await IlerlemeyiYazAsync(id, chapter, (float)chapter / book.Chapters.Count * 100);
 
                 await _db.SaveChangesAsync();
 
@@ -283,21 +288,30 @@ namespace EnglishReadingPlatform.Controllers
             }
 
             var userId = CurrentUserId;
+
+            // KURAL-05: kolon sınırına yazılmadan önce SON savunma hattı.
+            // Kırpma, benzersizlik kontrolünden ÖNCE yapılır: veritabanına giden
+            // değer neyse tekillik de onun üzerinden ölçülmelidir.
+            var kelime = req.Word.KirpEnCok(AlanSinirlari.Kelime);
+
             var existing = await _db.WordListItems
-                .AnyAsync(w => w.UserId == userId && w.Word == req.Word);
+                .AnyAsync(w => w.UserId == userId && w.Word == kelime);
 
             if (!existing)
             {
                 _db.WordListItems.Add(new WordListItem
                 {
                     UserId = userId,
-                    // KURAL-05: kolon sınırına yazılmadan önce SON savunma hattı.
-                    Word = req.Word.KirpEnCok(AlanSinirlari.Kelime),
+                    Word = kelime,
                     Translation = req.Translation.KirpEnCok(AlanSinirlari.Ceviri),
                     Context = req.Context.KirpEnCok(AlanSinirlari.Baglam),
                     AddedAt = DateTime.UtcNow
                 });
-                await _db.SaveChangesAsync();
+
+                // KURAL-12: (UserId, Word) artık veritabanında TEKİL. Yukarıdaki
+                // AnyAsync yarışta yanılabilir; çakışma sessizce yutulur çünkü
+                // bu ucun sözleşmesi IDEMPOTENT: "kelime listende olsun".
+                await _db.BenzersizKaydetAsync();
             }
 
             return Ok(new { success = true });
@@ -377,21 +391,29 @@ namespace EnglishReadingPlatform.Controllers
 
             if (quiz == null)
             {
-                quiz = new Quiz
+                var yeniQuiz = new Quiz
                 {
                     BookId = chapter.BookId,
                     ChapterId = chapterId,
                     Title = $"{chapter.Book.Title} — {chapter.Title} Quiz",
                     CreatedAt = DateTime.UtcNow
                 };
-                _db.Quizzes.Add(quiz);
-                await _db.SaveChangesAsync();
+                _db.Quizzes.Add(yeniQuiz);
 
-                var questions = _quizGen.GenerateQuestions(chapter, quiz.Id, 5);
-                _db.QuizQuestions.AddRange(questions);
-                await _db.SaveChangesAsync();
+                // KURAL-12: ChapterId artık TEKİL. İki eşzamanlı istek eskiden
+                // aynı bölüm için İKİ quiz üretiyordu — kullanıcı kendi sorularını
+                // ikinci kez çözdüğünde farklı sorularla karşılaşıyordu.
+                if (await _db.BenzersizKaydetAsync())
+                {
+                    _db.QuizQuestions.AddRange(_quizGen.GenerateQuestions(chapter, yeniQuiz.Id, 5));
+                    await _db.SaveChangesAsync();
+                }
 
-                quiz = await _db.Quizzes.Include(q => q.Questions).FirstAsync(q => q.Id == quiz.Id);
+                // Yarışı kaybettiysek kazananın quiz'i okunur; kazandıysak kendimizinki.
+                quiz = await _db.Quizzes.Include(q => q.Questions)
+                    .FirstOrDefaultAsync(q => q.ChapterId == chapterId);
+
+                if (quiz == null) return NotFound(new { error = "Quiz oluşturulamadı." });
             }
 
             return Ok(new {

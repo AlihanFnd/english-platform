@@ -109,7 +109,7 @@ public class DosyaDogrulayiciTests
         // Sayı KASTEN sabit. "EnCokSayfa + 50" yazmak testi kendi ölçtüğü sabite
         // bağlar: sınır 999999'a çıkarılsa girdi de onunla büyür ve test yeşil
         // kalır — yani sınırın DEĞERİNİ hiç ölçmemiş olur. Mutasyonla doğrulandı.
-        const int istenenSayfa = 550;
+        const int istenenSayfa = 1_600;
         istenenSayfa.Should().BeGreaterThan(DosyaDogrulayici.EnCokSayfa,
             "sınır bilinçli olarak yükseltildiyse bu testteki sayı da güncellenmeli");
 
@@ -125,7 +125,7 @@ public class DosyaDogrulayiciTests
     public void Sayfa_ust_siniri_dosya_acilmadan_uygulanir()
     {
         // SecimiCoz dosyaya hiç dokunmaz: sınır, ayrıştırıcı meşgul edilmeden önce işler.
-        const int istenenSayfa = 501;   // sabit — gerekçe için yukarıdaki teste bak
+        const int istenenSayfa = 1_501;   // sabit — gerekçe için yukarıdaki teste bak
         istenenSayfa.Should().BeGreaterThan(DosyaDogrulayici.EnCokSayfa);
 
         var cokSayfa = string.Join(",", Enumerable.Range(1, istenenSayfa));

@@ -57,7 +57,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # KURAL-11: pdfjs-dist 6.x "engines: node >= 22.13" istiyor.
+          # Node 20'de npm yalnızca EBADENGINE uyarısı verir — yani sorun
+          # sessizce geçer ve CI ile üretim (Vercel, Node 22) ayrışır.
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: ${{ matrix.uygulama }}/package-lock.json
       - run: npm ci

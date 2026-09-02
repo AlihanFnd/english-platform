@@ -52,12 +52,24 @@ yürütülür. Disiplin, pazarlıksız maddeler ve teslim formatı 00 dosyasınd
 - Kod değiştirdiğinde ilgili dokümanı da güncelle
   ([docs/08-GELISTIRME-REHBERI.md § 8](docs/08-GELISTIRME-REHBERI.md)).
 - `frontend/` **Next.js 16** kullanıyor — API'ler eğitim verisinden farklı olabilir,
-  `frontend/AGENTS.md` uyarısını dikkate al.
+  `frontend/AGENTS.md` uyarısını dikkate al. **Her iki istemci de Next 16'dır** ve
+  ara katman dosyasının adı `middleware.ts` değil **`proxy.ts`**, dışa aktarılan işlev
+  de `proxy` olmalıdır.
+- **İstemcilerde CSP nonce zinciri kırılgandır** (KURAL-11): `proxy.ts` istek başına
+  nonce üretir, `app/layout.tsx` içindeki `await headers()` sayfayı dinamik yapar.
+  O satır silinirse sayfa statik ön-render'a döner, nonce tutmaz ve **tarayıcı hidrasyon
+  script'ini engeller** — sayfa sessizce etkileşimsiz kalır. `scripts/guard/11-tarayici.sh`
+  bunu denetliyor.
+- **Üçüncü taraf JS/WASM/yazı tipi CDN'den çekilmez.** pdf.js, Tesseract ve yazı tipleri
+  paketten gelir; `public/` altına `prebuild` betikleriyle kopyalanır. Bir kütüphanenin
+  *varsayılanı* CDN'e düşüyorsa (Tesseract'ta olduğu gibi) yollar açıkça verilir.
 
 ## Bilinmesi gereken iki tuhaflık
 
 1. **Kitaplar iki farklı biçimde saklanıyor:** `Chapter` (eski, her okumada yeniden
    çevrilir) veya `BookPage` (güncel, çeviri `SentencesJson`'a bir kez yazılır).
    `hasPages` bayrağı hangisinin geçerli olduğunu söyler.
-2. **`EnglishReadingPlatform/Views/` ve `wwwroot/js|lib` ölü kod.** `Program.cs`
-   Razor pipeline'ını hiç kurmuyor.
+2. **Backend hiç statik dosya sunmaz.** `Views/` ve `wwwroot/` ölü koddu, 2026-09-01'de
+   silindi; `app.UseStaticFiles()` de kaldırıldı. Razor pipeline'ı hiç kurulmamıştı.
+   Statik dosya sunmak gerekirse kökü açma — `RequestPath` ile tek dizin yayınla ve
+   `scripts/guard/11-tarayici.sh` kontrolünü güncelle.

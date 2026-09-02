@@ -85,18 +85,22 @@ namespace EnglishReadingPlatform.Services
 
             if (tur == DosyaTuru.Docx)
             {
-                // DOCX'te sayfa kavramı yok — tüm metin tek "sayfa" olarak döner.
-                // Eski kod seçilen HER sayfaya AYNI metni koyuyordu (sessiz hata).
+                // DOCX'te belgeye ait bir sayfa kavramı YOKTUR (sayfa sonu, yazıcı
+                // ayarına ve yazı tipine göre değişir). Bu yüzden metin sabit
+                // uzunlukta sayfalara bölünür ve İSTENEN sayfalar döndürülür.
                 // Zip-bomb kontrolünü ExtractDocxText'in kendisi yapıyor.
-                var docxMetni = ExtractDocxText(dosya);
+                var docxSayfalari = DocxSayfalaraBol(ExtractDocxText(dosya));
+
+                var docxSonuc = new Dictionary<int, string>();
+                foreach (var no in sayfaNumaralari)
+                    if (no >= 1 && no <= docxSayfalari.Count)
+                        docxSonuc[no] = docxSayfalari[no - 1];
 
                 // BOŞ metin sonuca KONMAZ — PDF dalı da böyle davranıyor.
                 // Aksi hâlde metni okunamayan bir DOCX, çağırana "1 sayfa çıkardım"
                 // der; kullanıcı "metin çıkarılamadı" uyarısı yerine tek boş sayfalı
                 // bir kitap görür. Bu sessiz başarısızlık mutasyon C sırasında yakalandı.
-                return string.IsNullOrWhiteSpace(docxMetni)
-                    ? new Dictionary<int, string>()
-                    : new Dictionary<int, string> { [1] = docxMetni.Trim() };
+                return docxSonuc;
             }
 
             // Zaman aşımı: PdfPig senkron çalışır, bu yüzden bütçe DÖNGÜ İÇİNDE
@@ -135,12 +139,56 @@ namespace EnglishReadingPlatform.Services
         /// </summary>
         public int SayfaSayisiniOku(IFormFile dosya)
         {
-            if (_dogrulayici.TuruBelirle(dosya) != DosyaTuru.Pdf) return 1;
+            // DOCX: sayfa sayısı belgeden okunamaz, bölmeyle ÜRETİLİR.
+            // Eskiden burası sabit 1 dönüyordu; o yüzden seçilen sayfa ne olursa
+            // olsun tek sayfa oluşuyor ve belgenin geri kalanı sessizce kayboluyordu.
+            if (_dogrulayici.TuruBelirle(dosya) == DosyaTuru.Docx)
+                return DocxSayfalaraBol(ExtractDocxText(dosya)).Count;
 
             using var akis = dosya.OpenReadStream();
             using var belge = PdfAc(akis);
             return belge.NumberOfPages;
         }
+
+        /// <summary>DOCX'in TAMAMINI sayfalara bölerek çıkarır (seçim yok, hepsi).</summary>
+        public Task<IReadOnlyDictionary<int, string>> DocxTumSayfalariniCikarAsync(
+            IFormFile dosya, CancellationToken iptal = default)
+        {
+            _dogrulayici.Dogrula(dosya);
+
+            // Metin BİR KEZ çıkarılır; sayfa sayısını ayrıca sormak belgeyi
+            // ikinci kez açıp açmak demek olurdu.
+            var sayfalar = DocxSayfalaraBol(ExtractDocxText(dosya));
+
+            var sonuc = new Dictionary<int, string>();
+            for (var i = 0; i < sayfalar.Count && i < DosyaDogrulayici.EnCokSayfa; i++)
+                sonuc[i + 1] = sayfalar[i];
+
+            return Task.FromResult<IReadOnlyDictionary<int, string>>(sonuc);
+        }
+
+        /// <summary>
+        /// DOCX metnini sabit uzunlukta "sayfalara" böler.
+        ///
+        /// TEK KAYNAK: hem books/upload hem books/upload-pages bunu kullanır.
+        /// Eskiden bölme mantığı yalnızca birinci yolda vardı; ikinci yol tüm
+        /// belgeyi tek parça kaydediyordu ve iki uç aynı dosyadan FARKLI sonuç
+        /// üretiyordu.
+        /// </summary>
+        private static List<string> DocxSayfalaraBol(string tumMetin)
+        {
+            var sayfalar = new List<string>();
+            if (string.IsNullOrWhiteSpace(tumMetin)) return sayfalar;
+
+            var kelimeler = tumMetin.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < kelimeler.Length; i += SayfaBasinaKelime)
+                sayfalar.Add(string.Join(" ", kelimeler.Skip(i).Take(SayfaBasinaKelime)));
+
+            return sayfalar;
+        }
+
+        /// <summary>DOCX yapay sayfalamasında sayfa başına kelime.</summary>
+        private const int SayfaBasinaKelime = 400;
 
         /// <summary>
         /// KURAL-06: bozuk/şifreli bir dosya SUNUCU arızası değil, KULLANICI hatasıdır.
@@ -235,17 +283,10 @@ namespace EnglishReadingPlatform.Services
             if (tur == DosyaTuru.Docx)
             {
                 var fullText = ExtractDocxText(file);
-                result.PageCount = 1;
                 result.FullText = fullText;
-                
-                // Word belgesini satırlara/paragraflara göre sayfalara veya bölümlere bölme simülasyonu (her 500 kelime bir sayfa gibi)
-                var words = fullText.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                const int wordsPerPage = 400;
-                for (int i = 0; i < words.Length; i += wordsPerPage)
-                {
-                    var chunk = words.Skip(i).Take(wordsPerPage);
-                    pageTexts.Add(string.Join(" ", chunk));
-                }
+
+                // KURAL-10: bölme mantığı artık tek yerde (DocxSayfalaraBol).
+                pageTexts.AddRange(DocxSayfalaraBol(fullText));
                 result.PageCount = pageTexts.Count;
             }
             else

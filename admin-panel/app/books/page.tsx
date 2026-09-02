@@ -1,10 +1,32 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
 "use client";
 
 import React, { useState, useEffect, useRef, FormEvent } from "react";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import AdminLayout from "../components/AdminLayout";
 import { useAdminKorumasi, adminTokenOku } from "../hooks/useAdminAuth";
+
+/**
+ * KURAL-11 — pdf.js artık CDN'den değil npm paketinden geliyor.
+ *
+ * Eskiden bu sayfa cdnjs'ten SRI'sız bir <script> enjekte ediyordu. İki ayrı
+ * sorun vardı: (1) CDN ele geçirilirse yönetici oturumunun içinde keyfî
+ * JavaScript çalışır ve admin_token doğrudan çalınır; (2) çekilen sürüm
+ * (2.16.105) CVE-2024-4367'ye açıktı — yani ELE GEÇİRİLMİŞ BİR CDN'E BİLE
+ * GEREK YOKTU: kötü niyetli bir PDF açmak, panelin içinde kod çalıştırmaya
+ * yetiyordu. Panelde açılan PDF'ler dışarıdan gelen dosyalardır.
+ *
+ * İçe aktarma modül seviyesinde DEĞİL, kullanıldığı anda yapılıyor: pdf.js
+ * tarayıcıya özgü API'lere dokunur, sunucu render'ında yüklenmesi gereksizdir.
+ */
+async function pdfKitapligiYukle() {
+  const pdfjsLib = await import("pdfjs-dist");
+
+  // Worker aynı origin'den servis edilir (CSP: worker-src 'self').
+  // Dosya derleme öncesi node_modules'tan kopyalanır:
+  // admin-panel/scripts/pdfjs-worker-kopyala.mjs
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+  return pdfjsLib;
+}
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
 
@@ -66,7 +88,7 @@ interface Book {
 }
 
 interface PdfThumbnailProps {
-  pdfDoc: any;
+  pdfDoc: PDFDocumentProxy;
   pageNumber: number;
   isSelected: boolean;
   onToggle: () => void;
@@ -88,9 +110,12 @@ function PdfThumbnail({ pdfDoc, pageNumber, isSelected, onToggle }: PdfThumbnail
         canvas.height = viewport.height;
         canvas.width = viewport.width;
 
+        // pdf.js 6: RenderParameters yalnızca 2D bağlamı değil, canvas'ın
+        // kendisini de istiyor. Eksikse çizim sessizce yanlış ölçekleniyor.
         const renderContext = {
           canvasContext: context,
-          viewport: viewport
+          canvas,
+          viewport
         };
         if (active) {
           await page.render(renderContext).promise;
@@ -146,7 +171,7 @@ export default function BooksPage() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   // PDF.js states
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -163,21 +188,6 @@ export default function BooksPage() {
 
   // KURAL-05: seçenekler backend whitelist'inden gelir, panelde kopya tutulmaz.
   const [taksonomi, setTaksonomi] = useState<Taksonomi>(YEDEK_TAKSONOMI);
-
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
-    script.onload = () => {
-      // @ts-ignore
-      window.pdfjsLib = window["pdfjs-dist/build/pdf"];
-      // @ts-ignore
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
-    };
-    document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, []);
 
   useAdminKorumasi();
 
@@ -219,7 +229,11 @@ export default function BooksPage() {
       setTotalPages(0);
       setSelectedPages([]);
     } else if (f.name.toLowerCase().endsWith(".docx")) {
-      // Word belgelerini tek sayfa olarak simüle ederiz
+      // Word belgesinde sayfa sonu YOKTUR: nerede biteceği yazı tipine ve yazıcı
+      // ayarına göre değişir, tarayıcı bunu bilemez. Bu yüzden sayfa seçici
+      // gösterilmez (pdfDoc boş kalır) ve sunucu belgeyi kendisi sayfalara böler.
+      // Gönderilen seçim DOCX'te sunucu tarafından yok sayılır; buradaki [1]
+      // yalnızca "dosya seçildi" doğrulamasını geçmek içindir.
       setTotalPages(1);
       setSelectedPages([1]);
     } else {
@@ -233,38 +247,41 @@ export default function BooksPage() {
     // Yalnızca gerçek PDF dosyaları için önizleme yüklenir.
     if (!pdfFile || pdfFile.name.toLowerCase().endsWith(".docx")) return;
 
-    const loadPdf = async () => {
+    // Kütüphane artık import ile geliyor: "CDN yüklendi mi?" diye 1 saniye
+    // bekleyen setTimeout kurgusuna gerek yok. O kurgu yavaş bağlantıda
+    // önizlemeyi sessizce boş bırakıyordu; şimdi yükleme beklenebiliyor.
+    let gecerli = true;
+
+    const onizlemeyiYukle = async () => {
       setLoadingPreview(true);
       try {
-        const fileReader = new FileReader();
-        fileReader.onload = async function() {
-          const typedarray = new Uint8Array(this.result as ArrayBuffer);
-          // @ts-ignore
-          if (window.pdfjsLib) {
-            // @ts-ignore
-            const doc = await window.pdfjsLib.getDocument({ data: typedarray }).promise;
-            setPdfDoc(doc);
-            setTotalPages(doc.numPages);
-            const all: number[] = [];
-            for (let i = 1; i <= doc.numPages; i++) all.push(i);
-            setSelectedPages(all);
-          }
-        };
-        fileReader.readAsArrayBuffer(pdfFile);
+        const pdfjsLib = await pdfKitapligiYukle();
+        const veri = new Uint8Array(await pdfFile.arrayBuffer());
+        // Yükleme görevi elde tutuluyor: iptal (destroy) belge nesnesinde değil,
+        // görevde. Aksi halde vazgeçilen bir önizlemenin worker'ı ayakta kalır.
+        // wasmUrl: JBIG2/OpenJPEG çözücüleri de kendi origin'imizden gelsin.
+        // Verilmezse pdf.js paketin içindeki göreli yolu dener ve taranmış
+        // PDF'lerin sayfaları boş çizilir.
+        const yuklemeGorevi = pdfjsLib.getDocument({ data: veri, wasmUrl: "/pdfjs/wasm/" });
+        const doc = await yuklemeGorevi.promise;
+
+        // Kullanıcı bu arada başka dosya seçtiyse eski belgeyi bırak.
+        if (!gecerli) { void yuklemeGorevi.destroy(); return; }
+
+        setPdfDoc(doc);
+        setTotalPages(doc.numPages);
+        setSelectedPages(Array.from({ length: doc.numPages }, (_, i) => i + 1));
       } catch (err) {
-        console.error("PDF loading error:", err);
+        console.error("PDF önizlemesi yüklenemedi:", err);
       } finally {
-        setLoadingPreview(false);
+        // Eski kod bu satırı FileReader daha okumaya BAŞLAMADAN çalıştırıyordu:
+        // gösterge, önizleme hazır olmadan kapanıyordu.
+        if (gecerli) setLoadingPreview(false);
       }
     };
-    
-    // @ts-ignore
-    if (window.pdfjsLib) {
-      loadPdf();
-    } else {
-      const timer = setTimeout(loadPdf, 1000);
-      return () => clearTimeout(timer);
-    }
+
+    void onizlemeyiYukle();
+    return () => { gecerli = false; };
   }, [pdfFile]);
 
   async function loadBooks(t: string) {
@@ -494,6 +511,18 @@ export default function BooksPage() {
               onChange={e => dosyaSecimiDegisti(e.target.files?.[0] || null)}
               className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-gray-300 text-sm focus:outline-hidden focus:border-indigo-500 file:mr-3 file:py-1.5 file:px-3.5 file:rounded-lg file:border-0 file:bg-indigo-600 file:text-white file:text-xs file:font-bold file:hover:bg-indigo-500 file:cursor-pointer transition-all" />
           </div>
+
+          {/* DOCX seçildiğinde: sayfa seçici yok, ne olacağını açıkça söyle */}
+          {pdfFile?.name.toLowerCase().endsWith(".docx") && (
+            <div className="border border-gray-800 bg-gray-950/20 backdrop-blur-xs rounded-2xl p-5">
+              <h3 className="font-bold text-sm text-white">Word belgesi</h3>
+              <p className="text-xs text-gray-400 mt-1.5">
+                Word belgelerinde sabit sayfa sonu bulunmaz, bu yüzden sayfa seçimi yapılmaz.
+                Belgenin <strong className="text-gray-300">tamamı</strong> yüklenir ve okuma
+                akışı için otomatik olarak sayfalara bölünür.
+              </p>
+            </div>
+          )}
 
           {/* PDF Sayfa Önizleme Grid */}
           {pdfDoc && (

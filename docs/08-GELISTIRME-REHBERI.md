@@ -4,7 +4,8 @@
 
 ### Gereksinimler
 - Docker + Docker Compose
-- Node.js 20+
+- **Node.js 22+** (KURAL-11: `pdfjs-dist` 6.x `engines: node >= 22.13` istiyor;
+  Node 20'de npm yalnızca uyarı verir, yani sorun sessizce geçer. CI de 22 kullanıyor)
 - .NET 8 SDK (veya repo içindeki `dotnet_sdk/`)
 
 ### İlk kurulum
@@ -191,7 +192,9 @@ Faydalı sorgular: [02-VERITABANI.md § 6](02-VERITABANI.md)
 | Çeviri İngilizce dönüyor | `TranslateSentenceAsync` hata yutup özgün metni döndürüyor — sessiz başarısızlık |
 | Kelime kaydederken 500 | `Context` 200 karakteri aşmış ([07-GUVENLIK.md](07-GUVENLIK.md) #8) |
 | Quiz açılırken 500 | `QuizGeneratorService.First(s => s.Length > 30)` istisnası — bölüm çok kısa |
-| Yönetici panelinde PDF önizleme boş | pdf.js CDN'den yüklenmemiş (ağ/CSP) veya PDF seçimi script'ten önce yapıldı |
+| Yönetici panelinde PDF önizleme boş | `public/pdfjs/` kopyalanmamış. `npm run build`/`npm run dev` bunu otomatik yapar (`prebuild`/`predev`); elle: `node scripts/pdfjs-worker-kopyala.mjs` |
+| OCR "işlem başarısız" veriyor | `public/tesseract/` eksik ya da eski. `node scripts/tesseract-varliklari-kopyala.mjs` çalıştır. **Sunucu çalışırken kopyalarsan `next start`'ı yeniden başlat** — Next public/ listesini açılışta okuyor, yeni dosyalar 404 döner |
+| Sayfa açılıyor ama boş/etkileşimsiz, konsolda CSP hatası | `app/layout.tsx` içindeki `await headers()` silinmiş olabilir. O çağrı sayfayı dinamik yapıyor; statik ön-render nonce taşıyamaz ve hidrasyon script'i engellenir |
 | Çıkış yaptım ama token hâlâ çalışıyor | Bilinen hata — [07-GUVENLIK.md](07-GUVENLIK.md) #3 |
 | Koyu temada açılışta beyaz flaş | `ThemeContext` temayı `useEffect`'te uyguluyor |
 | Kelimeler renkli değil | Backend her kelimeye `type: "default"` yazıyor — [04-BACKEND.md § 5.6](04-BACKEND.md) |
@@ -231,8 +234,9 @@ Faydalı sorgular: [02-VERITABANI.md § 6](02-VERITABANI.md)
 | 13 | Seviye/kategori listeleri frontend ve admin panelde ayrı ayrı yazılmış | 2 dosya |
 | 14 | `handleReanalyze`, `loadingAI`, `JwtService.ValidateToken`, `account_type` claim'i ölü kod | çeşitli |
 | 15 | `PdfSharpCore` paketi hiç kullanılmıyor | `.csproj` |
-| 16 | Yönetici panelinde DOCX için sayfa seçici hâlâ görünüyor; backend artık seçimi yok sayıp tüm belgeyi tek sayfa kaydediyor (KURAL-10 kararı **A**) | `admin-panel/app/books/page.tsx` |
-| 17 | **Yazar veya açıklama boş bırakılırsa kitap yüklenemiyor.** `Author`/`Description` non-nullable `string` olduğu için örtük `[Required]` alıyor; boş metin `null`'a çevrilince doğrulama düşüyor. Yanıt üstelik **İngilizce**: `{"error":"The Author field is required."}`. Alanlar `string?` yapılırsa çözülür — ama "yazar zorunlu olsun mu?" bir ürün kararıdır, o yüzden değiştirilmedi | `AdminController.BookUploadRequest` / `BookUploadPagesRequest` |
+| 18 | **Taranmış (görsel tabanlı) PDF'lerden metin çıkmıyor** — kullanıcı "metin çıkarılamadı" uyarısı alıyor. Çözümü OCR eklemek; ayrı ve büyük bir iş. Kullanıcı kararı (2026-09-01): **sonra yapılacak** | `PdfService` |
+| 16 | ~~DOCX'te sayfa seçici anlamsız çalışıyor~~ ✅ 2026-09-01 kapandı: DOCX artık 400 kelimelik sayfalara bölünüyor, panel seçici yerine açıklama gösteriyor | `PdfService`, `admin-panel/app/books/page.tsx` |
+| 17 | ~~**Yazar veya açıklama boş bırakılırsa kitap yüklenemiyor.**~~ ✅ 2026-09-01 kapandı (kullanıcı kararı: boş bırakılabilsin) — `Author`/`Description` üç DTO'da da `string?` yapıldı. Eski açıklama: `Author`/`Description` non-nullable `string` olduğu için örtük `[Required]` alıyor; boş metin `null`'a çevrilince doğrulama düşüyor. Yanıt üstelik **İngilizce**: `{"error":"The Author field is required."}`. Alanlar `string?` yapılırsa çözülür — ama "yazar zorunlu olsun mu?" bir ürün kararıdır, o yüzden değiştirilmedi | `AdminController.BookUploadRequest` / `BookUploadPagesRequest` |
 
 ---
 
@@ -275,15 +279,38 @@ Backend'de enum/sabit tanımla, `GET /api/books/taxonomy` ile sun, iki frontend 
 `frontend/books/[id]/page.tsx → normalizeSentences`. Tek bir yerde (tercihen backend'de)
 kalmalı; frontend ham veriye güvenmek zorunda kalmamalı.
 
-### 8. `admin-panel`'de tip kontrolünü aç 🟠
-`ignoreBuildErrors` / `ignoreDuringBuilds` kapatılıp çıkan hatalar giderilmeli.
+### 8. ~~`admin-panel`'de tip kontrolünü aç~~ ✅ KAPANDI (KURAL-11, 2026-09-01)
+Kapılar açıldı; ortaya çıkan iki tip hatası (pdf.js `RenderParameters.canvas` eksik,
+`destroy()` belge yerine yükleme görevinde) düzeltildi. `npx tsc --noEmit` → 0 hata.
 
 ### 9. Otomatik migration'ı üretimde kapat 🟡
 `Database.Migrate()` yalnızca Development'ta çalışsın; üretimde ayrı bir deploy adımı olsun.
 
-### 10. Ölü kodu temizle 🟡
-`Views/`, `wwwroot/lib`, `wwwroot/js/app.js`, `englishplatform.db`, `PdfSharpCore`,
-`mobile/node_modules`, `JwtService.ValidateToken`, `handleReanalyze`.
+### 10. Ölü kodu temizle 🟢 büyük kısmı bitti (2026-09-01)
+
+✅ Silindi: `EnglishReadingPlatform/Views/` (20 dosya), `EnglishReadingPlatform/wwwroot/`
+(7,9 MB) ve `Program.cs`'teki `app.UseStaticFiles()`. Proje HTML sunmuyor; Razor
+pipeline'ı hiç kurulmamıştı. Silmeden önce `/js/site.js` gibi yollar **kimlik
+doğrulaması olmadan 200** dönüyordu, şimdi 401.
+
+> ⚠️ **Bayat derleme çıktısı tuzağı.** Silme sonrası `dotnet test` / `dotnet run` şunu
+> verebilir: `DirectoryNotFoundException: .../EnglishReadingPlatform/wwwroot/`
+> Sebep kodda değil, `bin/` ve `obj/` içindeki eski `staticwebassets` manifestidir —
+> hâlâ silinmiş klasörü gösterir. **Debug'ı temizlemek yetmez**, `ci-yerel.sh` Release
+> ile koştuğu için Release de temizlenmeli:
+>
+> ```bash
+> dotnet clean Linguza.sln && dotnet clean Linguza.sln -c Release
+> find EnglishReadingPlatform/{bin,obj} -name "*staticwebassets*" -exec rm -rf {} +
+> dotnet build Linguza.sln
+> ```
+>
+> Temiz checkout'ta (CI, yeni klon) bu sorun oluşmaz; yalnızca eski çıktının durduğu
+> makinelerde görülür.
+
+Kalanlar: `englishplatform.db` (git'ten çıkarıldı ama **diskte duruyor** — içinde gerçek
+şifre hash'leri var, kararı sen vereceksin: `00-BASLA-BURADAN.md` madde 5),
+`JwtService.ValidateToken`. `PdfSharpCore` ve `mobile/node_modules` zaten yok.
 `.gitignore`'a `.DS_Store` zaten var ama dosyalar hâlâ takipte — `git rm --cached` gerekiyor.
 
 ---

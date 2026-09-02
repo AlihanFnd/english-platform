@@ -34,9 +34,16 @@ if grep -qE '^[[:space:]]*app\.HataYakalamayiKullan\(\)' EnglishReadingPlatform/
   hata_satir=$(grep -nE '^[[:space:]]*app\.HataYakalamayiKullan\(\)' EnglishReadingPlatform/Program.cs | head -1 | cut -d: -f1)
   routing_satir=$(grep -nE '^[[:space:]]*app\.UseRouting\(\)' EnglishReadingPlatform/Program.cs | head -1 | cut -d: -f1)
   statik_satir=$(grep -nE '^[[:space:]]*app\.UseStaticFiles\(\)' EnglishReadingPlatform/Program.cs | head -1 | cut -d: -f1)
+  # UseStaticFiles KURAL-11'de kaldırıldı (proje HTML sunmuyor). Bu yüzden
+  # "yoksa ihlal" demek yanlış olur; VARSA sıranın doğru olması aranır.
+  # İkisi birden yoksa sıra hiç doğrulanamıyor demektir — o da ihlaldir.
+  bulunan=0
   for k in "$routing_satir" "$statik_satir"; do
-    [ -n "$k" ] && [ "$hata_satir" -lt "$k" ] || n=1
+    [ -n "$k" ] || continue
+    bulunan=$((bulunan + 1))
+    [ "$hata_satir" -lt "$k" ] || n=1
   done
+  [ "$bulunan" -eq 0 ] && n=1
 fi
 ihlal_bildir "hata middleware'i zincirin başında" "$n" "UseStaticFiles/UseRouting'den sonra geliyor"
 

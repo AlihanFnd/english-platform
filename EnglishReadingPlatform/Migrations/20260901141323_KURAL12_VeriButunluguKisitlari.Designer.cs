@@ -3,6 +3,7 @@ using System;
 using EnglishReadingPlatform.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace EnglishReadingPlatform.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260901141323_KURAL12_VeriButunluguKisitlari")]
+    partial class KURAL12_VeriButunluguKisitlari
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -68,7 +71,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Books", (string)null);
+                    b.ToTable("Books");
 
                     b.HasData(
                         new
@@ -136,7 +139,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("BookId", "PageNumber")
                         .IsUnique();
 
-                    b.ToTable("BookPages", (string)null);
+                    b.ToTable("BookPages");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Chapter", b =>
@@ -166,7 +169,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("BookId");
 
-                    b.ToTable("Chapters", (string)null);
+                    b.ToTable("Chapters");
 
                     b.HasData(
                         new
@@ -226,7 +229,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Feedbacks", (string)null);
+                    b.ToTable("Feedbacks");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Group", b =>
@@ -264,7 +267,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("InviteCode")
                         .IsUnique();
 
-                    b.ToTable("Groups", (string)null);
+                    b.ToTable("Groups");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.GroupBookAssignment", b =>
@@ -291,7 +294,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("GroupId", "BookId")
                         .IsUnique();
 
-                    b.ToTable("GroupBookAssignments", (string)null);
+                    b.ToTable("GroupBookAssignments");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.GroupMember", b =>
@@ -322,7 +325,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("GroupId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("GroupMembers", (string)null);
+                    b.ToTable("GroupMembers");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.OcrRecord", b =>
@@ -351,7 +354,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("OcrRecords", (string)null);
+                    b.ToTable("OcrRecords");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Quiz", b =>
@@ -382,7 +385,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("ChapterId")
                         .IsUnique();
 
-                    b.ToTable("Quizzes", (string)null);
+                    b.ToTable("Quizzes");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.QuizQuestion", b =>
@@ -424,7 +427,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("QuizId");
 
-                    b.ToTable("QuizQuestions", (string)null);
+                    b.ToTable("QuizQuestions");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.QuizResult", b =>
@@ -456,7 +459,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("QuizResults", (string)null);
+                    b.ToTable("QuizResults");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.ReadingProgress", b =>
@@ -489,7 +492,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("UserId", "BookId")
                         .IsUnique();
 
-                    b.ToTable("ReadingProgresses", (string)null);
+                    b.ToTable("ReadingProgresses");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.SifreSifirlamaJetonu", b =>
@@ -526,7 +529,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("SifreSifirlamaJetonlari", (string)null);
+                    b.ToTable("SifreSifirlamaJetonlari");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.TranslationCache", b =>
@@ -564,7 +567,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("QueryText", "ContextText")
                         .IsUnique();
 
-                    b.ToTable("TranslationCaches", (string)null);
+                    b.ToTable("TranslationCaches");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.User", b =>
@@ -604,7 +607,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.UserActivityLog", b =>
@@ -640,7 +643,7 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasIndex("UserId", "ActivityType", "Timestamp");
 
-                    b.ToTable("UserActivityLogs", (string)null);
+                    b.ToTable("UserActivityLogs");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.WordListItem", b =>
@@ -677,7 +680,7 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("UserId", "Word")
                         .IsUnique();
 
-                    b.ToTable("WordListItems", (string)null);
+                    b.ToTable("WordListItems");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.BookPage", b =>

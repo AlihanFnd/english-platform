@@ -1,10 +1,17 @@
 # 05 — Kullanıcı Arayüzü (`frontend/`)
 
-**Next.js 16.2.10 (App Router)** · **React 19.2.4** · **Tailwind CSS v4** · **TypeScript 5**
-`output: 'standalone'` (Docker imajı için)
+**Next.js 16.3.2 (App Router)** · **React 19.2.4** · **Tailwind CSS v4** · **TypeScript 5**
 
-Bağımlılıklar: `lucide-react` (ikonlar), `tesseract.js` (tarayıcıda OCR).
-**Durum yönetimi kütüphanesi yok** — sadece React Context + `useState`.
+Bağımlılıklar: `lucide-react` (ikonlar), `tesseract.js` (tarayıcıda OCR),
+`@tesseract.js-data/eng` (dil verisi — geliştirme bağımlılığı, derlemede `public/` altına
+kopyalanır). **Durum yönetimi kütüphanesi yok** — sadece React Context + `useState`.
+
+> 🔒 **KURAL-11 (2026-09-01):** Sayfalar artık **dinamik** render ediliyor. Sebep:
+> `proxy.ts` her isteğe tek kullanımlık nonce'lu bir CSP yazıyor ve statik ön-render'daki
+> script etiketleri isteğe özel nonce'u taşıyamaz. `app/layout.tsx` içindeki `await headers()`
+> çağrısı bu yüzden vardır — **silinirse hidrasyon script'i CSP tarafından engellenir.**
+> Yazı tipleri `next/font/google` ile derleme sırasında indirilip kendi origin'imizden
+> servis ediliyor; `globals.css` içinde artık Google Fonts `@import`'u yok.
 
 > ⚠️ `frontend/AGENTS.md` uyarısı: *"This is NOT the Next.js you know"* — Next 16 breaking
 > change'ler içeriyor. Kod yazmadan önce `node_modules/next/dist/docs/` altındaki rehbere
@@ -267,8 +274,16 @@ Dosya seç → Tesseract.recognize(file, 'eng', { logger: p => setOcrProgress(..
    → kelimeye tıkla → aynı kelime paneli → kelime listesine ekle
 ```
 
-**Görsel sunucuya hiç gitmez.** Tesseract WASM modeli ilk kullanımda CDN'den indirilir
-(birkaç MB) — ilk tarama yavaştır.
+**Görsel sunucuya hiç gitmez.** Tesseract'ın worker'ı, WASM çekirdeği ve `eng` dil verisi
+**kendi origin'imizden** servis edilir (KURAL-11): `public/tesseract/` altına derleme öncesi
+`scripts/tesseract-varliklari-kopyala.mjs` ile kopyalanırlar (~22 MB, `.gitignore`'da).
+Eskiden üçü de `cdn.jsdelivr.net`'ten geliyordu ve ilk ikisi `importScripts` ile
+ÇALIŞTIRILIYORDU — kodda tek bir URL görünmeden oluşan bir tedarik zinciri riskiydi.
+
+> ⚠️ `Tesseract.recognize` çağrısındaki `workerPath` / `corePath` / `langPath` silinirse
+> kütüphane sessizce CDN varsayılanlarına döner. `scripts/guard/11-tarayici.sh` bunu
+> kapıda tutuyor. Kopyalanan çekirdek dosyaları **LSTM varyantlarıdır**; OCR'da
+> `legacyCore`/`legacyLang` açılırsa kopyalama betiği de güncellenmelidir.
 
 > ⚠️ Yalnızca İngilizce (`'eng'`) modeli yükleniyor. Türkçe metin taranırsa sonuç bozuk olur.
 > ⚠️ Geçmiş kayıtlar listeleniyor ama **silinemiyor** (backend'de DELETE ucu yok).
@@ -363,3 +378,4 @@ Kırılım noktaları: 480px, 600px, 640px, 768px.
 | 9 | Gamification öğeleri (seri, rütbe, hedef, Yükselt) işlevsiz | `layout-wrapper.tsx` |
 | 10 | Çalışma modu istatistikleri kalıcı değil | `words/page.tsx` |
 | 11 | `any` tipi birçok yerde (`selWord`, hata nesneleri) | çeşitli |
+| 12 | Token hâlâ `localStorage`'da. KURAL-11 nonce'lu CSP ile riski azalttı; cookie'ye tam geçiş açık teknik borç | `api.ts`, `context/AuthContext.tsx` |

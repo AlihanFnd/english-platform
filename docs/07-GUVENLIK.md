@@ -19,7 +19,7 @@
 > | #10 şifre politikası ve kurtarma | [KURAL-09](../guvenlik-kurallari/KURAL-09.md) |
 > | #11 dosya yükleme doğrulaması | [KURAL-10](../guvenlik-kurallari/KURAL-10.md) ✅ |
 > | #12 CDN/SRI, #13 localStorage, güvenlik başlıkları | [KURAL-11](../guvenlik-kurallari/KURAL-11.md) |
-> | #15 englishplatform.db, unique index eksikleri | [KURAL-12](../guvenlik-kurallari/KURAL-12.md) |
+> | #15 englishplatform.db, unique index eksikleri | [KURAL-12](../guvenlik-kurallari/KURAL-12.md) ✅ |
 > | (test altyapısı — tüm kuralların ön koşulu) | [KURAL-01](../guvenlik-kurallari/KURAL-01.md) |
 >
 > **İnsan kararı gereken işler** sade dille anlatıldı:
@@ -66,6 +66,12 @@ Bunlar kodda var ve tasarım olarak doğru:
 | Giriş için IP **ve** hedef e-posta bazlı iki ayrı sayaç | `AuthController`, `RateLimiting/HesapSayaci.cs` |
 | LLM/PDF işlerinde eşzamanlılık kapısı (aynı anda 4) | `RateLimiting/AgirIsKapisi.cs` |
 | Dış API çağrılarında zaman aşımı **ve** yanıt boyutu sınırı | `Program.cs` (adlandırılmış `HttpClient`) |
+| Her API yanıtı 5 güvenlik başlığı taşıyor (CSP, nosniff, DENY, Referrer, Permissions) | `Middleware/GuvenlikBasliklariMiddleware.cs` (KURAL-11) |
+| Üretimde HSTS + HTTPS yönlendirmesi; proxy şeması `ForwardedHeaders` ile okunuyor | `Program.cs` (KURAL-11) |
+| Sunucu parmak izi yok: Kestrel `Server` ve Next `X-Powered-By` kapalı | `Program.cs`, `next.config.*` (KURAL-11) |
+| Her iki istemcide **istek başına nonce'lu CSP**; `script-src`'te `'unsafe-inline'` yok | `proxy.ts` + `guvenlik-basliklari.mjs` (KURAL-11) |
+| Üçüncü taraf JS/WASM/yazı tipi CDN'den değil paketten; hepsi kendi origin'imizden | `scripts/*-kopyala.mjs`, `next/font` (KURAL-11) |
+| Backend hiç statik dosya sunmuyor — ölü `wwwroot/` ve `Views/` silindi | `Program.cs` (KURAL-11) |
 
 ---
 
@@ -599,7 +605,30 @@ uzantı yalnızca ilk eleme, `Content-Type` hiç okunmuyor. Ek olarak:
 
 ---
 
-### 🟡 #12 — Yönetici panelinde pdf.js CDN'den, SRI olmadan
+### ✅ #12 — Üçüncü taraf kod CDN'den geliyordu — KAPANDI (KURAL-11, 2026-09-01)
+
+> pdf.js artık `pdfjs-dist` **paketinden** geliyor, worker ve WASM çözücüler derleme
+> öncesi `public/pdfjs/` altına kopyalanıyor. CDN'den tek satır script çekilmiyor.
+> Kapı: `scripts/guard/11-tarayici.sh` → "CDN'den script yükleme".
+>
+> **Denetim sırasında ortaya çıkan üç ek bulgu — hepsi kapatıldı:**
+>
+> 1. **Çekilen sürüm zaten zafiyetliydi.** `pdf.js 2.16.105`, CVE-2024-4367
+>    (kötü niyetli PDF açmak → keyfî JS çalıştırma) kapsamında. Yani CDN'in ele
+>    geçirilmesine bile gerek yoktu: panelde **dışarıdan gelen bir PDF açmak**
+>    yeterliydi. `pdfjs-dist@6.3.289` yamalı sürümdür (`npm audit` → 0 açık).
+>    Ara sürüm 5.7.x de GHSA-hq66-cqwq-w95j ile aynı sınıfa dahildir, bilinçli olarak
+>    atlandı.
+> 2. **Tesseract.js sessiz bir CDN bağımlılığıydı.** Kodda hiç URL yoktu ama
+>    kütüphanenin varsayılanı worker'ı ve WASM çekirdeğini `cdn.jsdelivr.net`'ten
+>    çekip `importScripts` ile ÇALIŞTIRIYORDU. Envanterdeki grep yalnızca literal
+>    CDN dizesi aradığı için bunu göremezdi. Artık üçü de (`workerPath`, `corePath`,
+>    `langPath`) kendi origin'imizi gösteriyor.
+> 3. **Yazı tipleri `fonts.googleapis.com`'dan çekiliyordu** (`globals.css` @import).
+>    `next/font/google` ile derleme sırasında indirilip kendi origin'imizden
+>    servis ediliyor; her ziyaretçinin IP'si Google'a gitmiyor.
+
+<details><summary>Eski bulgu metni</summary>
 
 **Dosya:** `admin-panel/app/books/page.tsx:121-133`
 
@@ -613,6 +642,8 @@ script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"
 **Düzeltme:** `npm i pdfjs-dist` ile pakete al (en temizi), ya da en azından `integrity`
 hash'i ekle.
 
+</details>
+
 ---
 
 ### 🟡 #13 — Token `localStorage`'da (XSS ile çalınabilir)
@@ -623,9 +654,15 @@ okunabilir. HttpOnly cookie **zaten mevcut ve daha güvenli**, ama istemciler on
 Bugün XSS yüzeyi düşük (React kaçış yapıyor, `dangerouslySetInnerHTML` hiç kullanılmamış),
 ancak #12 ile birleştiğinde gerçek bir zincir oluşur.
 
-**Düzeltme (orta vadeli):** Cookie tabanlı kimliğe tam geçiş + CSRF token'ı. Kısa vadede
-en azından bir **Content-Security-Policy** başlığı eklenmeli (şu an hiçbir güvenlik
-başlığı yok: CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` — hiçbiri).
+**Düzeltme (orta vadeli):** Cookie tabanlı kimliğe tam geçiş + CSRF token'ı.
+
+> 🟨 **KURAL-11 (2026-09-01) — riskin ikinci savunma hattı kuruldu, kök neden duruyor.**
+> Token hâlâ `localStorage`'da (15 hassas nokta). Ancak XSS'i sömürmenin önündeki engel
+> ciddi biçimde yükseldi: her iki istemci de **istek başına nonce'lu CSP** gönderiyor,
+> `script-src` içinde `'unsafe-inline'` YOK. Enjekte edilen bir `<script>` etiketi
+> nonce'u bilemeyeceği için çalışmaz.
+> Kalan iş — cookie'ye tam geçiş — mimari bir değişikliktir (CSRF token'ı,
+> `credentials: 'include'`, CORS daraltması) ve teknik borç olarak açık bırakıldı.
 
 ---
 
@@ -654,13 +691,17 @@ hiç kullanılmıyor (#3 ile aynı kök neden).
 
 | Konu | Not |
 |---|---|
-| HTTPS zorlaması | `UseHttpsRedirection()` yok. Ters proxy'ye bağımlı. Proxy TLS sonlandırmıyorsa `Secure` cookie hiç gönderilmez |
+| HTTPS zorlaması | ✅ KURAL-11: üretimde `UseHsts()` + `UseHttpsRedirection()` açık, hedef port (443) **açıkça** verildi (verilmezse yönlendirme sessizce hiç çalışmaz). `UseForwardedHeaders` proxy arkasındaki sonsuz döngüyü engelliyor |
 | Prompt injection | Kullanıcı PDF içeriği doğrudan Groq prompt'una ekleniyor. Etki sınırlı (çıktı sadece gösteriliyor) ama model yanıltılabilir |
-| PII loglama | `UserActivityLogs.Details` alanına `"Word: {kelime}"` yazılıyor — kullanıcının bilmediği kelimeler kalıcı loga düşüyor |
+| PII loglama | `UserActivityLogs.Details` alanına `"Word: {kelime}"` yazılıyor — kullanıcının bilmediği kelimeler kalıcı loga düşüyor. **KURAL-12 ile 90 günlük saklama süresi geldi** (süresiz değil artık); alanın içeriği hâlâ açık borç |
 | Otomatik migrate | `Database.Migrate()` her açılışta çalışıyor; çoklu replikada yarış durumu |
-| `englishplatform.db` | SQLite kalıntısı git'te duruyor. **İçeriği kontrol edilmeli** — eski kullanıcı verisi içeriyorsa repodan silinmeli |
-| Ölü `Views/` klasörü | Render edilmiyor ama `wwwroot` `UseStaticFiles()` ile servis ediliyor; eski jQuery sürümleri statik olarak erişilebilir |
-| Bağımlılık taraması | CI'da `dotnet list package --vulnerable` / `npm audit` yok |
+| `englishplatform.db` | 🟨 Repodan çıkarıldı ve `.gitignore` artık **`*.db`** deseniyle uzantı bazlı dışlıyor (KURAL-12; tek dosya adı dışlamak yetmezdi). Kapı: `12-butunluk.sh`. **Diskte hâlâ duruyor** ve git geçmişinde de var — ikisi de kullanıcı kararı bekliyor ([00-BASLA-BURADAN madde 5 ve 9](../guvenlik-kurallari/00-BASLA-BURADAN.md)) |
+| Mantıksal tekillik | ✅ KURAL-12: 7 tabloya unique index eklendi (ilerleme, kelime, üyelik, atama, sayfa, quiz, çeviri önbelleği). Yarış durumunda mükerrer satır artık veritabanı tarafından reddediliyor; API idempotent kaldı (`BenzersizKaydetAsync`) |
+| Bilinçsiz cascade | ✅ KURAL-12: `Groups.AdminUserId` → `ON DELETE RESTRICT`. Öğretmen hesabını silmek eskiden yönettiği tüm grupları **sessizce** siliyordu; artık yol gösteren 400 dönüyor |
+| Kişisel veri saklama | ✅ KURAL-12: `SaklamaTemizligiServisi` (aktivite 90 gün, çeviri önbelleği 365 gün, sıfırlama jetonu 7 gün) + kullanıcının kendi OCR kaydını silebildiği uç. `OcrRecords` için **otomatik** süre yok — ürün kararı |
+| Derlenmiş araç ikilisi | ✅ KURAL-12: `EnglishReadingPlatform/dotnet-ef` + `.store/**` — 2,6 MB gözden geçirilmemiş çalıştırılabilir (Windows `.exe`'leri dâhil) sürüm kontrolündeydi. Repodan çıkarıldı; yerine sürümü metin olarak sabitleyen `.config/dotnet-tools.json` geldi |
+| Ölü `Views/` + `wwwroot/` | ✅ KAPANDI (2026-09-01, kullanıcı kararı). Klasörler ve `app.UseStaticFiles()` silindi. Öncesinde `/js/site.js`, `/css/site.css`, `/lib/jquery-validation…js` **kimlik doğrulaması olmadan 200 dönüyordu**; şimdi 401. Kapı: `11-tarayici.sh` → "statik dosya sunumu geri gelmiş" + "ölü klasörler geri gelmiş" |
+| Bağımlılık taraması | ✅ KURAL-01'de eklendi. KURAL-11'de CI Node sürümü 20 → 22'ye çıkarıldı: `pdfjs-dist` 6.x `engines: node >= 22.13` istiyor ve npm bunu yalnızca UYARI olarak geçiyordu |
 
 ---
 
@@ -698,7 +739,17 @@ Kodun yapamayacağı, karar veya erişim gerektiren adımlar:
 6. **Ürün kararı:** Grup üyeleri birbirlerinin okuma verisini görmeli mi? (#6'nın düzeltme
    biçimi buna bağlı)
 7. **Ürün kararı:** Kayıtta e-posta doğrulaması zorunlu olacak mı? (#10)
-8. Üretim ortamında **HTTPS'i sonlandıran katmanın** doğrulanması (#15)
+8. **`NEXT_PUBLIC_API_URL` her iki Vercel projesinde tanımlı olmalı.** CSP'nin
+   `connect-src` direktifi bu değerden üretiliyor (`guvenlik-basliklari.mjs`); tanımsızsa
+   `http://localhost:5001`'e düşer ve üretimde **tüm API çağrıları CSP tarafından
+   engellenir**. (Uygulama kodu da aynı değişkene bakıyor, yani tanımsızsa zaten
+   çalışmazdı — ama artık belirti "sessiz ağ hatası" yerine konsolda açık bir CSP
+   ihlali olur.)
+9. Üretim ortamında **HTTPS'i sonlandıran katmanın** doğrulanması (#15).
+   KURAL-11'de **varsayım** yapıldı: TLS'i Render (backend) / Vercel (istemciler)
+   sonlandırıyor, uygulamaya düz HTTP + `X-Forwarded-Proto` geliyor. Doğrulanacak iki şey:
+   (a) düz HTTP isteği gerçekten HTTPS'e yönleniyor mu, (b) `X-Forwarded-For`'un EN SAĞDAKİ
+   değeri gerçek istemci IP'si mi (hız sınırları buna bağlı — bkz. `Program.cs` yorumu)
 
 ---
 

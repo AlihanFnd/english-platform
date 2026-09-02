@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -32,6 +33,14 @@ SirDogrulayici.Dogrula(builder.Configuration, builder.Environment);
 builder.WebHost.ConfigureKestrel(opt =>
 {
     opt.Limits.MaxRequestBodySize = 2 * 1024 * 1024;
+
+    // ─── KURAL-11: sunucu parmak izi ──────────────────────────
+    // Kestrel varsayılan olarak "Server: Kestrel" yazar. Sürüm bilgisi
+    // taşımasa da, hangi yığının çalıştığını söylemek saldırganın işini
+    // kolaylaştırır. Başlığı SONRADAN silmek yetmez: Kestrel'in kendi
+    // başlığı yanıt yazılırken ekleniyor, middleware'in görebileceği
+    // koleksiyona hiç girmiyor. Tek doğru yer burası.
+    opt.AddServerHeader = false;
 });
 
 // ─── Veritabanı ───────────────────────────────────────────────
@@ -169,6 +178,11 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddSingleton<ITokenIptalDeposu, BellekTokenIptalDeposu>();
 builder.Services.AddHostedService<TokenTemizlikServisi>();
 
+// ─── KURAL-12: saklama süresi temizliği ───────────────────────
+// Kişisel veri süresiz saklanmaz. Süreler SaklamaTemizligiServisi içinde
+// TEK kaynaktadır; burada yalnızca zamanlayıcı kaydedilir.
+builder.Services.AddHostedService<SaklamaTemizligiServisi>();
+
 // ─── KURAL-07: kaynak tüketimi sınırları ──────────────────────
 // Hız sınırlama TEK merkezden kurulur. Elle yazılmış eski sayaç servisi emekliye
 // ayrıldı: sözlüğü hiç temizlenmiyordu (login_{ip} anahtarları IPv6 ile sınırsız
@@ -242,6 +256,29 @@ else
     builder.Services.AddScoped<IEpostaGondericisi, LoglayanEpostaGondericisi>();
 }
 
+// ─── KURAL-11: HTTPS yönlendirmesi için hedef port ────────────
+// UseHttpsRedirection hedef portu bulamazsa SESSİZCE hiçbir şey yapmaz:
+// yalnızca "Failed to determine the https port for redirect" uyarısını loglar
+// ve isteği düz HTTP olarak geçirir. Port; seçenekten, HTTPS_PORT ortam
+// değişkeninden ya da sunucunun bağlandığı bir https adresinden okunur.
+// Render/Vercel arkasında uygulama YALNIZCA HTTP dinlediği için üçünün de
+// karşılığı yoktur — port burada açıkça verilmezse "HTTPS zorunlu" satırı
+// koda girer ama üretimde hiç çalışmaz (KURAL-06 §6: sessiz başarısızlık).
+builder.Services.AddHttpsRedirection(secenekler => secenekler.HttpsPort = 443);
+
+// ─── KURAL-11: HSTS ───────────────────────────────────────────
+// "Bu siteye bir daha HTTP ile gelme" der. 30 gün ile başlanır; sorunsuz
+// çalıştığı doğrulanınca 1 yıla çıkarılır (docs/07-GUVENLIK.md takvim notu).
+builder.Services.AddHsts(secenekler =>
+{
+    secenekler.MaxAge = TimeSpan.FromDays(30);
+    secenekler.IncludeSubDomains = true;
+
+    // Preload listesine girmek GERİ ALINAMAZ: HTTPS bir gün bozulursa alan adı
+    // aylarca erişilemez kalır. Bilinçli olarak kapalı.
+    secenekler.Preload = false;
+});
+
 // ─── CORS Configuration for Next.js & Admin Panel ────────────
 
 builder.Services.AddCors(opt =>
@@ -273,7 +310,56 @@ using (var scope = app.Services.CreateScope())
 // scripts/guard/06-hata-log.sh bu sırayı denetliyor.
 app.HataYakalamayiKullan();
 
-app.UseStaticFiles();
+// ─── KURAL-11: güvenlik başlıkları — hatadan HEMEN SONRA ──────
+// HataYakalamaMiddleware yanıtı Response.Clear() ile temizliyor. Başlıklar
+// ondan ÖNCE eklenseydi hata yanıtlarında silinirlerdi; sonra eklendikleri
+// için 4xx/5xx yanıtlar da korumalı çıkar.
+// GuvenlikBasliklariTests.Hata_yaniti_da_baslik_tasir bu sırayı koruyor.
+app.GuvenlikBasliklariniKullan();
+
+// ─── KURAL-11: ters proxy'den gelen şema/istemci bilgisi ──────
+// Render (backend) ve Vercel (istemciler) TLS'i KENDİLERİ sonlandırıp uygulamaya
+// düz HTTP gönderiyor. Bu başlıklar okunmazsa iki şey birden bozulur:
+//   1) UseHttpsRedirection her isteği "HTTP" sanıp yeniden yönlendirir →
+//      proxy tekrar iletir → SONSUZ DÖNGÜ, site tamamen erişilemez olur.
+//   2) ctx.Connection.RemoteIpAddress herkes için proxy'nin IP'si olur →
+//      KURAL-07'nin IP tabanlı hız sınırları tek kovaya düşer.
+//
+// ForwardLimit = 1 (varsayılan) BİLEREK korunuyor: ASP.NET Core
+// X-Forwarded-For'u SAĞDAN sola okur, yani yalnızca proxy'nin kendi eklediği
+// son değer kullanılır. İstemcinin gövdeye kendi yazdığı sahte IP'ler solda
+// kalır ve yok sayılır — hız sınırını IP uydurarak aşmak bu sayede mümkün olmaz.
+//
+// KnownProxies/KnownNetworks temizleniyor: Render'da proxy'nin IP'si sabit
+// değildir ve varsayılan liste yalnızca loopback'e güvenir (yani başlıklar
+// sessizce yok sayılırdı — KURAL-06 §6: sessiz başarısızlık bir açıktır).
+// Kalan risk ve doğrulama adımı docs/07-GUVENLIK.md § KURAL-11'de yazılı.
+if (!app.Environment.IsDevelopment())
+{
+    var iletilenBasliklar = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor
+    };
+    iletilenBasliklar.KnownNetworks.Clear();
+    iletilenBasliklar.KnownProxies.Clear();
+    app.UseForwardedHeaders(iletilenBasliklar);
+
+    // HSTS ve HTTPS yönlendirmesi yalnızca üretimde: geliştirmede açılırsa
+    // tarayıcı localhost'u kalıcı olarak HTTPS'e zorlar ve geliştirme durur.
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+
+// KURAL-11: app.UseStaticFiles() KALDIRILDI (2026-09-01).
+// Bu proje HTML sunmuyor — Razor pipeline'ı hiç kurulmuyor, hiçbir controller
+// View döndürmüyor. UseStaticFiles yalnızca wwwroot/ altındaki ölü varlıkları
+// (eski jQuery/bootstrap kalıntıları, kullanılmayan site.js) internete açıyordu.
+// Views/ ve wwwroot/ klasörleri de silindi.
+//
+// Statik dosya sunmak GERÇEKTEN gerekirse: kök dizini açmak yerine
+// UseStaticFiles(new StaticFileOptions { RequestPath = "/…", FileProvider = … })
+// ile yalnızca o dizini yayınlayın ve scripts/guard/11-tarayici.sh'daki
+// kontrolü buna göre güncelleyin.
 app.UseRouting();
 app.UseCors();
 

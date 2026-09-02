@@ -236,6 +236,12 @@ tanınmayan → `.word-default`. Ayrıca çok kelimeli seçimler için `kalıp` 
 | `ImagePath` | text | **Her zaman boş** — görsel sunucuya yüklenmiyor |
 | `ScannedAt` | timestamptz | |
 
+> **KURAL-12:** Kullanıcı kendi kaydını silebilir — `DELETE /api/dashboard/ocr/{id}`.
+> Sahiplik kontrolü **sorgunun içinde** (`r.Id == id && r.UserId == userId`); uç
+> idempotenttir ve "kayıt yok" ile "kayıt başkasının" arasında AYRIM YAPMAZ,
+> aksi hâlde başkasının kaç kaydı olduğunu sayan bir numaralandırma aracı olurdu.
+> Otomatik saklama süresi **yok** — bu bir ürün kararı gerektiriyor.
+
 ---
 
 ### `UserActivityLogs`
@@ -253,10 +259,20 @@ Bu tablo **iki ayrı iş** yapıyor:
 1. Analitik/izleme (yönetici dashboard'undaki canlı akış)
 2. **Kota sayacı** — `ai_word_translation` satırları günlük 30 Groq limitini hesaplamak için sayılıyor
 
-> ⚠️ İkisinin aynı tabloda olması, ileride log temizliği (retention) yapıldığında
-> kullanıcıların kotasını sıfırlar. Ayrıca `Details` alanına `"Word: {kelime}"` yazılması
-> kullanıcının hangi kelimeleri bilmediğini log'a düşürür (gizlilik).
-> Migration `20260714055926_AddUserActivityLog`.
+> 🔴 İkisinin aynı tabloda olması, log temizliğini tehlikeli kılar: saklama süresi
+> bir günün altına çekilirse kullanıcıların **Groq kotası sıfırlanır.**
+> **KURAL-12'de saklama süresi 90 gün olarak eklendi** (`SaklamaTemizligiServisi`) —
+> bu eşik bugünün kayıtlarını güvenle aşar. Bağ, adında kotayı yazan bir testle
+> sabitlendi (`Saklama_temizligi_GROQ_KOTA_SAYACINI_asla_silmez`) ve guard kapısı
+> süreyi ayrıca denetliyor. **Bu iki işi ayırmak hâlâ açık teknik borçtur.**
+>
+> `(UserId, ActivityType, Timestamp)` ve `(Timestamp)` indeksleri KURAL-12'de eklendi:
+> indekssiz bir `ExecuteDelete`, büyük log tablosunda tam tablo taraması yapar ve
+> temizliğin kendisi bir kesinti sebebine dönüşür.
+>
+> Ayrıca `Details` alanına `"Word: {kelime}"` yazılması kullanıcının hangi kelimeleri
+> bilmediğini log'a düşürür (gizlilik).
+> Migration `20260714055926_AddUserActivityLog`, `20260901141323_KURAL12_VeriButunluguKisitlari`.
 
 ---
 
@@ -284,17 +300,38 @@ Migration `20260714062208_AddFeedbackModel`. Yalnızca admin okuyabilir (`AdminO
 | `WordType` | varchar(50) | `isim`, `fiil`, … varsayılan `default` |
 | `CreatedAt` | timestamptz | |
 
-**İndeks:** `(QueryText, ContextText)` — non-unique.
+**İndeksler:** `(QueryText, ContextText)` — **UNIQUE** (KURAL-12) · `(CreatedAt)`.
 
-> ⚠️ Üç noktaya dikkat:
-> 1. İndeks **unique değil**; eşzamanlı iki istek aynı çift için iki satır yazabilir.
-> 2. `Translation` alanında `|||` ile ayrılmış yapılandırılmamış format kullanılıyor.
+> ✅ **Çözüldü (KURAL-12):**
+> 1. İndeks artık **unique**; eşzamanlı iki istek aynı çift için iki satır yazamaz.
+>    Çakışma `BenzersizKaydetAsync()` ile yutulur — kaybeden isteğin yazacağı değer
+>    zaten yazılmıştır, bu bir hata değildir.
+> 2. **Saklama süresi 365 gün** (`SaklamaTemizligiServisi`). Önbellek artık sonsuza
+>    kadar büyümüyor ve eski çeviriler zamanla yenileniyor.
+>
+> ⚠️ **Açık kalan iki nokta:**
+> 1. `Translation` alanında `|||` ile ayrılmış yapılandırılmamış format kullanılıyor.
 >    Çevirinin kendisinde `|||` geçerse ayrıştırma bozulur (`parts.Length == 3` kontrolü
 >    var, bozulursa tümü `GeneralMeaning`'e düşer — sessiz bozulma).
-> 3. **Süre sonu (TTL) yok.** Önbellek sonsuza kadar büyür ve model iyileşse bile eski
->    çeviriler asla yenilenmez.
+> 2. `ContextText` sınırsız `text`, `QueryText` `varchar(255)`. PostgreSQL btree
+>    indeks satırı **2704 baytı** aşamaz. Ölçüldü (PostgreSQL 15, geçici tabloda):
+>    - 255 + 2000 sıkıştırılamaz **ASCII** karakter (2255 bayt) → ✅ yazılıyor
+>    - 255 + 2000 sıkıştırılamaz **CJK** karakter (6272 bayt) → ❌
+>      `index row size 6272 exceeds btree version 4 maximum 2704`
 >
-> Migration `20260715193529_AddTranslationCache`.
+>    Bu KURAL-12 ile **GELMEDİ**: aynı veri non-unique indekste de aynı hatayla
+>    reddediliyor (ölçüldü). Girdi sınırı `CeviriBaglami = 2000` karakter olduğu
+>    için sınır çok baytlı metinde erişilebilir durumda.
+>
+>    Yazım `try/catch` içinde **uyarı loglayarak** düşer, sessizce yutulmaz —
+>    ve KURAL-12'de ChangeTracker temizliği eklendi: yutulan hata artık aynı
+>    kapsamdaki SONRAKİ kaydetmeyi (ör. `Read` → `SentencesJson`) patlatmıyor.
+>    Test: `Yutulan_onbellek_hatasi_SONRAKI_kaydetmeyi_patlatmaz`.
+>
+>    Kalıcı çözüm bağlamı hash'lemektir (`md5(ContextText)` üzerinde indeks);
+>    bu kural kapsamı dışında bırakıldı.
+>
+> Migration `20260715193529_AddTranslationCache`, `20260901141323_KURAL12_VeriButunluguKisitlari`.
 
 ---
 
@@ -308,12 +345,28 @@ Migration `20260714062208_AddFeedbackModel`. Yalnızca admin okuyabilir (`AdminO
 | 4 | `20260714062208_AddFeedbackModel` | `Feedbacks` |
 | 5 | `20260715193529_AddTranslationCache` | `TranslationCaches` + kompozit indeks |
 | 6 | `20260716171141_AddLevelAndCategoryToBook` | `Books.Level`, `Books.Category` |
+| 7 | `20260823160731_SeedAdminOrtamaTasindi` | KURAL-02: gömülü yönetici tohumu geçersizleştirildi |
+| 8 | `20260824082727_KURAL05_TohumTarihiSabitlendi` | KURAL-05: seed zaman damgası sabitlendi |
+| 9 | `20260829183257_SifreSifirlamaJetonu` | KURAL-09: `SifreSifirlamaJetonlari` |
+| 10 | `20260901141323_KURAL12_VeriButunluguKisitlari` | KURAL-12: 7 unique index, saklama indeksleri, `Groups.AdminUserId` → `RESTRICT` |
 
 Yeni migration eklemek:
 
 ```bash
-cd EnglishReadingPlatform && ../dotnet_sdk/dotnet ef migrations add MigrationAdi
+dotnet tool restore                      # .config/dotnet-tools.json'dan dotnet-ef 8.0.11
+cd EnglishReadingPlatform && dotnet dotnet-ef migrations add MigrationAdi
 ```
+
+> ⚠️ **KURAL-12:** `dotnet-ef` artık depoya commit'lenmiş bir ikili değildir.
+> Eskiden `EnglishReadingPlatform/dotnet-ef` + `.store/**` altında 2,6 MB'lık
+> gözden geçirilmemiş çalıştırılabilir (Windows `.exe`'leri dâhil) sürüm
+> kontrolündeydi. Yerine sürümü **metin olarak** sabitleyen bir manifest geldi:
+> `.config/dotnet-tools.json`.
+>
+> `dotnet dotnet-ef` tasarım zamanında `Program.cs`'i çalıştırır, dolayısıyla
+> `Jwt__Key` ve `ConnectionStrings__Default` ortam değişkenlerini ister
+> (`SirDogrulayici` fail-fast). `migrations add` veritabanına BAĞLANMAZ —
+> yer tutucu değerler yeterlidir; `migrations remove` ise bağlanır.
 
 Uygulama açılışta `Database.Migrate()` çağırdığı için ayrıca `database update` gerekmez.
 
@@ -343,26 +396,100 @@ tohum hesabını geçersiz kılar — bağlı verisi yoksa siler, varsa yalnızc
 **Bölümler:** 4 adet (Id 1–2 → Kitap 1, Id 3 → Kitap 2, Id 4 → Kitap 3).
 Hepsi bölüm modundadır, dolayısıyla açıldıklarında **her seferinde yeniden analiz edilirler**.
 
-> ⚠️ Seed'deki `Book.CreatedAt = DateTime.UtcNow` **dinamik bir değerdir**. EF Core seed
-> verisi derleme zamanında sabit olmalıdır; bu kullanım her `dotnet ef migrations add`
-> çalıştırıldığında sahte bir "model değişti" farkı üretir. Sabit bir tarihe çevrilmelidir
-> (kullanıcı seed'inde doğru yapılmış: `new DateTime(2026, 7, 7, …, DateTimeKind.Utc)`).
+> ✅ **Çözüldü (KURAL-05, `20260824082727`):** Seed'deki `Book.CreatedAt` eskiden
+> `DateTime.UtcNow` idi ve her `migrations add` çalıştırmasında sahte bir "model
+> değişti" farkı üretiyordu. Artık `AppDbContext.TohumTarihi` sabitidir. Bu yalnızca
+> gürültü meselesi değildi: her migration'ın kirli çıkması, aralarına karışan GERÇEK
+> bir şema değişikliğini görünmez kılıyordu.
 
 ---
 
 ## 5. Silme davranışı
 
-EF Core varsayılanı: zorunlu (`required`) ilişkilerde **cascade delete**.
+**KURAL-12'den beri silme davranışı EF varsayılanına bırakılmıyor** —
+`AppDbContext.OnModelCreating` içinde her ilişki için AÇIKÇA yazılıyor. Bunun
+sebebi yalnızca okunabilirlik değil: varsayılana güvenmek, EF sürümü ya da
+model bir gün değiştiğinde davranışın sessizce kaymasına izin verir.
 
-| Silinen | Otomatik silinenler | Elle temizlenenler |
+| Silinen | Otomatik silinenler (`Cascade`) | Reddedilir (`Restrict`) |
 |---|---|---|
-| `Book` | `Chapters`, `BookPages` | `AdminController.DeleteBook` ayrıca `Quizzes`, `QuizQuestions`, `GroupBookAssignments`, `ReadingProgresses` siler (commit `08ec85d`) |
-| `User` | `ReadingProgresses`, `WordListItems`, `GroupMembers`, `QuizResults`, `UserActivityLogs`, `Feedbacks`, `OcrRecords` | — |
+| `Book` | `Chapters`, `BookPages`, `Quizzes` | — |
+| `User` | `ReadingProgresses`, `WordListItems`, `GroupMembers`, `QuizResults`, `UserActivityLogs`, `Feedbacks`, `OcrRecords`, `SifreSifirlamaJetonlari` | **yönettiği `Groups`** |
 
-> ⚠️ **Doğrulanmadı:** Bir kullanıcı bir grubun `AdminUserId`'si ise, o kullanıcıyı silmek
-> `Groups` üzerinde cascade tetikleyip **grubu ve tüm üyeliklerini** silecektir (EF varsayılanı).
-> `AdminController.DeleteUser` bunu ele almıyor. Öğretmen hesabı silindiğinde sınıfların
-> yok olması istenmiyorsa bu ilişki `Restrict`'e çevrilmeli veya devir mekanizması eklenmelidir.
+> ✅ **Çözüldü (KURAL-12, `20260901141323`):** Bir kullanıcı bir grubun
+> `AdminUserId`'siyse, onu silmek eskiden `Groups` üzerinde cascade tetikliyor ve
+> **grubu, tüm üyeliklerini ve kitap atamalarını** sessizce siliyordu. Yöneticiye
+> hiçbir uyarı çıkmıyordu.
+>
+> Artık `Groups.AdminUserId` FK'si `ON DELETE RESTRICT`. Veritabanı reddediyor;
+> `AdminController.DeleteUser` bu reddi **400 + yol gösteren mesaja** çeviriyor:
+>
+> ```
+> "Bu kullanıcı 2 grubun yöneticisi. Silmeden önce grupları başka bir
+>  yöneticiye devredin veya grupları silin."
+> ```
+>
+> Kısıt tek başına bırakılsaydı yönetici anlaşılmaz bir 500 görürdü — bu,
+> mutasyon testiyle doğrulandı (`Grup_yoneticisi_silinemez_once_devredilmeli`).
+>
+> **Açık teknik borç:** grup devri için henüz bir arayüz/uç yok. Şu an tek yol,
+> grubu silmek ya da veritabanından `AdminUserId`'yi değiştirmek.
+
+---
+
+## 5b. Tekillik kısıtları (KURAL-12)
+
+Mantıksal olarak tekil olması gereken her kayıt **veritabanı seviyesinde**
+korunuyor. Uygulama katmanındaki `AnyAsync` + `Add` deseni tek başına yeterli
+değildir: iki eşzamanlı istek aynı anda `false` alır ve iki satır açar.
+
+| Tablo | Tekil alanlar | İhlalde ne oluyordu |
+|---|---|---|
+| `Users` | `Email`, `Username` | (önceden vardı) |
+| `Groups` | `InviteCode` | (önceden vardı) |
+| `SifreSifirlamaJetonlari` | `JetonHash` | (KURAL-09) |
+| `ReadingProgresses` | `(UserId, BookId)` | Kitap panoda iki kez görünür, yüzdeler birbirini ezer |
+| `TranslationCaches` | `(QueryText, ContextText)` | Önbellek şişer, hangi satırın okunacağı belirsizleşir |
+| `GroupMembers` | `(GroupId, UserId)` | Çift üyelik; üye sayısı yanlış |
+| `GroupBookAssignments` | `(GroupId, BookId)` | Aynı kitap iki kez atanır |
+| `WordListItems` | `(UserId, Word)` | Mükerrer kelime |
+| `BookPages` | `(BookId, PageNumber)` | Bozuk yükleme mükerrer sayfa üretir |
+| `Quizzes` | `ChapterId` | Aynı bölüm için iki quiz; kullanıcı ikinci denemede farklı soru görür |
+
+> ⚠️ `TranslationCaches.ContextText` **nullable**'dır ve PostgreSQL'de
+> `NULL ≠ NULL`. Yani `(kelime, NULL)` çifti birden fazla kez yazılabilir.
+> Pratikte sorun değil: önbellek yalnızca bağlam DOLU olduğunda yazılıyor
+> (`TranslationService.TranslateWordAsync`).
+
+**API sözleşmesi korundu.** Unique index eklemek, "kontrol et sonra ekle"
+kullanan uçları yarış durumunda 500'e çevirirdi. Merkezî yardımcı
+`Data/VeritabaniHatalari.cs` → `BenzersizKaydetAsync()` çakışmayı (SQLSTATE
+`23505`) yutar, çakışan girdiyi izlemeden çıkarır ve `false` döner; uçlar
+idempotent kalır. Bağlı uçlar: `books/addword`, `books/{id}/read`,
+`books/quiz/{chapterId}`, `groups/join`, `groups/assignbook`, çeviri önbelleği.
+
+---
+
+## 5c. Saklama süreleri (KURAL-12)
+
+`Data/SaklamaTemizligiServisi.cs` — günde bir kez çalışan `BackgroundService`.
+Süreler **tek kaynakta**:
+
+| Tablo | Saklama | Not |
+|---|---|---|
+| `UserActivityLogs` | **90 gün** | 🔴 KISALTMAYIN — aşağıya bakın |
+| `TranslationCaches` | 365 gün | |
+| `SifreSifirlamaJetonlari` | 7 gün | Süresi dolmuş jeton artık sır değil, kalıntıdır |
+
+> 🔴 **`UserActivityLogs` iki iş birden yapıyor.** `ActivityType =
+> 'ai_word_translation'` satırları yalnızca analitik değil, **Groq günlük kota
+> sayacıdır**. Saklama süresi bir günün altına çekilirse kullanıcıların kotası
+> her temizlikte sıfırlanır ve maliyet koruması sessizce çöker.
+> Bu bağ testle sabitlendi (`Saklama_temizligi_GROQ_KOTA_SAYACINI_asla_silmez`)
+> ve `scripts/guard/12-butunluk.sh` süreyi ayrıca denetliyor.
+
+`OcrRecords` için **otomatik** saklama süresi yok (ürün kararı gerektirir),
+ama kullanıcı kendi kaydını silebiliyor: `DELETE /api/dashboard/ocr/{id}`.
 
 ---
 

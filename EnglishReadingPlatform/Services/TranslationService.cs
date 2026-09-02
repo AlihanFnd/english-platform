@@ -385,10 +385,32 @@ namespace EnglishReadingPlatform.Services
                                             CreatedAt = DateTime.UtcNow
                                         };
                                         _db.TranslationCaches.Add(cachedEntry);
-                                        await _db.SaveChangesAsync();
+
+                                        // KURAL-12: (QueryText, ContextText) artık TEKİL.
+                                        // Aynı kelime+cümle çifti için iki eşzamanlı istek
+                                        // eskiden İKİ önbellek satırı yazıyordu; önbellek
+                                        // şişiyor, hangi satırın okunacağı belirsizleşiyordu.
+                                        // Çakışma burada bir hata DEĞİLDİR: kaybeden isteğin
+                                        // yazacağı değer zaten yazılmış durumda.
+                                        await _db.BenzersizKaydetAsync();
                                     }
                                     catch (Exception ex)
                                     {
+                                        // KURAL-12 YAN BULGU: başarısız bir SaveChanges,
+                                        // eklenmeye çalışılan satırı ChangeTracker'da
+                                        // 'Added' durumunda BIRAKIR. Bu servis, aynı
+                                        // kapsamda başka bir SaveChanges yapan çağrı
+                                        // yollarından da çağrılıyor (BooksController.Read →
+                                        // AnalyzeTextAsync → SentencesJson yazımı). O
+                                        // durumda burada YUTULAN hata, ilgisiz bir uçta
+                                        // 500 olarak yeniden patlıyordu: kullanıcı kitabını
+                                        // açamıyor, log ise çeviri önbelleğinden bahsediyor.
+                                        // Yutulan hatanın izini de temizlemek şart.
+                                        _db.ChangeTracker.Entries<TranslationCache>()
+                                            .Where(g => g.State == EntityState.Added)
+                                            .ToList()
+                                            .ForEach(g => g.State = EntityState.Detached);
+
                                         // Kota harcandı ama sonuç kaydedilmedi: bir sonraki
                                         // aynı istek yeniden token yakacak. Warning seviyesi
                                         // bilinçli — sessizce yutulursa maliyet fark edilmez.

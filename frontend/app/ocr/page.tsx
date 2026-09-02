@@ -88,7 +88,16 @@ export default function OcrPage() {
             if (m.status === 'recognizing text') {
               setOcrProgress(`Tarama yapılıyor: %${Math.round(m.progress * 100)}`);
             }
-          }
+          },
+          // KURAL-11: üç yol da AÇIKÇA veriliyor. Varsayılan bırakılırsa
+          // tesseract.js worker'ı, WASM çekirdeğini ve dil verisini
+          // cdn.jsdelivr.net'ten çeker; ilk ikisi worker içinde importScripts
+          // ile ÇALIŞTIRILAN üçüncü taraf JavaScript'tir ve SRI yoktur.
+          // Dosyalar derleme öncesi public/ altına kopyalanıyor:
+          // frontend/scripts/tesseract-varliklari-kopyala.mjs
+          workerPath: '/tesseract/worker.min.js',
+          corePath:   '/tesseract/core',
+          langPath:   '/tesseract/lang',
         }
       );
 

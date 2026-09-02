@@ -283,10 +283,10 @@ Tür artık **dosya adından değil, içerikten** belirlenir. Tüm yükleme yoll
 tek sınıftan geçer; `PdfService` kendi uzantı/boyut listesini tutmuyor.
 
 ```csharp
-EnBuyukBoyut         = 50 MB      // sıkıştırılmış
-EnBuyukAcilmisBoyut  = 200 MB     // DOCX açıldığında (zip-bomb)
-EnCokSayfa           = 500        // tek seferde seçilebilecek sayfa
-AyristirmaSuresi     = 60 sn      // ayrıştırma bütçesi
+EnBuyukBoyut         = 100 MB     // sıkıştırılmış
+EnBuyukAcilmisBoyut  = 400 MB     // DOCX açıldığında (zip-bomb)
+EnCokSayfa           = 1500       // tek seferde seçilebilecek sayfa
+AyristirmaSuresi     = 180 sn     // ayrıştırma bütçesi
 ```
 
 | Aşama | Ne yapar |
@@ -296,6 +296,11 @@ AyristirmaSuresi     = 60 sn      // ayrıştırma bütçesi
 | 3 | Uzantı ile içerik uyuşuyor mu (`kitap.pdf` içinde DOCX olamaz) |
 
 > `Content-Type` başlığına **hiç bakılmaz**: dosya adı kadar sahtedir, istemci yazar.
+>
+> ⚠️ `EnCokSayfa` tek başına değiştirilemez: `AlanSinirlari.SayfaSecimiParcaSayisi`
+> bir `.Take()` içinde kullanılıyor ve `SayfaSecimiMetni` seçim dizesinin karakter
+> sınırı. Üçü birlikte hareket etmezse seçim **sessizce kırpılır** — 1500 sayfa
+> seçilir, 500'ü işlenir, kullanıcıya hiçbir uyarı gitmez.
 >
 > ✅ **KURAL-06:** doğrulama hataları `KullaniciHatasi` fırlatır; ayrıştırıcı çağrıları
 > `PdfAc()` / `DocxAc()` / `ArsivAc()` ile sarmalandı. Bozuk bir dosya kullanıcı-tetiklemeli
@@ -335,10 +340,17 @@ sayılır.
 `ExtractDocxText` DOCX işlemenin **tek boğazıdır**; zip-bomb kontrolü çağrı yerlerine
 dağıtılmak yerine burada durur, böylece ileride eklenecek bir yol kontrolü atlayamaz.
 
-> ✅ **KURAL-10 (davranış değişikliği):** `upload-pages` ucunda DOCX için sayfa seçimi
-> artık **yok sayılır** ve tüm belge **tek sayfa** olarak kaydedilir. Eski davranışta
-> 5 sayfa seçilirse 5 sayfa oluşuyor ve **hepsi aynı içeriği** taşıyordu (sessiz hata).
-> Yönetici panelindeki sayfa seçici DOCX için hâlâ görünüyor — teknik borç.
+> ✅ **KURAL-10 (davranış değişikliği, 2026-09-01 güncellendi):** DOCX'te sayfa seçimi
+> **okunmaz**; belge `DocxSayfalaraBol` ile **400 kelimelik sayfalara bölünür** ve
+> tamamı kaydedilir. Sayfa sonu bir Word belgesinin özelliği değildir — yazı tipine
+> ve yazıcı ayarına göre değişir, istemci bilemez.
+>
+> Bölme mantığı **tek kaynakta**: `books/upload` ve `books/upload-pages` aynı yardımcıyı
+> kullanır. Eskiden yalnızca birincisi bölüyordu; ikincisi tüm belgeyi tek parça
+> kaydediyor, yani iki uç aynı dosyadan farklı sonuç üretiyordu.
+>
+> Panelde DOCX için sayfa seçici gösterilmez (`pdfDoc` boş kalır); yerine
+> "belgenin tamamı yüklenecek ve otomatik sayfalara bölünecek" bilgisi çıkar.
 
 ### Bölümlere ayırma — `SplitIntoChaptersWithGroqAsync`
 

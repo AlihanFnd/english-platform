@@ -29,6 +29,7 @@
 | [`/groups/assignbook`](#post-groupsassignbook) | POST | Token + grup sahipliği |
 | [`/dashboard/stats`](#get-dashboardstats) | GET | Token |
 | [`/dashboard/ocr`](#get-dashboardocr) | GET / POST | Token |
+| [`/dashboard/ocr/{id}`](#delete-dashboardocrid) | DELETE | Token + kayıt sahipliği |
 | [`/activity/log`](#post-activitylog) | POST | Token |
 | [`/activity/stats`](#get-activitystats) | GET | Token 🔴 **admin olmalıydı** |
 | `/books/taxonomy` | GET | Token — seviye/kategori/dil whitelist'i |
@@ -631,16 +632,34 @@ Yalnızca `AdminUserId` eşleşirse çalışır, değilse **403**. Zaten atanmı
 
 ### `GET /dashboard/ocr`
 
-Kullanıcının OCR kayıtları, `ScannedAt` azalan. `OcrRecord` entity'si olduğu gibi döner.
+Kullanıcının OCR kayıtları, `ScannedAt` azalan.
+**KURAL-08:** entity değil `OcrYaniti` DTO'su döner — `ImagePath` (sunucu dosya
+yolu) ve `User` navigasyonu dönmez.
 
 ### `POST /dashboard/ocr`
 
 ```json
 { "text": "The quick brown fox..." }
 ```
-**200** oluşturulan `OcrRecord`. **400** metin boşsa.
+**200** oluşturulan `OcrYaniti`. **400** metin boşsa. Hız sınırı: `Yazma`.
 
-> Silme/güncelleme ucu **yok** — kullanıcı taradığı metni silemez.
+### `DELETE /dashboard/ocr/{id}`
+
+Kullanıcının **kendi** OCR kaydını siler. **200** `{ "success": true }`.
+Hız sınırı: `Yazma`.
+
+> **KURAL-12:** Bu uç bir saklama gereğidir — OCR kayıtları kullanıcının taradığı
+> HAM METİNDİR (ders notu, bir mektup, bir belge fotokopisi olabilir) ve önceden
+> silmenin **hiçbir yolu yoktu**: ne kullanıcı için bir uç, ne otomatik saklama süresi.
+>
+> **Sahiplik sorgunun İÇİNDEDİR** (`r.Id == id && r.UserId == userId`) — yalnızca
+> `Id` ile arayıp sonra kontrol etmek bir IDOR bırakırdı.
+>
+> Uç **idempotenttir ve kasıtlı olarak ayrım yapmaz**: "kayıt yok" ile "kayıt
+> başkasının" aynı 200'ü döner. Farklı yanıtlar, başkasının kaç kaydı olduğunu
+> sayan bir numaralandırma aracı olurdu.
+>
+> İstemci: `api.deleteOcrRecord(id)` (`frontend/app/api.ts`).
 
 ---
 
@@ -719,8 +738,28 @@ Whitelist: `student` | `teacher` | `admin`. **Kendi rolünü değiştiremez** �
 > Test: `TokenYasamDongusuTests.Rol_degisince_eski_token_gecersiz_olur`.
 
 ### `DELETE /admin/users/{id}`
-Kendi hesabını silemez (400). EF cascade ile kullanıcının tüm verisi silinir.
-⚠️ Kullanıcı bir grubun sahibiyse grubun da silinmesi beklenir — bkz. [02-VERITABANI.md § 5](02-VERITABANI.md).
+Kendi hesabını silemez (**400**). Cascade ile kullanıcının kişisel verisi silinir
+(ilerleme, kelime listesi, üyelikler, quiz sonuçları, aktivite logu, geri bildirim,
+OCR kayıtları, şifre sıfırlama jetonları). **KURAL-04:** silinen kullanıcının
+tüm token'ları anında iptal edilir.
+
+**KURAL-12 — grup sahipliği kontrolü.** Kullanıcı bir veya daha fazla grubun
+`AdminUserId`'siyse silme **reddedilir**:
+
+```json
+// 400
+{
+  "error": "Bu kullanıcı 2 grubun yöneticisi. Silmeden önce grupları başka bir yöneticiye devredin veya grupları silin.",
+  "gruplar": [{ "id": 3, "name": "9-A İngilizce" }, { "id": 7, "name": "Hazırlık" }]
+}
+```
+
+> Eskiden bu istek **200** dönüyor ve grubu, tüm üyeliklerini ve kitap atamalarını
+> **sessizce siliyordu** (EF cascade varsayılanı). Şema artık `ON DELETE RESTRICT`;
+> yani kontrol kaldırılsa bile veri kaybı olmaz — kullanıcı yalnızca anlaşılmaz bir
+> 500 görür. Bkz. [02-VERITABANI.md § 5](02-VERITABANI.md).
+>
+> ⚠️ **Devir arayüzü henüz yok** — açık teknik borç.
 
 ### `GET /admin/books`
 ```json

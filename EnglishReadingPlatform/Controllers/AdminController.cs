@@ -144,6 +144,34 @@ namespace EnglishReadingPlatform.Controllers
             var user = await _db.Users.FindAsync(id);
             if (user == null) return NotFound(new { error = "Kullanıcı bulunamadı." });
 
+            // ── KURAL-12: sahip olduğu gruplar SESSİZCE silinmesin ──
+            //
+            // Group.AdminUserId zorunlu bir ilişkiydi; EF varsayılanı (Cascade)
+            // yüzünden bir öğretmen hesabını silmek, yönettiği bütün grupları,
+            // üyeliklerini ve kitap atamalarını da siliyordu. Yöneticiye hiçbir
+            // uyarı çıkmıyordu — silinen tek şeyin "bir kullanıcı" olduğunu
+            // sanıyordu. Şema artık Restrict; burada o kısıt, kullanıcıya NE
+            // YAPMASI GEREKTİĞİNİ söyleyen bir 400'e çevriliyor. Kısıt tek
+            // başına bırakılsaydı yönetici anlaşılmaz bir 500 görürdü.
+            var sahipOldugu = await _db.Groups
+                .Where(g => g.AdminUserId == id)
+                .Select(g => new { g.Id, g.Name })
+                .ToListAsync();
+
+            if (sahipOldugu.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Kullanıcı silme reddedildi: grup yöneticisi. KullaniciId={Id} GrupSayisi={Sayi}",
+                    id, sahipOldugu.Count);
+
+                return BadRequest(new
+                {
+                    error = $"Bu kullanıcı {sahipOldugu.Count} grubun yöneticisi. " +
+                            "Silmeden önce grupları başka bir yöneticiye devredin veya grupları silin.",
+                    gruplar = sahipOldugu
+                });
+            }
+
             _db.Users.Remove(user);
             await _db.SaveChangesAsync();
 
@@ -193,11 +221,11 @@ namespace EnglishReadingPlatform.Controllers
 
             [StringLength(AlanSinirlari.KitapYazari,
                 ErrorMessage = "Yazar en fazla {1} karakter olabilir.")]
-            public string Author { get; set; } = "";
+            public string? Author { get; set; }
 
             [StringLength(AlanSinirlari.KitapAciklama,
                 ErrorMessage = "Açıklama en fazla {1} karakter olabilir.")]
-            public string Description { get; set; } = "";
+            public string? Description { get; set; }
 
             [IzinliDeger(nameof(IzinliDegerler.Diller))]
             public string Language { get; set; } = "en";
@@ -297,11 +325,11 @@ namespace EnglishReadingPlatform.Controllers
 
             [StringLength(AlanSinirlari.KitapYazari,
                 ErrorMessage = "Yazar en fazla {1} karakter olabilir.")]
-            public string Author { get; set; } = "";
+            public string? Author { get; set; }
 
             [StringLength(AlanSinirlari.KitapAciklama,
                 ErrorMessage = "Açıklama en fazla {1} karakter olabilir.")]
-            public string Description { get; set; } = "";
+            public string? Description { get; set; }
 
             [IzinliDeger(nameof(IzinliDegerler.Diller))]
             public string Language { get; set; } = "en";
@@ -345,18 +373,22 @@ namespace EnglishReadingPlatform.Controllers
             // "100.000 sayfa seç" isteği önce ayrıştırıcıyı meşgul eder,
             // sınır ancak ondan sonra devreye girerdi.
             //
-            // DOCX'te sayfa kavramı yoktur (KURAL-10 adım 10 / seçenek A):
-            // seçim yok sayılır, tüm belge tek sayfa olarak kaydedilir.
-            // Eski kod seçilen HER sayfaya AYNI metni yazıyordu — sessiz hata.
+            // DOCX'te sayfa seçimi OKUNMAZ: bir Word belgesinin sayfa sonları
+            // yazıcıya ve yazı tipine göre değişir, istemci onları bilemez.
+            // Belge sunucuda sabit uzunlukta sayfalara bölünür ve TAMAMI kaydedilir.
+            // (Panel de bu yüzden DOCX'te sayfa seçici göstermiyor.)
             var istenenSayfalar = tur == DosyaTuru.Docx
-                ? (IReadOnlyList<int>)new[] { 1 }
+                ? Array.Empty<int>()
                 : _dogrulayici.SecimiCoz(meta.SelectedPages);
 
             // ── 3. adım: PAHALI iş, tamamı ağır iş kapısının içinde (KURAL-07) ──
-            // Sayfa sayısını okumak da PDF'i ayrıştırmak demektir; kapının
+            // Sayfa sayısını okumak da dosyayı ayrıştırmak demektir; kapının
             // dışında bırakılırsa korumanın bir kanadı açık kalırdı.
             var metinler = await _agirIsKapisi.CalistirAsync(async () =>
             {
+                if (tur == DosyaTuru.Docx)
+                    return await _pdfService.DocxTumSayfalariniCikarAsync(file, iptal);
+
                 var toplamSayfa = _pdfService.SayfaSayisiniOku(file);
                 var sayfalar = _dogrulayici.AraligaKirp(istenenSayfalar, toplamSayfa);
                 return await _pdfService.SayfalariCikarAsync(file, sayfalar, iptal);
@@ -425,11 +457,11 @@ namespace EnglishReadingPlatform.Controllers
 
             [StringLength(AlanSinirlari.KitapYazari,
                 ErrorMessage = "Yazar en fazla {1} karakter olabilir.")]
-            public string Author { get; set; } = "";
+            public string? Author { get; set; }
 
             [StringLength(AlanSinirlari.KitapAciklama,
                 ErrorMessage = "Açıklama en fazla {1} karakter olabilir.")]
-            public string Description { get; set; } = "";
+            public string? Description { get; set; }
 
             [IzinliDeger(nameof(IzinliDegerler.Diller))]
             public string Language { get; set; } = "en";

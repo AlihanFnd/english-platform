@@ -338,7 +338,19 @@ ve yenisini üret. Anahtar bir kez git geçmişine girdiyse "silmek" yetmez, ipt
 
 ---
 
-## 5. `englishplatform.db` dosyasına karar ver (KURAL-12)
+## 5. 🟨 REPO TARAFI KAPANDI (2026-09-01) — disk ve geçmiş **hâlâ sende** (KURAL-12)
+
+> **Kodun yaptığı:** Dosya sürüm kontrolünden çıkarıldı ve `.gitignore` artık
+> tek dosya adını değil **`*.db` / `*.sqlite` / `*.sqlite3`** desenini dışlıyor —
+> bir sonraki SQLite dosyası başka bir adla gelse de repoya giremez.
+> `scripts/guard/12-butunluk.sh` bunu her CI koşusunda denetliyor.
+>
+> **Kodun YAPMADIĞI (bilinçli):** Dosya `EnglishReadingPlatform/englishplatform.db`
+> yolunda **diskte duruyor** ve **git geçmişinde** de duruyor. İkisi de geri
+> alınamaz işlemler ve bu dosyanın 5 e-postasının gerçek insanlara mı ait
+> olduğunu yalnızca sen bilirsin. Aşağıdaki adımlar hâlâ senin.
+
+## 5-eski. `englishplatform.db` dosyasına karar ver (KURAL-12)
 
 **Sorun nedir?**
 Projede `EnglishReadingPlatform/englishplatform.db` diye eski bir SQLite dosyası var.
@@ -432,7 +444,28 @@ Seçtiğin servisin API anahtarını `.env` dosyasına eklemen gerekecek.
 
 ---
 
-## 8. HTTPS'i kim sonlandıracak? (KURAL-11)
+## 8. ⚠️ VARSAYIMLA UYGULANDI (2026-09-01) — onayını bekliyor (KURAL-11)
+
+> Karar gelmediği için git geçmişindeki dağıtım izlerine bakıldı
+> (`fix: remove output standalone breaking Vercel builds`,
+> `fix: commit all missing backend files causing build failure on Render`)
+> ve **"TLS'i platform sonlandırıyor"** varsayımıyla ilerlendi:
+> Render (backend) / Vercel (istemciler).
+>
+> Buna göre kod şöyle: üretimde `UseForwardedHeaders` (yalnızca `X-Forwarded-Proto` ve
+> `X-Forwarded-For`, `ForwardLimit = 1`) → `UseHsts()` (30 gün, preload KAPALI) →
+> `UseHttpsRedirection()` (hedef port 443 **açıkça** verildi).
+> Geliştirmede üçü de kapalı.
+>
+> **Senden istenen iki doğrulama** (kod yapamaz, canlı ortam gerekir):
+> 1. Yayındaki adrese `http://` ile git — `https://`'e yönlendiğini gör.
+> 2. Hız sınırlarının doğru IP'ye bağlandığını doğrula: Render'ın eklediği
+>    `X-Forwarded-For` değerinin EN SAĞDAKİ girdisi gerçek istemci IP'si mi?
+>    Değilse (ör. iki proxy katmanı) tüm kullanıcılar tek kovayı paylaşır.
+>
+> Kendi sunucunda (VPS) yayınlayacaksan söyle: `KnownProxies` daraltılmalı.
+
+## 8-eski. HTTPS'i kim sonlandıracak? (KURAL-11)
 
 **Sorun nedir?**
 Uygulama şu an HTTPS zorlamıyor. Kodda `UseHttpsRedirection()` yok. Bu, "önünde
@@ -525,7 +558,7 @@ B'ye geçmek tek satırlık değişiklik olacak. Bu yüzden şimdilik A'yı seç
 | 5 | Git geçmişi temizliği gerekli mi? Karar ver | KURAL-02 sırasında | düşünme |
 | 6 | Grup gizliliği: A/B/C hangisi? | KURAL-08'den önce | düşünme |
 | 7 | ✅ E-posta servisi: **A — Resend** seçildi (2026-08-29) | — | bitti |
-| 8 | HTTPS'i nerede sonlandıracaksın? | KURAL-11'den önce | düşünme |
+| 8 | ⚠️ HTTPS: **Render/Vercel varsayıldı**, kod ona göre yazıldı — canlıda doğrula | KURAL-11 sonrası | 5 dk |
 | 9 | Redis: A mı B mi? | KURAL-04'ten önce | düşünme |
 | 10 | Admin şifresini değiştir | KURAL-02 veya KURAL-09 | 2 dk |
 
@@ -563,7 +596,7 @@ Her kural bitince bu tabloyu güncelle (kural oturumunun son işi budur):
 | 08 | Veri minimizasyonu | ✅ Kanıtlanarak kapandı — Contracts/Yanitlar.cs (10 DTO) + GrupKapsami; grup kapsam filtresi (ilerleme VE quiz), davet kodu yalnızca sahibe, 5 entity dönüşü DTO'ya taşındı, Include 27→13; 13 test + 9 kapı + 4 mutasyon. Aşırı çekim de kapandı: grup sorgusu artık PasswordHash'i belleğe hiç almıyor. Kardeş yol: /api/admin/groups davet kodunu da bırakmıştı, kaldırıldı. **2026-08-29 yeniden doğrulandı:** 163/163 test, tüm kapılar 0 ihlal, 3 mutasyonun hepsi kırmızıya döndü, iki frontend de tsc'den 0 hatayla geçti | `7b9a731` | 2026-08-27 · 2026-08-29 |
 | 09 | Kimlik doğrulama sertleştirmesi | ✅ Kanıtlanarak kapandı — SifrePolitikasi (10 kar., 4 sınıftan 3, yaygın liste, kullanıcı adı/e-posta benzerliği) + SifreSifirlamaJetonu (SHA-256, tek kullanımlık, 30 dk) + IEpostaGondericisi/Resend; 3 yeni uç (change/forgot/reset), kayıt enumerasyonu kapatıldı, girişte zamanlama eşitleyici; şifre değişimi VE sıfırlaması oturumları sonlandırıyor. 23 test + 11 kapı + 4 mutasyon. Mevcut kullanıcılar: **B** (yeni şifrelerde geçerli). **Frontend ekranları yapılmadı** (kural kapsamı dışı) | commit bekliyor | 2026-08-29 |
 | 10 | Dosya yükleme | ✅ Kanıtlanarak kapandı — Files/DosyaDogrulayici.cs (sihirli bayt + zip-bomb + 500 sayfa + 60 sn bütçe); sayfa başına yeniden açan API SİLİNDİ (O(n²) kalktı), her iki yükleme ucu merkeze bağlandı, kitap artık metin çıkarıldıktan SONRA yaratılıyor (yetim kayıt tasarımdan kalktı). 26 test + 9 kapı + 5 mutasyon. Mutasyon, kapının YORUMLA kandırılabildiğini ve iki testin kendi ölçtüğü sabite bağlı olduğunu ortaya çıkardı — üçü de düzeltildi. DOCX'te sayfa seçimi artık yok sayılıyor (**A** uygulandı); panelde seçiciyi gizlemek teknik borç | commit bekliyor | 2026-08-29 |
-| 11 | Tarayıcı tarafı savunma | ⬜ Başlamadı | — | — |
-| 12 | Veri bütünlüğü ve kalıntı | ⬜ Başlamadı | — | — |
+| 11 | Tarayıcı tarafı savunma | ✅ Kanıtlanarak kapandı — merkezî başlık middleware'i (5 başlık, hata/404/500 yanıtlarında da), üretimde HSTS+HTTPS+ForwardedHeaders, her iki istemcide **nonce'lu CSP** (`script-src`'te `'unsafe-inline'` YOK), pdf.js ve Tesseract CDN'den pakete alındı, yazı tipleri self-host. 11 test + 18 kapı + 7 mutasyon. Tarayıcıda uçtan uca doğrulandı (OCR ve PDF önizleme gerçekten çalıştırıldı). Denetim 4 yeni bulgu çıkardı: CVE'li pdf.js 2.16.105, Tesseract'ın gizli CDN bağımlılığı, Google Fonts, `UseHttpsRedirection`'ın port olmadan sessizce çalışmaması. **Ek (kullanıcı kararı):** ölü `Views/` + `wwwroot/` ve `UseStaticFiles()` silindi — mutasyonla kanıtlandı (önce 200, sonra 401) | commit bekliyor | 2026-09-01 |
+| 12 | Veri bütünlüğü ve kalıntı | ✅ Kanıtlanarak kapandı — 7 unique index + `Groups.AdminUserId` → RESTRICT (migration `20260901141323`, canlı geliştirme veritabanına da uygulandı, veri kaybı yok), `SaklamaTemizligiServisi` (90/365/7 gün), OCR silme ucu, `BenzersizKaydetAsync` ile API idempotent kaldı. 17 test + 11 kapı + 6 mutasyon. Mutasyon iki kapının ÖLÇMEDİĞİNİ ortaya çıkardı: KURAL-04'ün sabit `-A20` penceresi (yapısal hale getirildi) ve KURAL-12'nin metin araması (`if (false)` ile kandırılabiliyordu). Ayrıca kota koruması ayrı bir teste taşındı — FluentAssertions ilk iddiada durduğu için raporda görünmüyordu. **Yan bulgu kapatıldı:** yutulan önbellek yazma hatası izlenen satırı bırakıyor ve aynı kapsamdaki sonraki `SaveChanges`'i 500'e çeviriyordu. **Kalıntı:** ölü MVC katmanı (43 dosya) + commit'lenmiş 2,6 MB `dotnet-ef` ikilisi (25 dosya) depodan çıkarıldı; araç `.config/dotnet-tools.json`'a taşındı | commit bekliyor | 2026-09-01 |
 
 Durum işaretleri: ⬜ Başlamadı · 🟨 Kısmen (neyin kaldığı yazılacak) · ✅ Kanıtlanarak kapandı

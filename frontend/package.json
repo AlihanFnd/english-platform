@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/tesseract-varliklari-kopyala.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/tesseract-varliklari-kopyala.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -17,6 +19,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tesseract.js-data/eng": "^1.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

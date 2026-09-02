@@ -48,7 +48,29 @@ EnglishReadingPlatform/appsettings.Local.json
 *.pfx
 *.p12
 
-# KURAL-12: eski SQLite kalıntısı — gerçek şifre hash'leri içeriyor, repoya girmez
-EnglishReadingPlatform/englishplatform.db
-EnglishReadingPlatform/englishplatform.db-shm
-EnglishReadingPlatform/englishplatform.db-wal
+# ─── KURAL-12: veri dosyaları ve araç kalıntıları ──────────────
+# Tek bir dosya adını dışlamak yetmez: bir sonraki SQLite dosyası başka bir
+# adla gelir ve aynı yoldan (5 kullanıcı, 5 BCrypt hash'i) repoya girer.
+# Bu yüzden dışlama UZANTI bazlıdır.
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.bak
+
+# 'dotnet tool install --tool-path .' çıktısı. 2,6 MB'lık gözden geçirilmemiş
+# ikili (Windows .exe'leri dahil) sürüm kontrolüne girmez; araç sürümü
+# .config/dotnet-tools.json içinde METİN olarak sabitlenir.
+.store/
+dotnet-ef
+dotnet-ef.exe
+
+# KURAL-11: pdf.js worker'ı derleme öncesi node_modules'tan kopyalanır
+# (admin-panel/scripts/pdfjs-worker-kopyala.mjs). Depoya konmuyor ki
+# paket güncellendiğinde eski bir kopya sessizce kalmasın.
+admin-panel/public/pdfjs/
+
+# KURAL-11: Tesseract worker/WASM/dil verisi de derleme öncesi kopyalanır
+# (frontend/scripts/tesseract-varliklari-kopyala.mjs).
+frontend/public/tesseract/

@@ -1,11 +1,15 @@
 # 06 — Yönetici Paneli (`admin-panel/`)
 
-**Next.js 14.2.35 (App Router)** · **React 18** · **Tailwind CSS v3** · Port **3001**
-`output: 'standalone'`
+**Next.js 16.3.2 (App Router)** · **React 19.2.4** · **Tailwind CSS v4** · Port **3001**
 
-> ⚠️ `next.config.mjs` içinde **hem** `eslint.ignoreDuringBuilds: true` **hem**
-> `typescript.ignoreBuildErrors: true` açık. Tip hataları ve lint uyarıları build'i
-> durdurmaz — yani bozuk kod üretime çıkabilir. Bkz. [08-GELISTIRME-REHBERI.md](08-GELISTIRME-REHBERI.md).
+> ✅ Derleme kapıları **AÇIK**. `eslint.ignoreDuringBuilds` ve `typescript.ignoreBuildErrors`
+> kaldırıldı; `next build` artık tip hatasında kırılır. KURAL-11'de pdf.js paketten
+> alınınca ortaya iki gerçek tip hatası çıktı (ikisi de düzeltildi) — kapının yıllardır
+> ne sakladığının somut örneği.
+>
+> 🔒 **KURAL-11:** Sayfalar dinamik render ediliyor; `proxy.ts` istek başına nonce'lu CSP
+> yazıyor ve `app/layout.tsx` içindeki `await headers()` bunun ön koşulu (statik ön-render
+> nonce taşıyamaz).
 
 ---
 
@@ -64,12 +68,11 @@ tanımlı**; diğer sayfalar aynı mantığı kopyala-yapıştır ile tekrarlıy
 #### PDF sayfa seçici — panelin en dikkat çekici parçası
 
 ```
-1. useEffect → pdf.js CDN'den <script> ile yüklenir
-      https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = …/pdf.worker.min.js
+1. Kullanıcı PDF seçer → pdfKitapligiYukle()
+      await import("pdfjs-dist")            (npm paketi, sürüm 6.3.289)
+      GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs"   (kendi origin'imiz)
 
-2. Kullanıcı PDF seçer
-      FileReader → ArrayBuffer → pdfjsLib.getDocument() → pdfDoc
+2. file.arrayBuffer() → getDocument({ data, wasmUrl: "/pdfjs/wasm/" }) → pdfDoc
 
 3. Her sayfa için <PdfThumbnail> bileşeni
       page.getViewport({ scale: 0.35 }) → <canvas>'a render
@@ -85,12 +88,20 @@ tanımlı**; diğer sayfalar aynı mantığı kopyala-yapıştır ile tekrarlıy
 `PdfThumbnail` içinde `active` bayrağı ile temizlik yapılıyor — bileşen unmount olursa
 render iptal ediliyor ✅.
 
-> ⚠️ **Üç sorun:**
-> 1. pdf.js **CDN'den, SRI (`integrity`) olmadan** yükleniyor. CDN ele geçirilirse
->    yönetici oturumunda keyfi JavaScript çalışır. `npm i pdfjs-dist` ile pakete alınmalı.
-> 2. Script yüklenmeden PDF seçilirse `window.pdfjsLib` tanımsızdır.
-> 3. Çok sayfalı PDF'lerde **her sayfa aynı anda** canvas'a render ediliyor — 300 sayfalık
->    bir PDF tarayıcıyı kilitleyebilir. Sanallaştırma (virtualization) yok.
+> ✅ **KURAL-11 (2026-09-01) ile kapanan iki sorun:**
+> 1. ~~pdf.js CDN'den, SRI olmadan~~ → npm paketinden. Üstelik çekilen sürüm (2.16.105)
+>    **CVE-2024-4367'ye açıktı**: kötü niyetli bir PDF açmak panelde kod çalıştırmaya
+>    yetiyordu. 6.3.289 yamalı sürümdür.
+> 2. ~~Script yüklenmeden PDF seçilirse `window.pdfjsLib` tanımsız~~ → artık `await import`
+>    ediliyor; "1 saniye bekle ve umut et" kurgusu kalktı.
+>
+> ⚠️ **Duran sorun:** Çok sayfalı PDF'lerde **her sayfa aynı anda** canvas'a render
+> ediliyor — 300 sayfalık bir PDF tarayıcıyı kilitleyebilir. Sanallaştırma yok.
+> (Sunucu tarafındaki sayfa sınırı KURAL-10'da kondu; bu, tarayıcı tarafıdır.)
+>
+> ℹ️ Worker ve WASM çözücüler `public/pdfjs/` altına derleme öncesi kopyalanır
+> (`scripts/pdfjs-worker-kopyala.mjs`, `.gitignore`'da). Elle kopyalanmazlar ki paket
+> güncellenince eski bir sürüm sessizce kalmasın.
 
 #### Diğer işlevler
 
@@ -161,11 +172,11 @@ Tek paylaşılan bileşen. Sağladığı:
 |---|---|---|
 | 1 | Ortak `lib/api.ts` oluştur | 4 sayfada `fetch` + token okuma kopyalanıyor |
 | 2 | `useAdminAuth()`'u `hooks/` altına taşı | Şu an sadece dashboard'da tanımlı |
-| 3 | `ignoreBuildErrors` / `ignoreDuringBuilds` kapat | Tip hataları prod'a sızıyor |
-| 4 | pdf.js'i npm paketine al + lazy import | CDN + SRI yok = tedarik zinciri riski |
+| 3 | ~~`ignoreBuildErrors` / `ignoreDuringBuilds` kapat~~ | ✅ KURAL-11 |
+| 4 | ~~pdf.js'i npm paketine al + lazy import~~ | ✅ KURAL-11 |
 | 5 | `<a href>` → `<Link>` | Tam sayfa yenilemesi |
 | 6 | 401/403 için ortak yakalayıcı | Token dolunca sayfa sessizce boş kalıyor |
 | 7 | Kitap listesine `pageCount` ekle (backend + panel) | Sayfa modundaki kitaplar boş görünüyor |
 | 8 | Seviye/kategori listesini tek kaynağa taşı | frontend ile senkron değil |
 | 9 | Kullanıcı silme düğmesi ekle | Backend ucu var, arayüz yok |
-| 10 | React 18 → 19, Next 14 → 16 | İki uygulama arasındaki sürüm uçurumunu kapat |
+| 10 | ~~React 18 → 19, Next 14 → 16~~ | ✅ Yapılmış (16.3.2 / 19.2.4) |

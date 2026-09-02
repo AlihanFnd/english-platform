@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using EnglishReadingPlatform.Files;
+using EnglishReadingPlatform.Validation;
 using EnglishReadingPlatform.Tests.Infrastructure;
 using FluentAssertions;
 using Xunit;
@@ -121,13 +122,14 @@ public class DosyaYuklemeTests
     {
         var client = await YoneticiIstemcisiAsync();
 
-        // 527 sayfa: EnCokSayfa'nın (500) üstünde ama SayfaSecimiMetni alan
-        // sınırının (2000 karakter) ALTINDA kalmalı — aksi hâlde istek model
-        // doğrulamasında düşer ve test sayfa sınırını değil onu ölçer.
-        var cokSayfa = string.Join(",", Enumerable.Range(1, 527));
-        cokSayfa.Length.Should().BeLessThanOrEqualTo(2_000,
+        // Sayfa sayısı EnCokSayfa'nın ÜSTÜNDE ama seçim dizesi SayfaSecimiMetni
+        // alan sınırının ALTINDA kalmalı — aksi hâlde istek model doğrulamasında
+        // düşer ve test sayfa sınırını değil onu ölçer.
+        const int istenenSayfa = 1_600;
+        var cokSayfa = string.Join(",", Enumerable.Range(1, istenenSayfa));
+        istenenSayfa.Should().BeGreaterThan(DosyaDogrulayici.EnCokSayfa);
+        cokSayfa.Length.Should().BeLessThanOrEqualTo(AlanSinirlari.SayfaSecimiMetni,
             "seçim dizesi alan sınırına takılırsa test sayfa üst sınırını ölçmez");
-        527.Should().BeGreaterThan(DosyaDogrulayici.EnCokSayfa);
 
         // GERÇEK bir PDF: sınır kaldırıldığında istek 200'e dönebilsin, yani
         // mutasyon bu testi gerçekten kırmızıya çevirebilsin.
@@ -183,9 +185,34 @@ public class DosyaYuklemeTests
         var yanit = await SayfaYukleAsync(client, TestBelgeleri.ZipBombasi(300), "bomba.docx");
 
         yanit.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await HataMesajiAsync(yanit)).Should().Contain("boyutu",
-            "zip-bomb korumasının mesajı dönmeli — 'okunamadı' dönüyorsa koruma değil "
-            + "ayrıştırıcı reddetmiştir ve gerçek bir bomba geçebilir");
+        // Bomba İKİ kuraldan birine takılabilir: mutlak açılmış boyut ya da
+        // sıkıştırma oranı. Hangisinin önce devreye gireceği sınırlara bağlıdır
+        // (sınır 200→400 MB olunca bu bomba boyut yerine orana takılmaya başladı).
+        // Test korumanın ATEŞLEDİĞİNİ ölçer, hangi kuralın ateşlediğini değil —
+        // ama ayrıştırıcının genel "okunamadı" mesajını kabul ETMEZ, çünkü o
+        // durumda gerçek bir bombanın geçtiği anlamına gelir.
+        var mesaj = await HataMesajiAsync(yanit);
+        mesaj.Should().Match(m => m.Contains("boyutu") || m.Contains("sıkıştırma oranına"),
+            $"zip-bomb korumasının mesajı dönmeli, gelen: '{mesaj}'");
+    }
+
+    // ─── 7 ───────────────────────────────────────────────────────
+    [Fact]
+    [Trait("Category", "DosyaYukleme")]
+    public async Task Docx_birden_cok_sayfaya_bolunur()
+    {
+        // Kullanıcı kararı (2026-08-31): DOCX sayfa seçici boş yere durmasın,
+        // yükleme DOĞRU çalışsın. Eskiden DOCX'in TAMAMI tek sayfaya yazılıyordu
+        // (900 kelimelik bir belge tek blok olarak). Artık 400 kelimede bir
+        // sayfaya bölünüyor: 900 kelime → 3 sayfa.
+        var client = await YoneticiIstemcisiAsync();
+        var metin = string.Join(" ", Enumerable.Range(1, 900).Select(i => $"kelime{i}"));
+
+        var yanit = await SayfaYukleAsync(client, TestBelgeleri.GercekDocx(metin), "kitap.docx");
+
+        yanit.StatusCode.Should().Be(HttpStatusCode.OK);
+        var sonuc = await yanit.Content.ReadFromJsonAsync<YuklemeSonucu>();
+        sonuc!.pagesCreated.Should().Be(3, "900 kelime / sayfa başına 400 kelime = 3 sayfa");
     }
 
     // ─── Öğrenci: ayrı hız sınırı bölümü, bütçeye girmez ─────────

@@ -20,14 +20,24 @@ ihlal_bildir "Authorization başlığı önce kontrol ediliyor" "$n" \
   "OnMessageReceived içinde başlık kontrolü yok — cookie ezer"
 
 # 4. Rol değişimi ve silme token iptal ediyor mu?
+# Sabit satır penceresi (-A20/-A25) KIRILGANDIR: uca meşru bir kontrol
+# eklendiğinde koruma pencerenin dışına taşar ve kapı, koruma YERİNDE olduğu
+# hâlde kırmızı verir (KURAL-12'de tam olarak bu oldu). Onun yerine ucun
+# GÖVDESİ kesilir: attribute satırından bir SONRAKİ [Http... attribute'una kadar.
+uc_govdesi() {
+  awk -v desen="$1" '
+    index($0, desen) { icinde=1 }
+    icinde && /^[[:space:]]*\[Http/ && !index($0, desen) { exit }
+    icinde { print }
+  ' EnglishReadingPlatform/Controllers/AdminController.cs
+}
+
 n=0
-grep -A25 'HttpPut("users/{id}/role")' EnglishReadingPlatform/Controllers/AdminController.cs \
-  | grep -q 'KullaniciTumTokenlariniIptalEt' || n=1
+uc_govdesi 'HttpPut("users/{id}/role")' | grep -q 'KullaniciTumTokenlariniIptalEt' || n=1
 ihlal_bildir "UpdateRole token iptal ediyor" "$n" "rol düşürülen kullanıcı admin kalıyor"
 
 n=0
-grep -A20 'HttpDelete("users/{id}")' EnglishReadingPlatform/Controllers/AdminController.cs \
-  | grep -q 'KullaniciTumTokenlariniIptalEt' || n=1
+uc_govdesi 'HttpDelete("users/{id}")' | grep -q 'KullaniciTumTokenlariniIptalEt' || n=1
 ihlal_bildir "DeleteUser token iptal ediyor" "$n" "silinen kullanıcının tokenı geçerli kalıyor"
 
 # 5. Task.Run(while(true)) deseni kaldı mı?
