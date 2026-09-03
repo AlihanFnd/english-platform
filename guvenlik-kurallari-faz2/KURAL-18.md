@@ -19,7 +19,19 @@
 
 Ölçüm tarihi: **2026-09-02**, commit `03b8adc`.
 
-### İhlal 1 — CI şu anda KIRIK 🔴
+### İhlal 1 — CI kırılmıştı; bu ÖRNEK kapandı, SINIF açık 🟡
+
+> ✅ **GÜNCELLEME (2026-09-03):** Aşağıdaki zafiyet **artık yok.**
+> `frontend/package-lock.json` zaten `4.28.8`'e yükseltilmişti ama
+> `node_modules` `4.28.4`'te kalmıştı; kilit ile kurulum eşitlenince kapandı.
+> Şu anki durum: `frontend` temiz · `admin-panel` temiz · .NET temiz.
+>
+> **Envanter yine de olduğu gibi bırakıldı**, çünkü bu kuralın konusu tek bir
+> paket değil: bir zafiyetin *aylarca* kimseye görünmeden durabilmesi ve
+> iki istemcinin farklı sürümlerde ayrışabilmesi. Aşağıdaki ölçüm, o sınıfın
+> gerçekten yaşandığının kanıtıdır. İhlal 2, 3 ve 4 **hâlâ açık.**
+
+**Ölçüm anındaki hâli (2026-09-02):**
 
 ```
 $ cd frontend && npm audit --audit-level=high        ← CI'nin birebir komutu
@@ -109,11 +121,11 @@ sabit — orada sorun yok.
 
 | # | İhlal | Nokta |
 |---|---|---|
-| 1 | CI kırık (yüksek zafiyet) | 1 paket, 1 istemci |
+| 1 | ~~CI kırık~~ → kapandı; sınıf açık | 0 paket (ölçümde 1) |
 | 2 | İstisna mekanizması yok | 0 |
 | 3 | BCrypt parametresi yazılmamış | 5 çağrı noktası |
 | 4 | Sürüm aralıkları | 2 `package.json` |
-| | **TOPLAM** | **8 nokta** |
+| | **TOPLAM** | **7 açık nokta** |
 
 ---
 
@@ -458,8 +470,8 @@ git checkout EnglishReadingPlatform/Security/SifreHashleme.cs
 
 | Adım | İş | Nokta | Doğrulama |
 |---|---|---|---|
-| 1 | `cd frontend && npm audit fix` | 1 | audit çıkış kodu 0 |
-| 2 | `package-lock.json` değişimini **incele** (hangi paket, hangi sürüm) | — | `git diff` |
+| 1 | `npm audit` her iki istemcide (bu örnek zaten kapandı — **doğrula**) | 2 | çıkış kodu 0 |
+| 2 | `node_modules` kilit dosyasıyla eşitli mi? (`npm ci` ile kesinleştir) | 2 | sürümler aynı |
 | 3 | `Security/SifreHashleme.cs` yaz | 1 | derlenir |
 | 4 | 5 `BCrypt.Net.BCrypt.HashPassword` çağrısını merkeze taşı | 5 | guard 1 → 0 |
 | 5 | `Verify` çağrılarını da merkeze taşı (4 nokta) | 4 | guard 1 → 0 |
