@@ -17,7 +17,8 @@ istemcisi, PostgreSQL.
 | Sayfalar, context'ler, tasarım sistemi | [docs/05-FRONTEND.md](docs/05-FRONTEND.md) |
 | Yönetici paneli | [docs/06-ADMIN-PANEL.md](docs/06-ADMIN-PANEL.md) |
 | **Açık güvenlik bulguları** | [docs/07-GUVENLIK.md](docs/07-GUVENLIK.md) |
-| **Güvenlik çalışması — uygulanacak kurallar** | [guvenlik-kurallari/00-BASLA-BURADAN.md](guvenlik-kurallari/00-BASLA-BURADAN.md) |
+| **Güvenlik çalışması faz 1 (kapandı)** | [guvenlik-kurallari/00-BASLA-BURADAN.md](guvenlik-kurallari/00-BASLA-BURADAN.md) |
+| **Güvenlik çalışması faz 2 (sıradaki)** | [guvenlik-kurallari-faz2/00-BASLA-BURADAN.md](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) |
 | Kurulum, bilinen hatalar, teknik borç | [docs/08-GELISTIRME-REHBERI.md](docs/08-GELISTIRME-REHBERI.md) |
 
 ## Hızlı başlangıç
@@ -33,11 +34,23 @@ Frontend :3000 · Admin :3001 · API :5001 · pgAdmin :8080
 
 ## Güvenlik çalışması
 
-Devam eden 12 kurallık güvenlik programı: [`guvenlik-kurallari/`](guvenlik-kurallari/00-BASLA-BURADAN.md)
+| Faz | Klasör | Durum |
+|---|---|---|
+| **Faz 1** — KURAL-01…12 | [`guvenlik-kurallari/`](guvenlik-kurallari/00-BASLA-BURADAN.md) | ✅ 12/12 kapandı (`2bd12bc`) |
+| **Faz 2** — KURAL-13…19 | [`guvenlik-kurallari-faz2/`](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) | ⬜ 0/7 |
 
-Her oturum **önce** `00-BASLA-BURADAN.md`, **sonra** sıradaki `KURAL-NN.md` okunarak
-yürütülür. Disiplin, pazarlıksız maddeler ve teslim formatı 00 dosyasındadır.
-İlerleme tablosu da oradadır — bitirdiğin kuralı işaretle.
+Her oturum **önce** ilgili fazın `00-BASLA-BURADAN.md`, **sonra** sıradaki
+`KURAL-NN.md` okunarak yürütülür. Disiplin, pazarlıksız maddeler ve teslim
+formatı 00 dosyasındadır. İlerleme tablosu da oradadır — bitirdiğin kuralı işaretle.
+
+> **Faz 2 neden var:** faz 1 bittikten sonra yapılan denetimler, 12 kuralın hiç
+> bakmadığı yerlerde bulgular çıkardı. En çarpıcısı: KURAL-11 "tarayıcı tarafı
+> savunma" başlığını taşıyor ama **CORS'a hiç bakmamış** — API şu an her kökene,
+> üstelik kimlik bilgisiyle açık. Ayrıca şifre sıfırlama bağlantısı, Resend
+> anahtarı tanımlı olmadığı için uygulama loguna yazılıyor.
+>
+> Faz 2, faz 1'in kapılarını **kırmamak zorundadır**: her oturumun sonunda
+> `bash scripts/guard/run-all.sh` bütün kapılarla çalıştırılır.
 
 ## Çalışma kuralları
 
