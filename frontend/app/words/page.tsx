@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { api, WordItem } from '../api';
-import { BookMarked, Trash2, Edit3, Plus, Check, X, Sparkles, Brain, Award, RefreshCw } from 'lucide-react';
+import { api, WordItem, CalismaKarti, KelimeOzeti } from '../api';
+import { BookMarked, Trash2, Edit3, Plus, Check, X, Sparkles, Brain, Award, RefreshCw, GraduationCap, Target } from 'lucide-react';
 
 export default function WordsPage() {
   const [words, setWords] = useState<WordItem[]>([]);
@@ -27,21 +27,39 @@ export default function WordsPage() {
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
   const flipLockRef = useRef<{ [key: number]: boolean }>({});
 
-  // Study / Test Mode states
+  // Çalışma seansı durumu
   const [studyMode, setStudyMode] = useState(false);
-  const [studyWords, setStudyWords] = useState<WordItem[]>([]);
+  const [studyWords, setStudyWords] = useState<CalismaKarti[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [stats, setStats] = useState({ known: 0, unknown: 0 });
 
+  // Seans boyu — kullanıcı 200 kelimeyi tek oturumda bitiremiyor.
+  const SEANS_SECENEKLERI = [10, 20, 30, 50];
+  const [seansBoyu, setSeansBoyu] = useState(20);
+  const [seansYukleniyor, setSeansYukleniyor] = useState(false);
+
+  // Kalıcı özet: "kaç kelime biliyorum?"
+  const [ozet, setOzet] = useState<KelimeOzeti | null>(null);
+
   const loadWords = async () => {
     try {
-      const data = await api.getWords();
+      const [data, o] = await Promise.all([api.getWords(), api.getKelimeOzeti()]);
       setWords(data);
+      setOzet(o);
     } catch (err: any) {
       setError(err.message || 'Kelimeler yüklenirken bir hata oluştu.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Özeti tek başına tazele — seans bitince tüm listeyi yeniden çekmeye gerek yok.
+  const loadOzet = async () => {
+    try {
+      setOzet(await api.getKelimeOzeti());
+    } catch {
+      /* özet tazelenemezse ekran eski sayıyı gösterir; akışı kesmeye değmez */
     }
   };
 
@@ -144,29 +162,52 @@ export default function WordsPage() {
     });
   };
 
-  // Start study session
-  const startStudySession = () => {
-    if (words.length === 0) return;
-    const shuffled = [...words].sort(() => 0.5 - Math.random());
-    setStudyWords(shuffled);
-    setCurrentIdx(0);
-    setShowAnswer(false);
-    setStats({ known: 0, unknown: 0 });
-    setStudyMode(true);
+  // Seansı SUNUCUDAN al: karıştırma artık istemcide değil.
+  // Sunucu önce hiç çalışılmamışları veriyor, böylece 200 kelimelik listede
+  // her seans farklı kartlar geliyor ama liste bitmeden hiçbiri tekrar etmiyor.
+  const startStudySession = async () => {
+    if (words.length === 0 || seansYukleniyor) return;
+    setSeansYukleniyor(true);
+    try {
+      const kartlar = await api.getCalismaSeansi(seansBoyu);
+      if (kartlar.length === 0) {
+        alert('Çalışılacak kelime bulunamadı.');
+        return;
+      }
+      setStudyWords(kartlar);
+      setCurrentIdx(0);
+      setShowAnswer(false);
+      setStats({ known: 0, unknown: 0 });
+      setStudyMode(true);
+    } catch (err: any) {
+      alert(err.message || 'Çalışma seansı başlatılamadı.');
+    } finally {
+      setSeansYukleniyor(false);
+    }
   };
 
-  const handleStudyAction = (known: boolean) => {
-    if (known) {
-      setStats(p => ({ ...p, known: p.known + 1 }));
-    } else {
-      setStats(p => ({ ...p, unknown: p.unknown + 1 }));
-    }
+  const handleStudyAction = async (known: boolean) => {
+    const kart = studyWords[currentIdx];
 
-    if (currentIdx + 1 < studyWords.length) {
+    // Ekranı BEKLETME: kart hemen ilerlesin, kayıt arkada gitsin.
+    // Ağ yavaşsa kullanıcı her kartta donmuş bir arayüz görmemeli.
+    if (known) setStats(p => ({ ...p, known: p.known + 1 }));
+    else setStats(p => ({ ...p, unknown: p.unknown + 1 }));
+
+    const sonKart = currentIdx + 1 >= studyWords.length;
+    if (!sonKart) {
       setCurrentIdx(currentIdx + 1);
       setShowAnswer(false);
     } else {
       setCurrentIdx(studyWords.length);
+    }
+
+    try {
+      await api.kaydetCalismaSonucu(kart.id, known);
+      if (sonKart) await loadOzet();   // seans bitti, sayaçları tazele
+    } catch {
+      /* Tek bir kartın kaydı düşerse seansı kesmiyoruz; bir sonraki
+         seansta o kelime yine "hiç çalışılmamış" bandında gelir. */
     }
   };
 
@@ -190,19 +231,63 @@ export default function WordsPage() {
           <p className="text-on-surface-variant mt-1">İzlediğiniz dizi ve filmlerden kelimeleri anında ekleyip pratik yapın.</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="bg-surface-container/60 backdrop-blur-md px-4 py-2 border border-outline-variant/60 rounded-2xl flex items-center gap-2.5 shadow-sm">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Kelimelerim</span>
-            <span className="text-xl font-black text-primary">{words.length}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Kalıcı ilerleme: sayfayı kapatınca sıfırlanmaz */}
+          <div className="bg-surface-container/60 backdrop-blur-md px-4 py-2 border border-outline-variant/60 rounded-2xl flex items-center gap-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Toplam</span>
+              <span className="text-xl font-black text-primary">{ozet?.toplam ?? words.length}</span>
+            </div>
+            <div className="h-6 w-px bg-outline-variant/60" />
+            <div className="flex items-center gap-2" title={`Üst üste ${ozet?.ogrenildiEsigi ?? 3} kez doğru bilinenler`}>
+              <GraduationCap size={14} className="text-green-500" />
+              <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Bildiğim</span>
+              <span className="text-xl font-black text-green-500">{ozet?.ogrenildi ?? 0}</span>
+            </div>
+            {(ozet?.hicCalisilmadi ?? 0) > 0 && (
+              <>
+                <div className="h-6 w-px bg-outline-variant/60" />
+                <div className="flex items-center gap-2" title="Henüz hiç karşına çıkmamış kelimeler">
+                  <Target size={14} className="text-on-surface-variant" />
+                  <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Kalan</span>
+                  <span className="text-xl font-black text-on-surface">{ozet?.hicCalisilmadi}</span>
+                </div>
+              </>
+            )}
           </div>
+
+          {words.length > 0 && !studyMode && (
+            <div className="flex items-center gap-2 bg-surface-container/60 backdrop-blur-md px-3 py-2 border border-outline-variant/60 rounded-2xl shadow-sm">
+              <label htmlFor="seans-boyu" className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                Kaçarlık
+              </label>
+              <select
+                id="seans-boyu"
+                value={seansBoyu}
+                onChange={e => setSeansBoyu(Number(e.target.value))}
+                className="bg-surface-container text-on-surface text-xs font-bold rounded-lg border border-outline-variant px-2 py-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {SEANS_SECENEKLERI.filter(n => n <= Math.max(...SEANS_SECENEKLERI))
+                  .map(n => (
+                    <option key={n} value={n} disabled={n > words.length}>
+                      {n} kelime{n > words.length ? ' (yetersiz)' : ''}
+                    </option>
+                  ))}
+                {words.length > 0 && words.length <= 100 && !SEANS_SECENEKLERI.includes(words.length) && (
+                  <option value={words.length}>Tümü ({words.length})</option>
+                )}
+              </select>
+            </div>
+          )}
 
           {words.length > 0 && !studyMode && (
             <button
               onClick={startStudySession}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-2xl font-bold text-xs shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+              disabled={seansYukleniyor}
+              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-2xl font-bold text-xs shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Brain size={14} />
-              Pratik Yap (Kartlar)
+              {seansYukleniyor ? 'Hazırlanıyor…' : 'Pratik Yap (Kartlar)'}
             </button>
           )}
         </div>
@@ -224,9 +309,21 @@ export default function WordsPage() {
 
           {currentIdx < studyWords.length ? (
             <div className="space-y-6 text-center">
-              <span className="text-[10px] bg-primary/10 text-primary font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                Kart {currentIdx + 1} / {studyWords.length}
-              </span>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-[10px] bg-primary/10 text-primary font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+                  Kart {currentIdx + 1} / {studyWords.length}
+                </span>
+                {studyWords[currentIdx].ogrenildi ? (
+                  <span className="text-[10px] bg-green-500/10 text-green-600 font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
+                    <GraduationCap size={11} /> Öğrenildi — tekrar
+                  </span>
+                ) : studyWords[currentIdx].dogruSeri > 0 ? (
+                  <span className="text-[10px] bg-surface-variant text-on-surface-variant font-bold px-3 py-1 rounded-full uppercase tracking-wider"
+                        title="Üst üste doğru bilme sayısı">
+                    Seri: {studyWords[currentIdx].dogruSeri}
+                  </span>
+                ) : null}
+              </div>
 
               <div 
                 onClick={() => setShowAnswer(!showAnswer)}
@@ -272,15 +369,53 @@ export default function WordsPage() {
                 <p className="text-xs text-on-surface-variant">Çalışma seansını tamamladın.</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
-                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
-                  <p className="text-[10px] text-green-600 font-bold uppercase">Bildiğim</p>
-                  <p className="text-2xl font-black text-green-500">{stats.known}</p>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-2">Bu seans</p>
+                  <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
+                    <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
+                      <p className="text-[10px] text-green-600 font-bold uppercase">Bildim</p>
+                      <p className="text-2xl font-black text-green-500">{stats.known}</p>
+                    </div>
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+                      <p className="text-[10px] text-red-600 font-bold uppercase">Bilemedim</p>
+                      <p className="text-2xl font-black text-red-500">{stats.unknown}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-                  <p className="text-[10px] text-red-600 font-bold uppercase">Bilmediğim</p>
-                  <p className="text-2xl font-black text-red-500">{stats.unknown}</p>
-                </div>
+
+                {/* Asıl yenilik: bu sayılar sayfayı kapatınca SIFIRLANMAZ. */}
+                {ozet && (
+                  <div>
+                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-2">
+                      Toplam ilerlemen
+                    </p>
+                    <div className="grid grid-cols-3 gap-3 max-w-md mx-auto">
+                      <div className="bg-surface-container border border-outline-variant rounded-xl p-3">
+                        <p className="text-[10px] text-green-600 font-bold uppercase">Öğrenildi</p>
+                        <p className="text-xl font-black text-green-500">{ozet.ogrenildi}</p>
+                      </div>
+                      <div className="bg-surface-container border border-outline-variant rounded-xl p-3">
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase">Çalışılıyor</p>
+                        <p className="text-xl font-black text-on-surface">{ozet.calisiliyor}</p>
+                      </div>
+                      <div className="bg-surface-container border border-outline-variant rounded-xl p-3">
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase">Hiç çıkmadı</p>
+                        <p className="text-xl font-black text-on-surface">{ozet.hicCalisilmadi}</p>
+                      </div>
+                    </div>
+                    {ozet.hicCalisilmadi > 0 && (
+                      <p className="text-[11px] text-on-surface-variant mt-3">
+                        Sonraki seansta önce <strong className="text-on-surface">hiç çıkmamış</strong> kelimeler gelir.
+                      </p>
+                    )}
+                    {ozet.hicCalisilmadi === 0 && ozet.calisiliyor > 0 && (
+                      <p className="text-[11px] text-on-surface-variant mt-3">
+                        Listenin tamamını gördün. Sırada <strong className="text-on-surface">henüz öğrenilmemiş</strong> kelimeler var.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-center gap-2.5 pt-4">

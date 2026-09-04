@@ -43,7 +43,7 @@ app/
 ├── books/page.tsx          /books — kitaplık + filtreler
 ├── books/[id]/page.tsx     /books/5 — OKUYUCU (en karmaşık sayfa, 449 satır)
 ├── books/[id]/quiz/page.tsx
-├── words/page.tsx          /words — kelime listesi + flashcard + çalışma modu
+├── words/page.tsx          /words — kelime listesi + flashcard + kalıcı çalışma seansı
 ├── ocr/page.tsx            /ocr — Tesseract.js ile metin tarama
 └── groups/page.tsx         /groups — grup oluştur/katıl/yönet
 ```
@@ -247,13 +247,14 @@ ve `[data-mobile-header="true"]` öğelerini gizler. Mobilde tam ekran düğmesi
 
 > Sayfa modundaki kitaplarda quiz düğmesi hiç görünmez (`!hasPages && chapter` koşulu).
 
-### `/words` — Kelime Listem (545 satır)
+### `/words` — Kelime Listem (680 satır)
 
 Üç mod:
 
 1. **Hızlı ekleme:** kelime yaz → `api.translateWord()` ile otomatik çeviri gelir → düzenleyip kaydet
 2. **Kart listesi:** her kelime bir flashcard; tıklayınca çevrilir (`flippedCards: Set<number>`)
-3. **Çalışma modu:** kelimeler tek tek gösterilir, "Biliyorum / Bilmiyorum" ile sayaç tutulur
+3. **Çalışma modu:** seans boyu seçilir (10/20/30/50), kartlar tek tek gösterilir,
+   "Biliyorum / Bilmiyorum" **sunucuya kaydedilir**
 
 **Flip kilidi:** `flipLockRef` ile 600ms boyunca ikinci tıklama engellenir
 (commit `0a684d8` — sonsuz dönme döngüsü hatası). 3D dönme animasyonu commit `ecca859`
@@ -261,8 +262,31 @@ ile kaldırıldı, artık anlık geçiş var.
 
 Satır içi düzenleme (`editingId`) ile kelime/çeviri/bağlam güncellenebilir.
 
-> ⚠️ Çalışma modu sonuçları **hiçbir yere kaydedilmiyor** — sayfa yenilenince kaybolur.
-> Aralıklı tekrar (spaced repetition) altyapısı yok.
+> ✅ **Çözüldü:** Çalışma sonuçları artık kalıcı. Eskiden "Biliyorum/Bilmiyorum"
+> yalnızca bir React sayacıydı ve sayfa kapanınca kayboluyordu; 200 kelimelik bir
+> listede kullanıcı hangi kelimeyi çalıştığını hiç bilemiyordu.
+
+**Çalışma akışı**
+
+| Adım | Çağrı |
+|---|---|
+| Sayfa açılışı | `api.getWords()` + `api.getKelimeOzeti()` (paralel) |
+| "Pratik Yap" | `api.getCalismaSeansi(seansBoyu)` — karıştırma **sunucuda** |
+| Her karttan sonra | `api.kaydetCalismaSonucu(id, bildim)` — **arka planda** |
+| Seans sonu | `api.getKelimeOzeti()` ile sayaçlar tazelenir |
+
+**Seans boyu seçici:** kullanıcı 200 kelimeyi tek oturumda bitiremiyordu.
+Artık kaçarlık çalışacağını seçiyor; sunucu **önce hiç çalışılmamışları** veriyor,
+böylece her seans farklı kartlar geliyor ama liste bitmeden hiçbiri tekrar etmiyor.
+
+**Kart ilerlemesi arayüzü beklemez.** `handleStudyAction` önce kartı ilerletir,
+kaydı sonra gönderir — ağ yavaşsa her kartta donmuş bir ekran görünmemeli.
+Tek bir kaydın düşmesi seansı kesmez; o kelime bir sonraki seansta yine
+"hiç çalışılmamış" bandında gelir.
+
+**Üst bantta üç kalıcı sayaç:** Toplam · Bildiğim (öğrenildi) · Kalan (hiç çıkmamış).
+"Öğrenildi" eşiği `ozet.ogrenildiEsigi` ile **sunucudan** okunur — istemcide
+kopyalanmaz, yoksa iki sayı ayrışır.
 
 ### `/ocr` — Metin Tara (406 satır)
 
@@ -376,6 +400,6 @@ Kırılım noktaları: 480px, 600px, 640px, 768px.
 | 7 | 401 için global yakalayıcı yok — token dolunca sayfalar kırık hata gösterir | `api.ts` |
 | 8 | Kitaplık sunucu taraflı filtreleme/sayfalama yapmıyor | `books/page.tsx` |
 | 9 | Gamification öğeleri (seri, rütbe, hedef, Yükselt) işlevsiz | `layout-wrapper.tsx` |
-| 10 | Çalışma modu istatistikleri kalıcı değil | `words/page.tsx` |
+| ~~10~~ | ~~Çalışma modu istatistikleri kalıcı değil~~ ✅ kapandı — `DogruSeri`/`SonCalismaAt` veritabanında | `words/page.tsx` |
 | 11 | `any` tipi birçok yerde (`selWord`, hata nesneleri) | çeşitli |
 | 12 | Token hâlâ `localStorage`'da. KURAL-11 nonce'lu CSP ile riski azalttı; cookie'ye tam geçiş açık teknik borç | `api.ts`, `context/AuthContext.tsx` |

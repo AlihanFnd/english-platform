@@ -362,6 +362,124 @@ namespace EnglishReadingPlatform.Controllers
             return Ok(new { success = true });
         }
 
+        // ─── Kelime çalışma seansı ────────────────────────────────────────
+
+        // GET /api/books/words/calisma?adet=20
+        //
+        // Neden ayrı bir uç: kullanıcının 200 kelimesi varsa tek oturumda
+        // bitmiyor. Liste ucu (GET words) her şeyi döndürür; bu uç SEANSLIK
+        // bir dilim verir ve dilimi RASTGELE değil, ÖNCELİKLİ seçer.
+        //
+        // Öncelik sırası:
+        //   1) hiç çalışılmamışlar   → kapsama garantisi (asıl şikâyet buydu)
+        //   2) çalışılmış ama öğrenilmemişler, en eskiden başlayarak
+        //   3) öğrenilmişler, tekrar için
+        // Aynı bant içinde sıra RASTGELEDİR — yani hiç çalışılmamış 200
+        // kelimeden her seferinde farklı 20'si gelir, ama liste bitmeden
+        // hiçbiri iki kez gelmez.
+        [HttpGet("words/calisma")]
+        public async Task<IActionResult> CalismaSeansi(
+            [FromQuery]
+            [Range(KelimeCalismasi.EnAzSeansBoyu, KelimeCalismasi.EnCokSeansBoyu,
+                   ErrorMessage = "Seans boyu {1} ile {2} arasında olmalıdır.")]
+            int adet = KelimeCalismasi.VarsayilanSeansBoyu)
+        {
+            var userId = CurrentUserId;
+
+            // Sahiplik SORGUNUN İÇİNDE: başkasının kelimesi hiç okunmaz.
+            var kartlar = await _db.WordListItems
+                .Where(w => w.UserId == userId)
+                .OrderBy(w => w.SonCalismaAt == null ? 0
+                            : w.DogruSeri < KelimeCalismasi.OgrenildiEsigi ? 1 : 2)
+                .ThenBy(w => w.SonCalismaAt)
+                .ThenBy(w => EF.Functions.Random())
+                .Take(adet)
+                .Select(w => new CalismaKartiYaniti(
+                    w.Id, w.Word, w.Translation, w.Context,
+                    w.DogruSeri,
+                    w.DogruSeri >= KelimeCalismasi.OgrenildiEsigi))
+                .ToListAsync();
+
+            return Ok(kartlar);
+        }
+
+        // GET /api/books/words/ozet
+        //
+        // "Kaç kelime biliyorum?" sorusunun tek cevabı. Sayım SQL'de yapılır:
+        // 200 satırı belleğe çekip saymak, listeyi büyüten kullanıcıyı
+        // cezalandırırdı.
+        [HttpGet("words/ozet")]
+        public async Task<IActionResult> KelimeOzeti()
+        {
+            var userId = CurrentUserId;
+            const int esik = KelimeCalismasi.OgrenildiEsigi;
+
+            var ozet = await _db.WordListItems
+                .Where(w => w.UserId == userId)
+                .GroupBy(_ => 1)
+                .Select(g => new KelimeOzetiYaniti(
+                    g.Count(),
+                    g.Count(w => w.DogruSeri >= esik),
+                    g.Count(w => w.SonCalismaAt != null && w.DogruSeri < esik),
+                    g.Count(w => w.SonCalismaAt == null),
+                    esik))
+                .FirstOrDefaultAsync();
+
+            // Hiç kelimesi olmayan kullanıcıda GroupBy boş döner.
+            return Ok(ozet ?? new KelimeOzetiYaniti(0, 0, 0, 0, esik));
+        }
+
+        public class CalismaSonucuIstegi
+        {
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")]
+            public int KelimeId { get; set; }
+
+            /// <summary>Kullanıcı bildi mi?</summary>
+            public bool Bildim { get; set; }
+        }
+
+        // POST /api/books/words/calisma-sonucu
+        //
+        // KÜTLE ATAMA YOK: istek yalnızca "hangi kelime" ve "bildim mi" taşır.
+        // Sayaçları sunucu hesaplar — istemci DogruSeri'yi doğrudan yazamaz,
+        // yoksa "öğrenildi" rozeti tek bir istekle satın alınabilirdi.
+        [HttpPost("words/calisma-sonucu")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]
+        public async Task<IActionResult> CalismaSonucu([FromBody] CalismaSonucuIstegi req)
+        {
+            if (req == null) return BadRequest(new { error = "Geçersiz veri." });
+
+            var userId = CurrentUserId;
+
+            // Sahiplik sorgunun İÇİNDE (IDOR): sıradaki kayıt numarası
+            // denenerek başkasının kelime ilerlemesi bozulamaz.
+            var kelime = await _db.WordListItems
+                .FirstOrDefaultAsync(w => w.Id == req.KelimeId && w.UserId == userId);
+
+            if (kelime is not null)
+            {
+                if (req.Bildim)
+                {
+                    kelime.DogruSayisi++;
+                    kelime.DogruSeri++;
+                }
+                else
+                {
+                    kelime.YanlisSayisi++;
+                    kelime.DogruSeri = 0;   // seri kırılır — ezber öğrenme sayılmaz
+                }
+
+                kelime.SonCalismaAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
+
+            // Idempotent ve kasıtlı olarak AYRIM YAPMAZ: "kelime yok" ile
+            // "kelime başkasının" aynı yanıtı döner. Farklı yanıtlar, hangi
+            // kayıt numaralarının var olduğunu sayan bir araç olurdu.
+            // Ayrıca çalışma sırasında silinen bir kelime hata üretmemeli.
+            return Ok(new { success = true });
+        }
+
         // DELETE /api/books/words/{id}
         [HttpDelete("words/{id}")]
         [EnableRateLimiting(HizSinirlari.Yazma)]   // KURAL-07: YENİ

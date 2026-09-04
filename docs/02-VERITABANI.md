@@ -160,10 +160,40 @@ tanınmayan → `.word-default`. Ayrıca çok kelimeli seçimler için `kalıp` 
 | `Translation` | varchar(500) | Anlam. Bağlamsal çeviride `"anlam\n\nEş Anlamlılar:\n..."` biçiminde çok satırlı |
 | `Context` | varchar(200) | İçinde geçtiği cümle |
 | `AddedAt` | timestamptz | |
+| `DogruSayisi` | int | Toplam kaç kez doğru bilindi |
+| `YanlisSayisi` | int | Toplam kaç kez bilinemedi |
+| `DogruSeri` | int | **Üst üste** kaç kez doğru bilindi — bir kez bilememek sıfırlar |
+| `SonCalismaAt` | timestamptz? | En son ne zaman çalışıldı. `null` = hiç çalışılmadı |
 
-> ⚠️ `Context` yalnızca **200 karakter**. Uzun cümleler kaydedilirken PostgreSQL
-> `22001 string data right truncation` hatası verir → 500. `BooksController.AddWord`
-> uzunluk kontrolü yapmıyor. Bkz. [07-GUVENLIK.md](07-GUVENLIK.md) #8.
+**Tekillik:** `(UserId, Word)` — KURAL-12'de eklendi.
+
+> ✅ **Çözüldü (KURAL-05):** `Context` 200 karakterlik kolona yazılmadan önce
+> `KirpEnCok` ile kırpılıyor; girdi sınırı `BaglamGirdi` (400). Eskiden uzun bir
+> cümle `22001 string data right truncation` → 500 üretiyordu.
+
+### Çalışma ilerlemesi (`20260904082257_KelimeCalismaIlerlemesi`)
+
+Son dört kolon **kelime çalışma seansı** içindir. Öncesinde "Biliyorum /
+Bilmiyorum" yalnızca ekrandaki bir React sayacıydı — sayfa kapanınca kayboluyordu.
+200 kelimelik bir listede kullanıcı hangi kelimeyi çalıştığını hiç bilemiyordu.
+
+**"Öğrenildi" kararı `DogruSeri`'ye bakar, `DogruSayisi`'na değil.** 10 kez bilip
+10 kez bilememiş bir kelime öğrenilmiş sayılmamalı. Eşik
+`Contracts/KelimeCalismasi.OgrenildiEsigi` (3) — **tek kaynak**, istemci bu değeri
+`GET /api/books/words/ozet` yanıtından okur; iki yerde ayrı yazılsaydı ekran
+"35 öğrenildi", liste "34" derdi.
+
+**Seans seçimi** (`GET /api/books/words/calisma`) üç bantlı önceliklidir:
+
+```
+1) SonCalismaAt IS NULL                   → hiç çalışılmamışlar
+2) DogruSeri < eşik, en eskiden başlayarak → çalışılmış ama öğrenilmemişler
+3) kalanlar                                → tekrar
+```
+
+Bant içinde sıra `random()`. Böylece 200 kelimelik listede her seans farklı
+kartlar gelir **ama liste bitmeden hiçbiri iki kez çıkmaz** — saf rastgele seçim
+bunu yapamaz, aynı kartlar dönüp durur.
 
 ---
 
@@ -349,6 +379,7 @@ Migration `20260714062208_AddFeedbackModel`. Yalnızca admin okuyabilir (`AdminO
 | 8 | `20260824082727_KURAL05_TohumTarihiSabitlendi` | KURAL-05: seed zaman damgası sabitlendi |
 | 9 | `20260829183257_SifreSifirlamaJetonu` | KURAL-09: `SifreSifirlamaJetonlari` |
 | 10 | `20260901141323_KURAL12_VeriButunluguKisitlari` | KURAL-12: 7 unique index, saklama indeksleri, `Groups.AdminUserId` → `RESTRICT` |
+| 11 | `20260904082257_KelimeCalismaIlerlemesi` | `WordListItems`'a çalışma ilerlemesi: `DogruSayisi`, `YanlisSayisi`, `DogruSeri`, `SonCalismaAt` |
 
 Yeni migration eklemek:
 

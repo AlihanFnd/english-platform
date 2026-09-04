@@ -91,6 +91,27 @@ export interface WordItem {
   addedAt: string;
 }
 
+/** Çalışma seansındaki tek bir kart. */
+export interface CalismaKarti {
+  id: number;
+  word: string;
+  translation: string;
+  context: string;
+  /** Üst üste kaç kez doğru bilindi. */
+  dogruSeri: number;
+  ogrenildi: boolean;
+}
+
+/** "Kaç kelime biliyorum?" sorusunun cevabı. */
+export interface KelimeOzeti {
+  toplam: number;
+  ogrenildi: number;
+  calisiliyor: number;
+  hicCalisilmadi: number;
+  /** Öğrenildi sayılmak için gereken üst üste doğru sayısı — sunucudan gelir. */
+  ogrenildiEsigi: number;
+}
+
 export interface QuizQuestion {
   id: number;
   questionText: string;
@@ -205,6 +226,21 @@ export const api = {
   deleteWord: (id: number) =>
     apiRequest<{ success: boolean }>(`/books/words/${id}`, 'DELETE'),
     
+  /**
+   * Seanslık bir kart dilimi getirir.
+   * Sunucu önce hiç çalışılmamışları verir; aynı bant içinde sıra rastgeledir.
+   * Böylece 200 kelimelik listede her seans farklı kartlar gelir ama
+   * liste bitmeden hiçbiri iki kez çıkmaz.
+   */
+  getCalismaSeansi: (adet: number) =>
+    apiRequest<CalismaKarti[]>(`/books/words/calisma?adet=${adet}`),
+
+  getKelimeOzeti: () =>
+    apiRequest<KelimeOzeti>('/books/words/ozet'),
+
+  kaydetCalismaSonucu: (kelimeId: number, bildim: boolean) =>
+    apiRequest<{ success: boolean }>('/books/words/calisma-sonucu', 'POST', { kelimeId, bildim }),
+
   updateWord: (id: number, word: string, translation: string, context: string) =>
     apiRequest<{ success: boolean }>(`/books/words/${id}`, 'PUT', { word, translation, context }),
   

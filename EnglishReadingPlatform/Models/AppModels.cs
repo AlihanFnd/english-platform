@@ -72,6 +72,27 @@ namespace EnglishReadingPlatform.Models
         [MaxLength(AlanSinirlari.Ceviri)] public string Translation { get; set; } = "";
         [MaxLength(AlanSinirlari.Baglam)] public string Context { get; set; } = ""; // cümledeki bağlamı
         public DateTime AddedAt { get; set; } = DateTime.UtcNow;
+
+        // ─── Çalışma ilerlemesi ────────────────────────────────
+        // Eskiden "Biliyorum / Bilmiyorum" yalnızca ekrandaki bir sayaçtı;
+        // sayfa kapanınca kayboluyordu. Yani 200 kelimelik bir listede
+        // kullanıcı hangi kelimeyi çalıştığını hiç bilemiyordu.
+
+        /// <summary>Bu kelimeyi toplam kaç kez doğru bildi.</summary>
+        public int DogruSayisi { get; set; }
+
+        /// <summary>Bu kelimeyi toplam kaç kez bilemedi.</summary>
+        public int YanlisSayisi { get; set; }
+
+        /// <summary>
+        /// ÜST ÜSTE kaç kez doğru bildi. Bir kez bilememek bunu sıfırlar.
+        /// "Öğrenildi" kararı buna bakar — toplam doğruya değil: 10 kez bilip
+        /// 10 kez bilememiş bir kelime öğrenilmiş sayılmamalı.
+        /// </summary>
+        public int DogruSeri { get; set; }
+
+        /// <summary>En son ne zaman çalışıldı. null = hiç çalışılmadı.</summary>
+        public DateTime? SonCalismaAt { get; set; }
     }
 
     // ─── Quiz ─────────────────────────────────────────────────

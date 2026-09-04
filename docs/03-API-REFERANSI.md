@@ -29,6 +29,9 @@
 | [`/groups/assignbook`](#post-groupsassignbook) | POST | Token + grup sahipliği |
 | [`/dashboard/stats`](#get-dashboardstats) | GET | Token |
 | [`/dashboard/ocr`](#get-dashboardocr) | GET / POST | Token |
+| [`/books/words/calisma`](#get-bookswordscalisma) | GET | Token |
+| [`/books/words/ozet`](#get-bookswordsozet) | GET | Token |
+| [`/books/words/calisma-sonucu`](#post-bookswordscalisma-sonucu) | POST | Token + kelime sahipliği |
 | [`/dashboard/ocr/{id}`](#delete-dashboardocrid) | DELETE | Token + kayıt sahipliği |
 | [`/activity/log`](#post-activitylog) | POST | Token |
 | [`/activity/stats`](#get-activitystats) | GET | Token 🔴 **admin olmalıydı** |
@@ -361,6 +364,60 @@ Bölüm modunda çeviri **gelmez** — istemci ayrıca `POST /translate/analyze`
 ---
 
 ### `GET /books/words`
+
+---
+
+### `GET /books/words/calisma`
+
+Seanslık kart dilimi. `?adet=20` (varsayılan **20**, sınır **1–100**).
+
+```json
+[{ "id": 12, "word": "gaunt", "translation": "zayıf", "context": "…",
+   "dogruSeri": 1, "ogrenildi": false }]
+```
+
+**400** `adet` sınırların dışındaysa.
+
+> Kartlar **rastgele değil, öncelikli** seçilir: önce hiç çalışılmamışlar,
+> sonra çalışılmış ama öğrenilmemişler (en eskiden), sonra tekrar. Bant içinde
+> sıra rastgeledir.
+>
+> **Neden:** 200 kelimelik bir liste tek oturumda bitmiyor. Saf rastgele seçim
+> aynı kartları döndürür ve liste hiç kapanmaz; öncelikli seçim kapsama garantisi
+> verir. Sözleşme testi: `Calisilmis_kelimeler_siranin_SONUNA_gider`.
+
+### `GET /books/words/ozet`
+
+```json
+{ "toplam": 200, "ogrenildi": 35, "calisiliyor": 60,
+  "hicCalisilmadi": 105, "ogrenildiEsigi": 3 }
+```
+
+Sayım SQL'de yapılır — 200 satırı belleğe çekip saymak, listesini büyüten
+kullanıcıyı cezalandırırdı. `ogrenildiEsigi` yanıta **bilerek** konur: istemci
+eşiği kopyalamaz, sunucudan okur.
+
+### `POST /books/words/calisma-sonucu`
+
+```json
+{ "kelimeId": 12, "bildim": true }
+```
+
+**200** `{ "success": true }`. Hız sınırı: `Yazma`.
+
+Sunucu `bildim` değerine göre `DogruSayisi`/`YanlisSayisi`'nı artırır ve
+`DogruSeri`'yi günceller (bilememek seriyi **sıfırlar**).
+
+> **Kütle atama yok:** istek yalnızca `kelimeId` ve `bildim` taşır. Sayaçlar
+> sunucuda hesaplanır — istemci `dogruSeri` gönderemez, yoksa "öğrenildi" rozeti
+> tek istekle satın alınabilirdi. Test: `Istemci_sayaclari_DOGRUDAN_yazamaz`.
+>
+> **Sahiplik sorgunun içinde** (`w.Id == kelimeId && w.UserId == userId`).
+> Uç idempotenttir ve **ayrım yapmaz**: "kelime yok" ile "kelime başkasının"
+> aynı 200'ü döner — farklı yanıtlar hangi kayıt numaralarının var olduğunu
+> sayan bir araç olurdu. Ayrıca seans sürerken silinen bir kelime hata üretmez.
+> Test: `Baskasinin_kelimesinin_ilerlemesi_BOZULAMAZ`.
+
 
 Kullanıcının kelimelerini `AddedAt` azalan sırada döner.
 
