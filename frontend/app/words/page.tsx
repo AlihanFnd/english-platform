@@ -2,9 +2,12 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { api, WordItem, CalismaKarti, KelimeOzeti } from '../api';
-import { BookMarked, Trash2, Edit3, Plus, Check, X, Sparkles, Brain, Award, RefreshCw, GraduationCap, Target } from 'lucide-react';
+import { useTelaffuz, KELIME_HIZI } from '../hooks/useTelaffuz';
+import { BookMarked, Trash2, Edit3, Plus, Check, X, Sparkles, Brain, Award, RefreshCw, GraduationCap, Target, Volume2, Loader2 } from 'lucide-react';
 
 export default function WordsPage() {
+  const { destekleniyor: telaffuzVar, seslendir, konusuyorMu } = useTelaffuz();
+
   const [words, setWords] = useState<WordItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -38,6 +41,18 @@ export default function WordsPage() {
   const SEANS_SECENEKLERI = [10, 20, 30, 50];
   const [seansBoyu, setSeansBoyu] = useState(20);
   const [seansYukleniyor, setSeansYukleniyor] = useState(false);
+
+  // Seçenekleri LİSTE BOYUNA göre türet. 8 kelimesi olan birine
+  // "20 kelime (yetersiz)" göstermek, seçilemeyen bir varsayılan bırakır.
+  const seansSecenekleri = React.useMemo(() => {
+    const uygun = SEANS_SECENEKLERI.filter(n => n < words.length);
+    return words.length > 0 ? [...uygun, words.length] : [];
+  }, [words.length]);
+
+  // Liste küçüldüyse (kelime silindiyse) seçili boy listeden büyük kalabilir.
+  useEffect(() => {
+    if (words.length > 0 && seansBoyu > words.length) setSeansBoyu(words.length);
+  }, [words.length, seansBoyu]);
 
   // Kalıcı özet: "kaç kelime biliyorum?"
   const [ozet, setOzet] = useState<KelimeOzeti | null>(null);
@@ -263,19 +278,15 @@ export default function WordsPage() {
               </label>
               <select
                 id="seans-boyu"
-                value={seansBoyu}
+                value={Math.min(seansBoyu, words.length)}
                 onChange={e => setSeansBoyu(Number(e.target.value))}
                 className="bg-surface-container text-on-surface text-xs font-bold rounded-lg border border-outline-variant px-2 py-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                {SEANS_SECENEKLERI.filter(n => n <= Math.max(...SEANS_SECENEKLERI))
-                  .map(n => (
-                    <option key={n} value={n} disabled={n > words.length}>
-                      {n} kelime{n > words.length ? ' (yetersiz)' : ''}
-                    </option>
-                  ))}
-                {words.length > 0 && words.length <= 100 && !SEANS_SECENEKLERI.includes(words.length) && (
-                  <option value={words.length}>Tümü ({words.length})</option>
-                )}
+                {seansSecenekleri.map(n => (
+                  <option key={n} value={n}>
+                    {n === words.length ? `Tümü (${n})` : `${n} kelime`}
+                  </option>
+                ))}
               </select>
             </div>
           )}
@@ -331,7 +342,22 @@ export default function WordsPage() {
               >
                 {!showAnswer ? (
                   <div className="space-y-1">
-                    <h2 className="text-3xl font-black text-on-surface tracking-wide capitalize">{studyWords[currentIdx].word}</h2>
+                    <div className="flex items-center justify-center gap-3">
+                      <h2 className="text-3xl font-black text-on-surface tracking-wide capitalize">{studyWords[currentIdx].word}</h2>
+                      {telaffuzVar && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); seslendir(studyWords[currentIdx].word, KELIME_HIZI); }}
+                          className="p-2 rounded-xl text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-all cursor-pointer"
+                          title="Telaffuzu dinle"
+                          aria-label={`${studyWords[currentIdx].word} kelimesinin telaffuzunu dinle`}
+                        >
+                          <Volume2
+                            size={20}
+                            className={konusuyorMu(studyWords[currentIdx].word) ? 'text-primary animate-pulse' : ''}
+                          />
+                        </button>
+                      )}
+                    </div>
                     <p className="text-[10px] text-on-surface-variant uppercase font-semibold mt-4">Anlamını görmek için tıkla</p>
                   </div>
                 ) : (
@@ -339,7 +365,24 @@ export default function WordsPage() {
                     <p className="text-xs text-primary font-bold uppercase tracking-widest">Türkçe Karşılığı</p>
                     <h2 className="text-2xl font-extrabold text-on-surface capitalize">{studyWords[currentIdx].translation}</h2>
                     {studyWords[currentIdx].context && (
-                      <p className="text-xs text-on-surface-variant italic mt-3 max-w-sm">"{studyWords[currentIdx].context}"</p>
+                      <div className="flex items-start justify-center gap-2 mt-3 max-w-sm mx-auto">
+                        <p className="text-xs text-on-surface-variant italic">"{studyWords[currentIdx].context}"</p>
+                        {telaffuzVar && (
+                          <button
+                            /* Cümle normal hızda: yavaşlatmak tonlamayı bozar,
+                               oysa tek kelimede yavaşlık harfleri ayırt ettiriyor. */
+                            onClick={(e) => { e.stopPropagation(); seslendir(studyWords[currentIdx].context); }}
+                            className="p-1 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-all cursor-pointer shrink-0"
+                            title="Cümleyi dinle"
+                            aria-label="Örnek cümlenin telaffuzunu dinle"
+                          >
+                            <Volume2
+                              size={14}
+                              className={konusuyorMu(studyWords[currentIdx].context) ? 'text-primary animate-pulse' : ''}
+                            />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -503,7 +546,24 @@ export default function WordsPage() {
                             </div>
                           ) : (
                             <div className="my-auto text-center">
-                              <h3 className="text-2xl font-black text-on-surface capitalize tracking-wide">{item.word}</h3>
+                              <div className="flex items-center justify-center gap-2">
+                                <h3 className="text-2xl font-black text-on-surface capitalize tracking-wide">{item.word}</h3>
+                                {telaffuzVar && (
+                                  <button
+                                    /* stopPropagation ŞART: kart tıklaması kartı çevirir.
+                                       Olmadan telaffuz dinlemek kartı ters çevirirdi. */
+                                    onClick={(e) => { e.stopPropagation(); seslendir(item.word, KELIME_HIZI); }}
+                                    className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-all cursor-pointer shrink-0"
+                                    title={`"${item.word}" telaffuzunu dinle`}
+                                    aria-label={`${item.word} kelimesinin telaffuzunu dinle`}
+                                  >
+                                    <Volume2
+                                      size={17}
+                                      className={konusuyorMu(item.word) ? 'text-primary animate-pulse' : ''}
+                                    />
+                                  </button>
+                                )}
+                              </div>
                               {item.context && (
                                 <p className="text-xs text-on-surface-variant mt-2.5 line-clamp-2 italic px-2">
                                   "{item.context}"

@@ -43,7 +43,7 @@ app/
 ├── books/page.tsx          /books — kitaplık + filtreler
 ├── books/[id]/page.tsx     /books/5 — OKUYUCU (en karmaşık sayfa, 449 satır)
 ├── books/[id]/quiz/page.tsx
-├── words/page.tsx          /words — kelime listesi + flashcard + kalıcı çalışma seansı
+├── words/page.tsx          /words — kelime listesi + flashcard + kalıcı çalışma seansı + telaffuz
 ├── ocr/page.tsx            /ocr — Tesseract.js ile metin tarama
 └── groups/page.tsx         /groups — grup oluştur/katıl/yönet
 ```
@@ -247,7 +247,7 @@ ve `[data-mobile-header="true"]` öğelerini gizler. Mobilde tam ekran düğmesi
 
 > Sayfa modundaki kitaplarda quiz düğmesi hiç görünmez (`!hasPages && chapter` koşulu).
 
-### `/words` — Kelime Listem (680 satır)
+### `/words` — Kelime Listem (740 satır)
 
 Üç mod:
 
@@ -285,8 +285,41 @@ Tek bir kaydın düşmesi seansı kesmez; o kelime bir sonraki seansta yine
 "hiç çalışılmamış" bandında gelir.
 
 **Üst bantta üç kalıcı sayaç:** Toplam · Bildiğim (öğrenildi) · Kalan (hiç çıkmamış).
+"Kalan" rozeti yalnızca hiç çıkmamış kelime varken görünür.
+
+**Seans boyu seçenekleri liste boyundan türetilir.** 8 kelimesi olan birine
+"20 kelime (yetersiz)" göstermek, seçilemeyen bir varsayılan bırakırdı; artık
+sığan hazır boylar + `Tümü (N)` gösteriliyor ve liste küçülürse seçim kısılıyor.
+
+**Telaffuz:** kelime kartında, çalışma seansının soru yüzünde ve örnek cümlenin
+yanında 🔊 butonu. Kart içindeki butonlarda `stopPropagation` **şart** — kart
+tıklaması kartı çeviriyor, olmasa telaffuz dinlemek kartı ters çevirirdi.
 "Öğrenildi" eşiği `ozet.ogrenildiEsigi` ile **sunucudan** okunur — istemcide
 kopyalanmaz, yoksa iki sayı ayrışır.
+
+### `hooks/useTelaffuz.ts` — İngilizce seslendirme
+
+Tarayıcının kendi `speechSynthesis` motoru. **Dış servis yok:** ücretsiz,
+anahtarsız, çevrimdışı çalışır ve CSP'ye dokunmaz. Bir TTS API'si eklemek yeni
+bir dış bağımlılık, yeni bir sır ve yeni bir hata yolu demekti.
+
+```ts
+const { destekleniyor, seslendir, durdur, konusuyorMu } = useTelaffuz();
+seslendir('gaunt', KELIME_HIZI);   // tek kelime: 0.85 — harfler ayırt edilsin
+seslendir(cumle);                  // cümle: 1.0 — yavaşlatmak tonlamayı bozar
+```
+
+> **Neden hook:** aynı `speak` işlevi `books/[id]` ve `ocr` sayfalarında birebir
+> kopyalanmıştı; kelime listesine üçüncü kopyayı eklemek yerine üçü de buraya
+> bağlandı. Kopyalarda olmayan dört şey burada var:
+>
+> 1. **Ses seçimi** — Chrome'da `getVoices()` ilk çağrıda BOŞ döner ve sesler
+>    asenkron yüklenir. Ele alınmadığı için eski kod hep varsayılan sesi kullanıyordu;
+>    artık `voiceschanged` dinleniyor ve doğal İngilizce sesler tercih ediliyor.
+> 2. **Konuşma durumu** — `konusuyorMu(metin)` ile buton canlı geri bildirim verir.
+> 3. **Aynı metne ikinci basış durdurur** — kullanıcı sesi kesebilmeli.
+> 4. **Sayfadan çıkınca susar** — eski kodda okuma sayfasından çıktıktan sonra
+>    cümle konuşmaya devam ediyordu.
 
 ### `/ocr` — Metin Tara (406 satır)
 

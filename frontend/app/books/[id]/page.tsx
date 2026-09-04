@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, use } from 'react';
 import { api, Chapter } from '../../api';
+import { useTelaffuz, KELIME_HIZI } from '../../hooks/useTelaffuz';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ChevronLeft, ChevronRight,
@@ -14,6 +15,8 @@ interface AnalyzedWord { word: string; translation: string; type: string; }
 interface AnalyzedSentence { original: string; translation: string; isHeading?: boolean; alignment?: 'left' | 'center' | 'right'; indentation?: number; words: AnalyzedWord[]; ceviriBasarili?: boolean; }
 
 export default function BookReader({ params }: { params: Promise<{ id: string }> }) {
+  const { seslendir: speak } = useTelaffuz();
+
   const { id: bookIdStr } = use(params);
   const bookId = parseInt(bookIdStr);
   const router = useRouter();
@@ -175,14 +178,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
       setError((e as Error).message || 'Yeniden analiz yapılamadı.');
     } finally {
       setAnalyzing(false);
-    }
-  };
-
-  const speak = (t: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(t); u.lang = 'en-US';
-      window.speechSynthesis.speak(u);
     }
   };
 
@@ -463,7 +458,7 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                 <p className="bk-wp-word" style={{ margin: 0 }}>{selWord.word}</p>
                 <button
-                  onClick={() => speak(selWord.word)}
+                  onClick={() => speak(selWord.word, KELIME_HIZI)}
                   style={{ background: 'rgba(99, 102, 241, 0.1)', border: 'none', cursor: 'pointer', display: 'inline-flex', padding: '4px', borderRadius: '6px', color: '#6366f1' }}
                   title="Sesli Oku"
                 >

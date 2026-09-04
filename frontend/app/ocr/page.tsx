@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api, OcrRecord } from '../api';
+import { useTelaffuz, KELIME_HIZI } from '../hooks/useTelaffuz';
 import Tesseract from 'tesseract.js';
 import { 
   FileSearch, 
@@ -33,6 +34,8 @@ interface AnalyzedSentence {
 }
 
 export default function OcrPage() {
+  const { seslendir: speak } = useTelaffuz();
+
   // OCR states
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [ocrRecords, setOcrRecords] = useState<OcrRecord[]>([]);
@@ -141,15 +144,6 @@ export default function OcrPage() {
     setScannedText(record.extractedText);
     setAnalyzedSentences([]);
     handleAnalyzeText(record.extractedText);
-  };
-
-  const speak = (text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      window.speechSynthesis.speak(utterance);
-    }
   };
 
   const handleWordClick = async (w: AnalyzedWord, originalSentence: string) => {
@@ -392,7 +386,7 @@ export default function OcrPage() {
               <div className="flex items-center gap-2 mt-1.5">
                 <h4 className="text-2xl font-black text-on-surface">{selectedWord.word}</h4>
                 <button
-                  onClick={() => speak(selectedWord.word)}
+                  onClick={() => speak(selectedWord.word, KELIME_HIZI)}
                   className="p-1 rounded bg-surface-container hover:bg-primary/20 text-on-surface-variant hover:text-primary transition-all cursor-pointer"
                   title="Sesli Oku"
                 >
