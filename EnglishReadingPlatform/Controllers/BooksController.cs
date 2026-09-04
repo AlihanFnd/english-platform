@@ -173,12 +173,17 @@ namespace EnglishReadingPlatform.Controllers
         //   ProgressPercent = (float)page / toplam * 100
         // Doğrulama olmadan ?chapter=-999999 isteği 200 dönüyor ve veritabanına
         // progressPercent = -49999950 yazıyordu. Envanterde olmayan bir noktaydı.
+        // 'chapter' ve 'page' artık NULLABLE: verilmezse KALDIĞI YERDEN devam eder.
+        //
+        // Eskiden ikisi de 1 varsayılanıyla geliyordu; yani ilerleme her okumada
+        // KAYDEDİLİYOR ama hiç OKUNMUYORDU. 300 sayfalık bir kitabı 120. sayfada
+        // bırakan kullanıcı, kitabı her açtığında 1. sayfayı görüyordu.
         [HttpGet("{id}/read")]
         [EnableRateLimiting(HizSinirlari.Okuma)]   // KURAL-07: elle yazılan sayaçtan devralındı
         public async Task<IActionResult> Read(
             [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id,
-            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Bölüm numarası 1'den küçük olamaz.")] int chapter = 1,
-            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Sayfa numarası 1'den küçük olamaz.")] int page = 1,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Bölüm numarası 1'den küçük olamaz.")] int? chapter = null,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Sayfa numarası 1'den küçük olamaz.")] int? page = null,
             [FromQuery] bool reanalyze = false)
         {
             var book = await _db.Books
@@ -190,16 +195,37 @@ namespace EnglishReadingPlatform.Controllers
 
             var hasPages = book.Pages.Any();
 
+            // ── Kaldığı yeri çöz ──
+            // Kaydedilen konum CurrentChapter'da tutuluyor; sayfa modundaki
+            // kitaplarda bu alan SAYFA numarasını taşır (Read'in kendi yazdığı
+            // değer). Kullanıcı açıkça bir konum verdiyse ona saygı gösterilir.
+            var okunanId = CurrentUserId;
+            var kayitliKonum = await _db.ReadingProgresses
+                .Where(p => p.UserId == okunanId && p.BookId == id)
+                .Select(p => (int?)p.CurrentChapter)
+                .FirstOrDefaultAsync();
+
+            // Sınır dışına düşen kayıtlı konum sessizce kırpılır: kitap
+            // yeniden yüklenip sayfa sayısı azalmış olabilir. Kırpmazsak
+            // "Sayfa bulunamadı" ile kitabı hiç açamaz hâle gelir.
+            static int Kirp(int deger, int enCok) => Math.Clamp(deger, 1, Math.Max(enCok, 1));
+
+            if (hasPages)
+                page ??= kayitliKonum is int k ? Kirp(k, book.Pages.Count) : 1;
+            else
+                chapter ??= kayitliKonum is int b ? Kirp(b, book.Chapters.Count) : 1;
+
             if (hasPages)
             {
-                var currentPage = book.Pages.FirstOrDefault(p => p.PageNumber == page)
+                var sayfaNo = page!.Value;
+                var currentPage = book.Pages.FirstOrDefault(p => p.PageNumber == sayfaNo)
                     ?? book.Pages.FirstOrDefault();
 
                 if (currentPage == null) return NotFound(new { error = "Sayfa bulunamadı." });
 
                 // KURAL-12: (UserId, BookId) artık veritabanında TEKİL.
                 // Konum, sayfa numarasıyla eşlenir (ilerleme sözleşmesi korunur).
-                await IlerlemeyiYazAsync(id, page, (float)page / book.Pages.Count * 100);
+                await IlerlemeyiYazAsync(id, sayfaNo, (float)sayfaNo / book.Pages.Count * 100);
 
                 // JIT (Just-In-Time) Translation or Forced Re-analysis
                 if (reanalyze || string.IsNullOrWhiteSpace(currentPage.SentencesJson) || currentPage.SentencesJson == "[]")
@@ -224,18 +250,21 @@ namespace EnglishReadingPlatform.Controllers
                         currentPage.SentencesJson
                     },
                     TotalPages = book.Pages.Count,
-                    PageNumber = page
+                    // İstemci bu değerle adres çubuğunu eşitler; kaldığı yer
+                    // buradan öğrenilir.
+                    PageNumber = currentPage.PageNumber
                 });
             }
             else
             {
-                var currentChapter = book.Chapters.FirstOrDefault(c => c.ChapterNumber == chapter)
+                var bolumNo = chapter!.Value;
+                var currentChapter = book.Chapters.FirstOrDefault(c => c.ChapterNumber == bolumNo)
                     ?? book.Chapters.FirstOrDefault();
 
                 if (currentChapter == null) return NotFound(new { error = "Bölüm bulunamadı." });
 
                 // KURAL-12: (UserId, BookId) artık veritabanında TEKİL.
-                await IlerlemeyiYazAsync(id, chapter, (float)chapter / book.Chapters.Count * 100);
+                await IlerlemeyiYazAsync(id, bolumNo, (float)bolumNo / book.Chapters.Count * 100);
 
                 await _db.SaveChangesAsync();
 
@@ -250,7 +279,7 @@ namespace EnglishReadingPlatform.Controllers
                         currentChapter.Content
                     },
                     TotalChapters = book.Chapters.Count,
-                    ChapterNumber = chapter
+                    ChapterNumber = currentChapter.ChapterNumber
                 });
             }
         }

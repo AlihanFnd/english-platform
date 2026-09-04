@@ -247,7 +247,7 @@ ve `[data-mobile-header="true"]` öğelerini gizler. Mobilde tam ekran düğmesi
 
 > Sayfa modundaki kitaplarda quiz düğmesi hiç görünmez (`!hasPages && chapter` koşulu).
 
-### `/words` — Kelime Listem (740 satır)
+### `/words` — Kelime Listem (927 satır)
 
 Üç mod:
 
@@ -291,11 +291,46 @@ Tek bir kaydın düşmesi seansı kesmez; o kelime bir sonraki seansta yine
 "20 kelime (yetersiz)" göstermek, seçilemeyen bir varsayılan bırakırdı; artık
 sığan hazır boylar + `Tümü (N)` gösteriliyor ve liste küçülürse seçim kısılıyor.
 
+**Hızlı kelime girişi — anlık çeviri.** Eskiden çeviri yalnızca `onBlur` ile,
+yani alandan çıkınca geliyordu. Artık **yazarken** geliyor. Hızlı hissettiren
+dört şey:
+
+| | |
+|---|---|
+| 350 ms bekleme | Her tuşta istek atmak hem yavaş hem çeviri kotasını yer (dk 100) |
+| Oturum önbelleği | Aynı kelimeye dönmek **ağa hiç çıkmaz** — ölçüldü: 24 tuş vuruşu → 3 istek, tekrar yazınca 0 |
+| Yarış koruması | İstek sayacıyla ESKİ yanıt yeniyi **ezemez**; olmadan "cat" yazıp "category"ye geçince kutuda "kedi" kalırdı |
+| Elle düzenlemeye saygı | Kullanıcı alana dokunduysa üstüne yazılmaz |
+
+**Temiz karşılık + tıklanabilir alternatifler.** Sunucunun `translation` alanı
+`"dayanıklı\n\nEş Anlamlılar / Alternatifler:\n• sıfat: esnek, …"` biçiminde
+geliyor; olduğu gibi alana koymak kelime listesine gürültü kaydeder. Alan
+`generalMeaning`'i (temiz karşılık) alır, `synonyms` ise **"+ esnek" gibi
+çipler** olarak gösterilir — tıklayınca eklenir.
+
 **Telaffuz:** kelime kartında, çalışma seansının soru yüzünde ve örnek cümlenin
 yanında 🔊 butonu. Kart içindeki butonlarda `stopPropagation` **şart** — kart
 tıklaması kartı çeviriyor, olmasa telaffuz dinlemek kartı ters çevirirdi.
 "Öğrenildi" eşiği `ozet.ogrenildiEsigi` ile **sunucudan** okunur — istemcide
 kopyalanmaz, yoksa iki sayı ayrışır.
+
+### Okuyucuda kaldığın yerden devam
+
+Adreste `?page=` / `?chapter=` **yoksa** okuyucu konum göndermez ve sunucu
+kaldığı yeri döndürür. Yanıttaki konum `router.replace` ile adrese işlenir
+(`push` değil — geri tuşu kitaba dönmeli, "devam ettiğin sayfaya" değil).
+
+Gezinme ve gösterim **adresi değil** sunucunun çözdüğü konumu (`aktifSayfa` /
+`aktifBolum`) kullanır; adres boş olabildiği için.
+
+Kaldığı yerden açıldığında bir şerit çıkar: *"Kaldığın yerden devam ediyorsun —
+sayfa 12"* + **Baştan başla**. Sessizce ortadan bir sayfa açmak, kullanıcıya
+"yanlış sayfayı açtım" hissi verir.
+
+> Kitaplıktaki "Okumaya Devam Et" bağlantısı **her kitap için `?chapter=`**
+> gönderiyordu — ama güncel kitaplar **sayfa modunda** ve okuyucu `?page=`
+> bekliyor. Yani sayfa modundaki kitaplar hiç devam etmiyordu. Bağlantı artık
+> konum belirtmiyor; çözümü sunucuya bırakıyor.
 
 ### `hooks/useTelaffuz.ts` — İngilizce seslendirme
 

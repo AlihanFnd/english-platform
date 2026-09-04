@@ -5,6 +5,23 @@ import { api, WordItem, CalismaKarti, KelimeOzeti } from '../api';
 import { useTelaffuz, KELIME_HIZI } from '../hooks/useTelaffuz';
 import { BookMarked, Trash2, Edit3, Plus, Check, X, Sparkles, Brain, Award, RefreshCw, GraduationCap, Target, Volume2, Loader2 } from 'lucide-react';
 
+/**
+ * Sunucudan gelen eş anlamlı metnini tekil önerilere ayırır.
+ * Biçim: "• sıfat: esnek, elastik, çabuk iyileşen" (birden çok satır olabilir).
+ */
+function altAnlamlariAyikla(ham?: string): string[] {
+  if (!ham) return [];
+  return ham
+    .split('\n')
+    .flatMap(satir => {
+      const iki = satir.replace(/^[•\s-]+/, '').split(':');
+      return (iki.length > 1 ? iki.slice(1).join(':') : iki[0]).split(',');
+    })
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && s.length <= 40)
+    .slice(0, 6);
+}
+
 export default function WordsPage() {
   const { destekleniyor: telaffuzVar, seslendir, konusuyorMu } = useTelaffuz();
 
@@ -82,19 +99,105 @@ export default function WordsPage() {
     loadWords();
   }, []);
 
-  // Quick translation as user types
-  const handleFastTranslate = async () => {
-    if (!fastWord.trim()) return;
-    setIsTranslating(true);
-    try {
-      const res = await api.translateWord(fastWord.trim());
-      setFastTranslation(res.translation);
-    } catch (e) {
-      console.error(e);
-    } finally {
+  /**
+   * "N" tuşu hızlı giriş alanına odaklanır — panele ulaşmak için fareyle
+   * sayfanın sağına uzanmak gerekmesin (kullanıcı isteği: daha kolay ulaşılır).
+   *
+   * Bir alana yazarken tetiklenmez; yoksa kelime yazarken "n" harfi
+   * odağı kendine çekerdi.
+   */
+  useEffect(() => {
+    const dinle = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (studyMode) return;
+
+      const hedef = e.target as HTMLElement | null;
+      const yaziyor = hedef?.tagName === 'INPUT'
+        || hedef?.tagName === 'TEXTAREA'
+        || hedef?.isContentEditable;
+      if (yaziyor) return;
+
+      e.preventDefault();
+      fastWordInputRef.current?.focus();
+      fastWordInputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+
+    window.addEventListener('keydown', dinle);
+    return () => window.removeEventListener('keydown', dinle);
+  }, [studyMode]);
+
+  /**
+   * YAZARKEN anlık çeviri.
+   *
+   * Eskiden çeviri yalnızca `onBlur` ile, yani alandan çıkınca geliyordu —
+   * kullanıcı yazdıktan sonra bir de tıklamak zorundaydı.
+   *
+   * Üç şey hızlı hissettiriyor:
+   *  1. 350 ms bekleme — her tuşta istek atmak hem yavaş hem hız sınırını yer
+   *     (çeviri kotası dakikada 100).
+   *  2. Oturum önbelleği — aynı kelimeye dönmek AĞA HİÇ ÇIKMAZ, anında dolar.
+   *  3. Yarış koruması — hızlı yazarken yanıtlar sırasız gelebilir;
+   *     istek sayacı sayesinde ESKİ bir yanıt yeni cevabı EZEMEZ.
+   *     Bu olmadan "cat" yazıp "category"ye çevirince kutuda "kedi" kalabilir.
+   */
+  /** Alternatif karşılıklar — alana doldurulmaz, öneri olarak gösterilir. */
+  const [alternatifler, setAlternatifler] = useState<string[]>([]);
+
+  const ceviriOnbellegi = useRef<Map<string, { ana: string; alt: string[] }>>(new Map());
+  const istekSayaci = useRef(0);
+  /** Kullanıcı çeviri alanına elle dokunduysa üstüne yazma. */
+  const ceviriElleDegisti = useRef(false);
+
+  useEffect(() => {
+    const kelime = fastWord.trim().toLowerCase();
+
+    if (!kelime) {
       setIsTranslating(false);
+      setAlternatifler([]);
+      return;
     }
-  };
+    if (ceviriElleDegisti.current) return;
+
+    const onbellekten = ceviriOnbellegi.current.get(kelime);
+    if (onbellekten !== undefined) {
+      setFastTranslation(onbellekten.ana);
+      setAlternatifler(onbellekten.alt);
+      setIsTranslating(false);
+      return;
+    }
+
+    setIsTranslating(true);
+    const benimSiram = ++istekSayaci.current;
+
+    const zamanlayici = setTimeout(async () => {
+      try {
+        const res = await api.translateWord(kelime);
+        // Bu yanıt hâlâ EN SON istek mi? Değilse sessizce at.
+        if (benimSiram !== istekSayaci.current) return;
+
+        // ANA karşılık ile alternatifleri AYIR. 'translation' alanı
+        // "dayanıklı\n\nEş Anlamlılar / Alternatifler:\n• sıfat: esnek, …"
+        // biçiminde geliyor; olduğu gibi alana koymak, kelime listesine
+        // gürültü kaydeder. 'generalMeaning' temiz karşılığı taşıyor.
+        const ana = (res.generalMeaning || res.translation || '').split('\n')[0].trim();
+        const alt = altAnlamlariAyikla(res.synonyms);
+
+        ceviriOnbellegi.current.set(kelime, { ana, alt });
+        if (!ceviriElleDegisti.current) {
+          setFastTranslation(ana);
+          setAlternatifler(alt);
+        }
+      } catch {
+        // Çeviri gelmezse kullanıcı elle yazabilir; akışı kesmeye değmez.
+        if (benimSiram === istekSayaci.current) { setFastTranslation(''); setAlternatifler([]); }
+      } finally {
+        if (benimSiram === istekSayaci.current) setIsTranslating(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(zamanlayici);
+  }, [fastWord]);
 
   // Submit fast-add word on press enter
   const handleFastAddSubmit = async (e: React.FormEvent) => {
@@ -105,6 +208,8 @@ export default function WordsPage() {
       await api.addWord(fastWord.trim(), fastTranslation.trim(), '');
       setFastWord('');
       setFastTranslation('');
+      setAlternatifler([]);
+      ceviriElleDegisti.current = false;
       fastWordInputRef.current?.focus();
       await loadWords();
     } catch (err: any) {
@@ -652,56 +757,138 @@ export default function WordsPage() {
           </div>
 
           {/* Right / Sidebar: Floating premium input card */}
-          <div className="w-full lg:w-[320px] order-1 lg:order-2 lg:sticky lg:top-24 shrink-0">
-            <div className="glass-card rounded-2xl p-5 border border-primary/30 bg-gradient-to-b from-primary/5 via-transparent to-transparent shadow-xl relative overflow-hidden transition-all hover:border-primary/50">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 blur-[40px] rounded-full pointer-events-none"></div>
-              
-              <div className="flex items-center gap-2.5 mb-4 text-primary font-bold text-xs uppercase tracking-wider">
-                <div className="p-1.5 rounded-xl bg-primary/10">
-                  <Sparkles size={14} className="text-primary animate-pulse" />
+          <div className="w-full lg:w-[380px] order-1 lg:order-2 lg:sticky lg:top-24 shrink-0">
+            <div className="glass-card rounded-3xl p-6 border border-primary/30 bg-gradient-to-b from-primary/5 via-transparent to-transparent shadow-xl relative overflow-hidden transition-all hover:border-primary/50">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[50px] rounded-full pointer-events-none"></div>
+
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5 text-primary font-bold text-xs uppercase tracking-wider">
+                  <div className="p-1.5 rounded-xl bg-primary/10">
+                    <Sparkles size={14} className="text-primary animate-pulse" />
+                  </div>
+                  <span>Seri Kelime Girişi</span>
                 </div>
-                <span>Seri Kelime Girişi</span>
+                {/* Klavye kısayolu: panele ulaşmak için fareye uzanmak gerekmesin */}
+                <kbd className="hidden lg:inline-flex items-center gap-0.5 text-[10px] font-bold text-on-surface-variant/70 bg-surface-container border border-outline-variant/60 rounded-md px-1.5 py-0.5">
+                  N
+                </kbd>
               </div>
 
-              <p className="text-[11px] text-on-surface-variant mb-4 leading-relaxed">Dizi izlerken veya kitap okurken bilmediğiniz kelimeyi yazın, anlamı otomatik olarak Google Translate ile anında doldurulacaktır.</p>
+              <p className="text-[11px] text-on-surface-variant mb-5 leading-relaxed">
+                Bilmediğin kelimeyi yaz — <strong className="text-on-surface">anlamı sen yazarken</strong> gelir.
+              </p>
 
-              <form onSubmit={handleFastAddSubmit} className="space-y-3.5">
+              <form onSubmit={handleFastAddSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-on-surface-variant/80 mb-1 uppercase tracking-wider">İNGİLİZCE KELİME</label>
+                  <label htmlFor="hizli-kelime" className="block text-[10px] font-bold text-on-surface-variant/80 mb-1.5 uppercase tracking-wider">
+                    İngilizce kelime
+                  </label>
                   <input
+                    id="hizli-kelime"
                     ref={fastWordInputRef}
                     type="text"
                     required
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     value={fastWord}
-                    onChange={(e) => setFastWord(e.target.value)}
-                    onBlur={handleFastTranslate}
-                    placeholder="E.g. mysterious"
-                    className="w-full bg-surface-container border border-outline-variant/60 focus:border-primary/60 text-on-surface rounded-xl px-4 py-3 text-xs outline-none font-semibold transition-all shadow-inner focus:bg-surface focus:shadow-md"
+                    onChange={(e) => { setFastWord(e.target.value); ceviriElleDegisti.current = false; }}
+                    placeholder="mysterious"
+                    className="w-full bg-surface-container border border-outline-variant/60 focus:border-primary/60 text-on-surface rounded-2xl px-4 py-3.5 text-base outline-none font-bold transition-all shadow-inner focus:bg-surface focus:shadow-md placeholder:font-normal placeholder:text-on-surface-variant/50"
                   />
                 </div>
 
+                {/* Asıl alan: TÜRKÇE. Kullanıcının okuduğu ve düzelttiği yer
+                    burası olduğu için en büyük ve en görünür eleman bu. */}
                 <div className="relative">
-                  <label className="block text-[10px] font-bold text-on-surface-variant/80 mb-1 uppercase tracking-wider">TÜRKÇE ANLAMI</label>
-                  <input
-                    type="text"
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label htmlFor="hizli-ceviri" className="block text-[10px] font-bold text-primary uppercase tracking-wider">
+                      Türkçe anlamı
+                    </label>
+                    <span className="text-[10px] font-bold text-on-surface-variant/70 flex items-center gap-1 h-4">
+                      {isTranslating ? (
+                        <>
+                          <Loader2 size={11} className="animate-spin text-primary" />
+                          çevriliyor
+                        </>
+                      ) : fastTranslation && !ceviriElleDegisti.current ? (
+                        <>
+                          <Sparkles size={11} className="text-primary" />
+                          otomatik
+                        </>
+                      ) : null}
+                    </span>
+                  </div>
+                  <textarea
+                    id="hizli-ceviri"
                     required
+                    rows={2}
                     value={fastTranslation}
-                    onChange={(e) => setFastTranslation(e.target.value)}
-                    placeholder={isTranslating ? "Otomatik çevriliyor..." : "Gizemli, esrarengiz"}
-                    className="w-full bg-surface-container border border-outline-variant/60 focus:border-primary/60 text-on-surface rounded-xl px-4 py-3 text-xs outline-none transition-all shadow-inner focus:bg-surface focus:shadow-md font-semibold"
+                    onChange={(e) => { setFastTranslation(e.target.value); ceviriElleDegisti.current = true; }}
+                    onKeyDown={(e) => {
+                      // Enter kaydeder, Shift+Enter satır atlar — çok anlamlı
+                      // kelimelerde alt satıra geçmek gerekebiliyor.
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleFastAddSubmit(e as unknown as React.FormEvent);
+                      }
+                    }}
+                    placeholder="gizemli, esrarengiz"
+                    className={`w-full bg-surface-container border rounded-2xl px-4 py-3.5 text-xl outline-none transition-all shadow-inner focus:bg-surface focus:shadow-md font-black leading-snug resize-none placeholder:text-base placeholder:font-normal placeholder:text-on-surface-variant/50 ${
+                      isTranslating
+                        ? 'border-primary/40 text-on-surface-variant'
+                        : 'border-outline-variant/60 focus:border-primary/60 text-on-surface'
+                    }`}
                   />
-                  {isTranslating && (
-                    <div className="absolute right-3.5 bottom-3 w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-                  )}
                 </div>
+
+                {/* Alternatifler ALANA DOLDURULMAZ, öneri olarak durur.
+                    Tıklayınca eklenir — kullanıcı hangi anlamı istediğini seçer. */}
+                {alternatifler.length > 0 && !isTranslating && (
+                  <div className="space-y-1.5 animate-fade-in">
+                    <span className="block text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-wider">
+                      Diğer anlamlar — eklemek için tıkla
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {alternatifler.map(alt => {
+                        const zatenVar = fastTranslation
+                          .toLowerCase()
+                          .split(',')
+                          .some(p => p.trim() === alt.toLowerCase());
+                        return (
+                          <button
+                            key={alt}
+                            type="button"
+                            disabled={zatenVar}
+                            onClick={() => {
+                              setFastTranslation(v => (v.trim() ? `${v.trim()}, ${alt}` : alt));
+                              ceviriElleDegisti.current = true;
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                              zatenVar
+                                ? 'border-primary/30 bg-primary/10 text-primary cursor-default'
+                                : 'border-outline-variant/60 text-on-surface-variant hover:border-primary/50 hover:text-primary hover:bg-primary/5 cursor-pointer active:scale-95'
+                            }`}
+                          >
+                            {zatenVar ? '✓ ' : '+ '}{alt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <button
                   type="submit"
-                  disabled={isAdding || !fastWord.trim()}
-                  className="w-full py-3.5 bg-primary hover:bg-primary-container text-on-primary hover:text-on-primary-container rounded-xl text-xs font-black shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                  disabled={isAdding || !fastWord.trim() || !fastTranslation.trim()}
+                  className="w-full py-4 bg-primary hover:bg-primary-container text-on-primary hover:text-on-primary-container rounded-2xl text-sm font-black shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
-                  <Plus size={15} /> Sözlüğe Kaydet
+                  <Plus size={17} /> {isAdding ? 'Kaydediliyor…' : 'Sözlüğe Kaydet'}
                 </button>
+                <p className="text-[10px] text-on-surface-variant/70 text-center">
+                  <kbd className="font-bold">Enter</kbd> kaydeder ·
+                  <kbd className="font-bold ml-1">Shift+Enter</kbd> alt satır
+                </p>
               </form>
             </div>
           </div>

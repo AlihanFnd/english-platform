@@ -327,7 +327,11 @@ export default function BooksPage() {
                   )}
 
                   <Link
-                    href={`/books/${book.id}?chapter=${book.currentChapter || 1}`}
+                    /* Konum belirtmiyoruz: sunucu kaldığı yeri kendisi çözer.
+                       Eskiden HER kitap için ?chapter= gönderiliyordu — ama
+                       güncel kitaplar SAYFA modunda ve okuyucu ?page= bekliyor,
+                       yani sayfa modundaki kitaplar hiç devam etmiyordu. */
+                    href={`/books/${book.id}`}
                     className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl bg-gradient-to-r from-primary to-emerald-600 hover:from-primary/90 hover:to-emerald-600/90 text-on-primary font-extrabold text-sm transition-all shadow-lg shadow-primary/20 bouncy-btn"
                   >
                     <span>{hasProgress ? (isCompleted ? 'Tekrar Oku' : 'Okumaya Devam Et') : 'Hemen Okumaya Başla'}</span>

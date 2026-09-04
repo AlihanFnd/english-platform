@@ -193,16 +193,18 @@ export const api = {
   getBook: (id: number) => 
     apiRequest<{ book: Book & { chapters: Array<{ id: number; chapterNumber: number; title: string }> } }>(`/books/${id}`),
   
-  readChapter: (id: number, chapter: number = 1, reanalyze: boolean = false) =>
+  /** `chapter` verilmezse sunucu KALDIĞI YERDEN devam ettirir. */
+  readChapter: (id: number, chapter?: number, reanalyze: boolean = false) =>
     apiRequest<{
       bookId: number;
       bookTitle: string;
       currentChapter: Chapter;
       totalChapters: number;
       chapterNumber: number;
-    }>(`/books/${id}/read?chapter=${chapter}${reanalyze ? '&reanalyze=true' : ''}`),
+    }>(`/books/${id}/read?${chapter ? `chapter=${chapter}&` : ''}${reanalyze ? 'reanalyze=true' : ''}`),
   
-  readPage: (id: number, page: number = 1, reanalyze: boolean = false) =>
+  /** `page` verilmezse sunucu KALDIĞI YERDEN devam ettirir. */
+  readPage: (id: number, page?: number, reanalyze: boolean = false) =>
     apiRequest<{
       bookId: number;
       bookTitle: string;
@@ -215,7 +217,7 @@ export const api = {
       };
       totalPages: number;
       pageNumber: number;
-    }>(`/books/${id}/read?page=${page}${reanalyze ? '&reanalyze=true' : ''}`),
+    }>(`/books/${id}/read?${page ? `page=${page}&` : ''}${reanalyze ? 'reanalyze=true' : ''}`),
   
   addWord: (word: string, translation: string, context: string) =>
     apiRequest<{ success: boolean }>('/books/addword', 'POST', { word, translation, context }),

@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ChevronLeft, ChevronRight,
   Volume2, BookMarked, CheckCircle, X, HelpCircle,
-  Maximize2, Minimize2, AlertTriangle, RefreshCw
+  Maximize2, Minimize2, AlertTriangle, RefreshCw, BookOpen
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -30,11 +30,27 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
 
   const [hasPages, setHasPages]         = useState(false);
   const [totalPages, setTotalPages]     = useState(0);
-  const currentPage = parseInt(searchParams.get('page') || '1');
+  // Adreste konum YOKSA sunucu kaldığı yeri döndürür (undefined gönderilir).
+  // Eskiden burada '1' varsayılanı vardı; ilerleme kaydediliyor ama hiç
+  // okunmuyordu, yani kitap her açılışta baştan başlıyordu.
+  const sayfaParam = searchParams.get('page');
+  const currentPage = sayfaParam ? parseInt(sayfaParam) : undefined;
 
   const [chapter, setChapter]           = useState<Chapter | null>(null);
   const [totalChapters, setTotalChapters] = useState(1);
-  const currentChapter = parseInt(searchParams.get('chapter') || '1');
+  const bolumParam = searchParams.get('chapter');
+  const currentChapter = bolumParam ? parseInt(bolumParam) : undefined;
+
+  /** Kitap kaldığı yerden mı açıldı? Kullanıcıya bir kez bildirilir. */
+  const [devamEdildi, setDevamEdildi] = useState(false);
+
+  /**
+   * SUNUCUNUN çözdüğü konum. Adres çubuğundaki değer boş olabilir
+   * (kaldığı yerden devam), bu yüzden gezinme ve gösterim bunu kullanır —
+   * adresi değil.
+   */
+  const [aktifSayfa, setAktifSayfa] = useState(1);
+  const [aktifBolum, setAktifBolum] = useState(1);
 
   // Which sentence's translation is open
   const [openTr, setOpenTr] = useState<number | null>(null);
@@ -135,10 +151,23 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
             }
           }
           setChapter(null);
+          setAktifSayfa(pd.pageNumber);
+
+          // Adres çubuğunu çözülen konumla eşitle. replace (push değil):
+          // geri tuşu kitaba dönmeli, "devam ettiğin sayfaya" değil.
+          if (!sayfaParam) {
+            setDevamEdildi(pd.pageNumber > 1);
+            router.replace(`/books/${bookId}?page=${pd.pageNumber}`, { scroll: false });
+          }
         } else {
           setHasPages(false);
           const d = await api.readChapter(bookId, currentChapter);
           setChapter(d.currentChapter); setBookTitle(d.bookTitle); setTotalChapters(d.totalChapters);
+          setAktifBolum(d.chapterNumber);
+          if (!bolumParam) {
+            setDevamEdildi(d.chapterNumber > 1);
+            router.replace(`/books/${bookId}?chapter=${d.chapterNumber}`, { scroll: false });
+          }
           setAnalyzing(true);
           const a = await api.analyzeText(d.currentChapter.content);
           setSentences(normalizeSentences(a.sentences));
@@ -292,13 +321,37 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   return (
     <div className={`bk-wrap ${isFullscreen ? 'bk-wrap--fullscreen' : ''}`}>
 
+      {/* Kaldığı yerden açıldığını SÖYLE. Sessizce ortadan bir sayfa açmak,
+          kullanıcıya "yanlış sayfayı açtım" hissi verir. */}
+      {devamEdildi && (
+        <div className="bk-devam" role="status">
+          <BookOpen size={14} />
+          <span>
+            Kaldığın yerden devam ediyorsun —{' '}
+            <strong>{hasPages ? `sayfa ${aktifSayfa}` : `bölüm ${aktifBolum}`}</strong>
+          </span>
+          <button
+            onClick={() => {
+              setDevamEdildi(false);
+              router.replace(`/books/${bookId}?${hasPages ? 'page=1' : 'chapter=1'}`, { scroll: false });
+            }}
+            className="bk-devam-bas"
+          >
+            Baştan başla
+          </button>
+          <button onClick={() => setDevamEdildi(false)} className="bk-devam-kapat" aria-label="Bildirimi kapat">
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       {/* ── Header strip ── */}
       <div className="bk-header">
         <Link href="/books" className="bk-back"><ArrowLeft size={13}/> <span>Kitaplık</span></Link>
         <div className="bk-title-block">
           <span className="bk-title">{bookTitle}</span>
           <span className="bk-loc">
-            {hasPages ? `Sayfa ${currentPage} / ${totalPages}` : `Bölüm ${currentChapter} / ${totalChapters}`}
+            {hasPages ? `Sayfa ${aktifSayfa} / ${totalPages}` : `Bölüm ${aktifBolum} / ${totalChapters}`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -428,21 +481,21 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
       <div className="bk-pagination">
         {hasPages ? (
           <>
-            <button disabled={currentPage <= 1} onClick={() => router.push(`/books/${bookId}?page=${currentPage-1}`)} className="bk-nav">
+            <button disabled={aktifSayfa <= 1} onClick={() => router.push(`/books/${bookId}?page=${aktifSayfa-1}`)} className="bk-nav">
               <ChevronLeft size={15}/> Önceki
             </button>
-            <span className="bk-pageno">{currentPage} / {totalPages}</span>
-            <button disabled={currentPage >= totalPages} onClick={() => router.push(`/books/${bookId}?page=${currentPage+1}`)} className="bk-nav">
+            <span className="bk-pageno">{aktifSayfa} / {totalPages}</span>
+            <button disabled={aktifSayfa >= totalPages} onClick={() => router.push(`/books/${bookId}?page=${aktifSayfa+1}`)} className="bk-nav">
               Sonraki <ChevronRight size={15}/>
             </button>
           </>
         ) : (
           <>
-            <button disabled={currentChapter <= 1} onClick={() => router.push(`/books/${bookId}?chapter=${currentChapter-1}`)} className="bk-nav">
+            <button disabled={aktifBolum <= 1} onClick={() => router.push(`/books/${bookId}?chapter=${aktifBolum-1}`)} className="bk-nav">
               <ChevronLeft size={15}/> Önceki
             </button>
-            <span className="bk-pageno">{currentChapter} / {totalChapters}</span>
-            <button disabled={currentChapter >= totalChapters} onClick={() => router.push(`/books/${bookId}?chapter=${currentChapter+1}`)} className="bk-nav">
+            <span className="bk-pageno">{aktifBolum} / {totalChapters}</span>
+            <button disabled={aktifBolum >= totalChapters} onClick={() => router.push(`/books/${bookId}?chapter=${aktifBolum+1}`)} className="bk-nav">
               Sonraki <ChevronRight size={15}/>
             </button>
           </>

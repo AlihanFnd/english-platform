@@ -311,9 +311,25 @@ sayfayı analiz edip veritabanına yazar.
 
 | Parametre | Varsayılan | Anlamı |
 |---|---|---|
-| `chapter` | 1 | Bölüm modunda hangi bölüm |
-| `page` | 1 | Sayfa modunda hangi sayfa |
+| `chapter` | **kaldığı yer** | Bölüm modunda hangi bölüm |
+| `page` | **kaldığı yer** | Sayfa modunda hangi sayfa |
 | `reanalyze` | false | `true` ise mevcut `SentencesJson` yok sayılıp yeniden analiz edilir |
+
+> **Kaldığı yerden devam.** `page`/`chapter` **verilmezse** sunucu bu kullanıcının
+> `ReadingProgress.CurrentChapter` kaydını okur ve oradan açar. Verilirse kullanıcı
+> isteği kazanır.
+>
+> Öncesinde ikisi de `1` varsayılanıyla geliyordu: ilerleme KURAL-12'den beri
+> **kaydediliyor ama hiç okunmuyordu.** 27 sayfalık bir kitabı 12. sayfada bırakan
+> kullanıcı, kitabı her açtığında 1. sayfayı görüyordu.
+>
+> **Sınır dışı kayıtlı konum kırpılır.** Kitap yeniden yüklenip kısaldıysa,
+> 9. sayfada kalan biri **son sayfaya** düşer — ilk sayfaya değil; ilk sayfaya
+> atmak ilerlemeyi sessizce silmek olurdu (test: `Kitap_kisaldiysa_kayitli_konum_KIRPILIR`).
+>
+> Yanıttaki `pageNumber` / `chapterNumber` **çözülen** konumdur; istemci adres
+> çubuğunu bununla eşitler. Kaldığı yer kullanıcıya özeldir
+> (test: `Kaldigi_yer_KULLANICIYA_ozeldir`).
 
 Hız sınırı: `okuma` politikası, kullanıcı başına 60/dk.
 
