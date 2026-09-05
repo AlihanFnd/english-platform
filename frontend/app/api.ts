@@ -187,6 +187,26 @@ export const api = {
   
   me: () => 
     apiRequest<{ user: User }>('/auth/me', 'GET'),
+
+  // ─── KURAL-19: veri sahibi hakları ───────────────────────────────────
+  /** Hangi verimin neden ve ne kadar süre tutulduğu — envanterden üretilir. */
+  veriEnvanteri: () =>
+    apiRequest<{ kalemler: Array<{
+      tablo: string; alan: string; sinif: string;
+      sebep: string; saklama: string; disaAktarilir: boolean;
+    }> }>('/verim/envanter'),
+
+  /** Kullanıcının TÜM verisi. Şifre hash'i ve kurtarma jetonları DÂHİL DEĞİL. */
+  verimiDisaAktar: () =>
+    apiRequest<Record<string, unknown>>('/verim/disa-aktar'),
+
+  /**
+   * 🔴 GERİ ALINAMAZ. Şifre yeniden istenir: çalınmış bir token tek başına
+   * hesabı silememeli.
+   */
+  hesabimiSil: (sifre: string) =>
+    apiRequest<{ success: boolean; message: string }>(
+      '/verim/hesabimi-sil', 'POST', { sifre }),
   
   logout: () => 
     apiRequest<{ message: string }>('/auth/logout', 'POST'),

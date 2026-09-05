@@ -30,6 +30,18 @@ public class SaklamaTemizligiServisi : BackgroundService
     public static readonly TimeSpan CeviriOnbellegi = TimeSpan.FromDays(365);
     public static readonly TimeSpan SifirlamaJetonu = TimeSpan.FromDays(7);
 
+    /// <summary>
+    /// KURAL-19: OCR metinleri kullanıcının taradığı HAM İÇERİKTİR ve ne
+    /// olduğunu sistem bilmez — ders notu da olabilir, kimlik fotokopisi de.
+    /// KURAL-12 kullanıcıya silme ucu verdi ama otomatik süre koymadı;
+    /// "içeriğini bilmediğim veriyi süresiz sakla" savunulabilir değil.
+    ///
+    /// 365 gün, kural dosyasının VARSAYILANIDIR (ürün kararı beklemede).
+    /// Kısaltmak kullanıcının taradığı ders notunu kaybettirir; uzatmak
+    /// belirsiz içeriği daha uzun taşımak demektir.
+    /// </summary>
+    public static readonly TimeSpan OcrKaydi = TimeSpan.FromDays(365);
+
     private static readonly TimeSpan Aralik   = TimeSpan.FromHours(24);
     private static readonly TimeSpan Gecikme  = TimeSpan.FromMinutes(5);
 
@@ -93,9 +105,18 @@ public class SaklamaTemizligiServisi : BackgroundService
             .Where(j => j.CreatedAt < jetonEsigi)
             .ExecuteDeleteAsync(durdurma);
 
-        if (silinenLog + silinenOnbellek + silinenJeton > 0)
+        // KURAL-19: belirsiz içerikli OCR metinleri.
+        // ScannedAt üzerinde indeks var (KURAL-12 dersi: indekssiz
+        // ExecuteDelete tam tablo taraması yapar ve temizliğin kendisi
+        // bir kesinti sebebine dönüşür).
+        var ocrEsigi = simdi - OcrKaydi;
+        var silinenOcr = await db.OcrRecords
+            .Where(r => r.ScannedAt < ocrEsigi)
+            .ExecuteDeleteAsync(durdurma);
+
+        if (silinenLog + silinenOnbellek + silinenJeton + silinenOcr > 0)
             _logger.LogInformation(
-                "Saklama temizliği. AktiviteLogu={Log} CeviriOnbellegi={Onbellek} Jeton={Jeton}",
-                silinenLog, silinenOnbellek, silinenJeton);
+                "Saklama temizliği. AktiviteLogu={Log} CeviriOnbellegi={Onbellek} Jeton={Jeton} OcrKaydi={Ocr}",
+                silinenLog, silinenOnbellek, silinenJeton, silinenOcr);
     }
 }

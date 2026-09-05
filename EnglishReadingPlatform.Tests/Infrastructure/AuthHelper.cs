@@ -21,6 +21,24 @@ public static class AuthHelper
     /// Hız sınırının KENDİSİNİ sınayan testler bu yardımcıyı kullanmaz;
     /// başlığı kasten sabit tutarak aynı kovayı paylaşır.
     /// </summary>
+    /// <summary>
+    /// Hız sınırlı bir uca TAZE bir test IP'siyle POST atar.
+    ///
+    /// Neden gerekli: kimlik kotası (dakikada 10) IP başınadır ve TestServer
+    /// altında bütün istekler aynı adresten gelir. Başlık verilmeyen iki ayrı
+    /// test dosyası AYNI kovayı paylaşır; biri kotayı doldurunca diğeri 429
+    /// alır ve ölçtüğü şeyle ilgisi olmayan bir kırmızı üretir.
+    ///
+    /// KURAL-19 eklenirken tam olarak bu oldu: yeni hesap-silme testleri
+    /// KURAL-14'ün şifre sıfırlama testini düşürdü.
+    ///
+    /// Hız sınırının KENDİSİNİ sınayan testler bunu KULLANMAZ; onlar başlığı
+    /// kasten sabit tutarak aynı kovayı paylaşır.
+    /// </summary>
+    public static Task<HttpResponseMessage> TazeIpIlePostAsync(
+        this HttpClient client, string yol, object govde)
+        => IpIleGonderAsync(client, yol, govde);
+
     private static string SonrakiTestIpsi()
     {
         var n = Interlocked.Increment(ref _ipSayaci);

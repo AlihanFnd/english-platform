@@ -23,8 +23,7 @@ import {
   Trophy,
   Target,
   ArrowLeft,
-  Home
-} from 'lucide-react';
+  Home, ShieldCheck } from 'lucide-react';
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { user, logout, loading } = useAuth();
@@ -119,8 +118,17 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           })}
         </nav>
 
-        {/* Clean logout section in sidebar */}
-        <div className="mt-auto pt-4 border-t border-white/10">
+        {/* KURAL-19: veri sahibinin haklarına erişim her ekrandan bir
+            tık uzakta olmalı. Ayarlar sayfası olmadığı için çıkış
+            bölümünün yanına konuldu. */}
+        <div className="mt-auto pt-4 border-t border-white/10 space-y-1">
+          <Link
+            href="/gizlilik"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-white/60 hover:bg-white/5 hover:text-primary transition-all font-semibold text-xs w-full"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Verilerim ve gizlilik
+          </Link>
           <button
             onClick={logout}
             className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all font-semibold text-xs w-full text-left"

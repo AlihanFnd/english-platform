@@ -130,6 +130,18 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* KURAL-19: aydınlatma metnine bağlantı kayıt akışında olmalı.
+                Metin hukuki (henüz yok); kodun işi ona BAĞLANMAK. */}
+            {!isLogin && (
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Kayıt olarak{' '}
+                <a href="/gizlilik" className="text-violet-400 underline">
+                  verilerinin nasıl işlendiğini
+                </a>{' '}
+                okuduğunu kabul edersin.
+              </p>
+            )}
+
             {!isLogin && (
               <p className="text-xs text-slate-400 leading-relaxed">
                 {/* KURAL-17: rol seçimi KALDIRILDI. Herkes öğrenci olarak

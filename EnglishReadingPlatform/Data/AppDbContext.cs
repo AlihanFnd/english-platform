@@ -90,6 +90,11 @@ namespace EnglishReadingPlatform.Data
             modelBuilder.Entity<TranslationCache>().HasIndex(tc => tc.CreatedAt);
             modelBuilder.Entity<SifreSifirlamaJetonu>().HasIndex(j => j.CreatedAt);
 
+            // KURAL-19: saklama temizliği OcrRecords'ı ScannedAt üzerinden
+            // siliyor. İndekssiz ExecuteDelete tam tablo taraması yapar ve
+            // temizliğin kendisi bir kesinti sebebine dönüşür (KURAL-12 dersi).
+            modelBuilder.Entity<OcrRecord>().HasIndex(o => o.ScannedAt);
+
             // ── KURAL-12: silme davranışı BİLİNÇLİ seçilir ──────────────────────
             //
             // Grup yöneticisi silinirse grup SİLİNMEZ. EF varsayılanı (zorunlu

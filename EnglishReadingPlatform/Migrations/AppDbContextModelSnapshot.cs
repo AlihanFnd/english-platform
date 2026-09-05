@@ -349,6 +349,8 @@ namespace EnglishReadingPlatform.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ScannedAt");
+
                     b.HasIndex("UserId");
 
                     b.ToTable("OcrRecords");

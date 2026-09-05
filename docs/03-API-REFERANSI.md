@@ -9,6 +9,9 @@
 | Yol | Metot | Yetki |
 |---|---|---|
 | [`/health`](#get-health) | GET | Açık |
+| [`/verim/envanter`](#get-verimenvanter) | GET | Token |
+| [`/verim/disa-aktar`](#get-verimdisa-aktar) | GET | Token |
+| [`/verim/hesabimi-sil`](#post-verimhesabimi-sil) | POST | Token + **şifre** |
 | [`/auth/login`](#post-authlogin) | POST | Açık |
 | [`/auth/register`](#post-authregister) | POST | Açık |
 | [`/auth/logout`](#post-authlogout) | POST | Açık |
@@ -187,6 +190,62 @@ dönüşür. Tek istisna `BookPage.SentencesJson` — bu bir **string içindeki 
 ---
 
 ## Auth
+
+## KURAL-19 — veri sahibinin hakları
+
+Kullanıcı bugüne kadar kendi verisinin tamamını göremiyor, dışa aktaramıyor ve
+hesabını silemiyordu — yalnızca bir yönetici silebiliyordu.
+
+Hangi verinin neden ve ne kadar tutulduğu tek kaynakta:
+`EnglishReadingPlatform/Data/KisiselVeriEnvanteri.cs`. Envantere yazılmamış
+yeni bir kişisel veri alanı `KisiselVeriTests` tarafından yakalanır.
+
+---
+
+### `GET /verim/envanter`
+
+Hangi verinin neden ve ne kadar süre tutulduğu. Envanterden **üretilir**.
+
+**200** `{ "kalemler": [ { tablo, alan, sinif, sebep, saklama, disaAktarilir } ] }`
+
+---
+
+### `GET /verim/disa-aktar`
+
+Kullanıcının **tüm** verisi. Hız sınırı: `yazma` (pahalı sorgu).
+
+**200** kullanıcı bilgileri · kelimeler · ilerleme · quiz sonuçları ·
+OCR kayıtları · aktivite · geri bildirimler
+
+> 🔒 **Şifre hash'i ve hesap kurtarma jetonları DÂHİL DEĞİL.** Dışa aktarma
+> dosyası kullanıcının indirdiği, paylaştığı bir dosyadır; oraya konan bir sır
+> veritabanındakinden kolay ele geçer.
+>
+> Her sorgu açıkça kullanıcıya filtrelidir. Bu ucun en tehlikeli hatası
+> filtreyi unutmaktır — o zaman uç **bütün veritabanını** döker.
+> `Disa_aktarma_BASKASININ_verisini_icermez` testi bunu ölçüyor.
+
+---
+
+### `POST /verim/hesabimi-sil`
+
+🔴 **GERİ ALINAMAZ.** Hesabı ve tüm kişisel veriyi siler.
+Hız sınırı: `kimlik-dogrulama`.
+
+**İstek** `{ "sifre": "..." }`
+
+**200** `{ "success": true, "message": "Hesabınız ve tüm verileriniz silindi." }`
+**401** şifre hatalı
+**400** kullanıcı bir ya da daha fazla grubun yöneticisi (gruplar listelenir)
+
+> 🔒 **Şifre yeniden istenir.** Geçerli bir token "bu kişi giriş yapmış" der,
+> "bu kişi hesabını silmek istiyor" demez — çalınmış bir token kalıcı veri
+> kaybına yol açmamalı.
+>
+> Grup sahibi kontrolü: `Groups.AdminUserId` ilişkisi RESTRICT (KURAL-12);
+> kontrol edilmezse silme 500 verir ve kullanıcı sebebini anlamaz.
+
+---
 
 ### `GET /health`
 
