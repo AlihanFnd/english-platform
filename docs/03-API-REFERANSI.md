@@ -12,6 +12,8 @@
 | [`/auth/register`](#post-authregister) | POST | Açık |
 | [`/auth/logout`](#post-authlogout) | POST | Açık |
 | [`/auth/me`](#get-authme) | GET | Token |
+| [`/auth/forgot-password`](#post-authforgot-password) | POST | Açık |
+| [`/auth/reset-password`](#post-authreset-password) | POST | Açık |
 | [`/books`](#get-books) | GET | Token |
 | [`/books/{id}`](#get-booksid) | GET | Token |
 | [`/books/{id}/read`](#get-booksidread) | GET | Token |
@@ -259,6 +261,46 @@ Token'daki `NameIdentifier` claim'inden kullanıcıyı çeker.
 
 > Not: Bu uçta `[Authorize]` özniteliği **yok**; kontrol elle yapılıyor
 > (`User.FindFirst(...) == null → 401`). Sonuç aynı ama tutarsız.
+
+---
+
+### `POST /auth/forgot-password`
+
+Şifre sıfırlama bağlantısı ister. **Anonim.** Hız sınırı: `kimlik-dogrulama`.
+
+**İstek** `{ "eposta": "..." }`
+
+**200** `{ "message": "Eğer bu e-posta kayıtlıysa, sıfırlama bağlantısı gönderildi." }`
+
+> Yanıt, e-posta kayıtlı olsun ya da olmasın **birebir aynıdır** (KURAL-09:
+> hesap enumerasyonu). Gönderim başarısız olsa bile 200 döner.
+
+**503** `{ "error": "Şifre sıfırlama şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin." }`
+
+> 🔒 **KURAL-14 — eksik yapılandırmada kapalı kal.**
+> `Resend:ApiKey` **veya** `App:FrontendUrl` tanımlı değilse uç **503** döner ve
+> **jeton hiç üretilmez.** Eski davranışta bağlantı uygulama **loguna** yazılıyordu;
+> uç anonim olduğu için logu görebilen herkes istediği hesabı ele geçirebiliyordu.
+>
+> 503 kontrolü kullanıcı aramasından **önce** çalışır — aksi hâlde durum kodu
+> e-postanın kayıtlı olup olmadığını sızdırırdı. Hangi özelliğin neden kapalı
+> olduğu **açılışta** `ÖZELLİK KAPALI: …` uyarısıyla loglanır.
+>
+> Sınıflandırma tek kaynakta: `EnglishReadingPlatform/Configuration/DisServisSozlesmesi.cs`
+
+---
+
+### `POST /auth/reset-password`
+
+Sıfırlama jetonunu tüketir ve yeni şifreyi yazar. **Anonim.** Hız sınırı: `kimlik-dogrulama`.
+
+**İstek** `{ "jeton": "...", "yeniSifre": "..." }`
+
+**200** `{ "message": "Şifreniz sıfırlandı. Giriş yapabilirsiniz." }`
+**400** jeton geçersiz/kullanılmış/süresi dolmuş · şifre politikası karşılanmıyor
+
+> Jeton veritabanında yalnızca **SHA-256 hash** olarak durur, 30 dakika geçerlidir
+> ve tek kullanımlıktır. Başarılı sıfırlama kullanıcının **tüm tokenlarını iptal eder**.
 
 ---
 

@@ -37,7 +37,7 @@ Frontend :3000 · Admin :3001 · API :5001 · pgAdmin :8080
 | Faz | Klasör | Durum |
 |---|---|---|
 | **Faz 1** — KURAL-01…12 | [`guvenlik-kurallari/`](guvenlik-kurallari/00-BASLA-BURADAN.md) | ✅ 12/12 kapandı (`2bd12bc`) |
-| **Faz 2** — KURAL-13…19 | [`guvenlik-kurallari-faz2/`](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) | ⬜ 0/7 |
+| **Faz 2** — KURAL-13…19 | [`guvenlik-kurallari-faz2/`](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) | 🟨 2/7 (13, 14 kapandı) |
 
 Her oturum **önce** ilgili fazın `00-BASLA-BURADAN.md`, **sonra** sıradaki
 `KURAL-NN.md` okunarak yürütülür. Disiplin, pazarlıksız maddeler ve teslim
@@ -45,9 +45,9 @@ formatı 00 dosyasındadır. İlerleme tablosu da oradadır — bitirdiğin kura
 
 > **Faz 2 neden var:** faz 1 bittikten sonra yapılan denetimler, 12 kuralın hiç
 > bakmadığı yerlerde bulgular çıkardı. En çarpıcısı: KURAL-11 "tarayıcı tarafı
-> savunma" başlığını taşıyor ama **CORS'a hiç bakmamış** — API şu an her kökene,
-> üstelik kimlik bilgisiyle açık. Ayrıca şifre sıfırlama bağlantısı, Resend
-> anahtarı tanımlı olmadığı için uygulama loguna yazılıyor.
+> savunma" başlığını taşıyor ama **CORS'a hiç bakmamıştı** (KURAL-13 kapattı).
+> Şifre sıfırlama bağlantısı da, Resend anahtarı tanımlı olmadığı için uygulama
+> loguna yazılıyordu (KURAL-14 kapattı).
 >
 > Faz 2, faz 1'in kapılarını **kırmamak zorundadır**: her oturumun sonunda
 > `bash scripts/guard/run-all.sh` bütün kapılarla çalıştırılır.
@@ -59,6 +59,11 @@ formatı 00 dosyasındadır. İlerleme tablosu da oradadır — bitirdiğin kura
 - Yeni bir uç eklerken: yetki kontrolü, girdi uzunluğu, hız sınırı, hata mesajında
   iç detay sızıntısı — dördünü de kontrol et
   ([docs/07-GUVENLIK.md § D](docs/07-GUVENLIK.md)).
+- **Yeni bir dış servis bağımlılığı eklerken `Configuration/DisServisSozlesmesi.cs`
+  içine sınıfını yaz** (KURAL-14: uygulama açılmaz / özellik kapanır / işlev bozulur).
+  Sınıflandırılmamış bir `X:ApiKey` okuması `scripts/guard/14-yapilandirma.sh`
+  kapısını kırar. **Yapılandırma eksikken zayıf bir yedeğe düşmek yasaktır** —
+  özellik kapanır, sessizce bozulmaz.
 - **Yazma ucu (`POST`/`PUT`/`DELETE`) eklerken `[EnableRateLimiting(HizSinirlari.…)]`
   zorunludur** — unutursan `HizSiniriSozlesmesiTests` build'i kırar. Sayılar tek
   kaynakta: `EnglishReadingPlatform/RateLimiting/HizSinirlari.cs`.

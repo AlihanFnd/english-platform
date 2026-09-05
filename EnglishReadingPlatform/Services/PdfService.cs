@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using System.Net.Http;
 using System.Text;
+using EnglishReadingPlatform.Configuration;
 using EnglishReadingPlatform.Exceptions;
 using EnglishReadingPlatform.Files;
 using EnglishReadingPlatform.RateLimiting;
@@ -309,11 +310,23 @@ namespace EnglishReadingPlatform.Services
             return result;
         }
 
+        /// <summary>
+        /// KURAL-14: Groq anahtarı TEK yerden okunur.
+        ///
+        /// Eskiden bu zincir dört ayrı yerde kopyalanmıştı; biri güncellenip
+        /// diğerleri unutulduğunda "anahtar tanımlı ama bir yolda görünmüyor"
+        /// gibi teşhis edilmesi zor bir bozukluk doğardı.
+        ///
+        /// Groq sözleşmede <see cref="ServisSinifi.IslevBozulur"/> sınıfındadır:
+        /// anahtar yoksa çeviri kalitesi düşer (sözlük/Google yedeği devreye girer)
+        /// ama kimse tehlikeye girmez — bu yüzden burada 503 DEĞİL, sessiz yedek
+        /// doğru davranıştır. Sessizlik açılış raporuyla telafi edilir.
+        /// </summary>
+        private string? GroqAnahtari => DisServisSozlesmesi.Deger(_configuration, "Groq:ApiKey");
+
         private async Task<List<PdfChapter>> SplitIntoChaptersWithGroqAsync(List<string> pages)
         {
-            var apiKey = _configuration["Groq:ApiKey"] 
-                          ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
-                          ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+            var apiKey = GroqAnahtari;
 
             if (string.IsNullOrWhiteSpace(apiKey))
             {

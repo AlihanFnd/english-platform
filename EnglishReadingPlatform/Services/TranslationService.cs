@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
+using EnglishReadingPlatform.Configuration;
 using EnglishReadingPlatform.Data;
 using EnglishReadingPlatform.RateLimiting;
 using EnglishReadingPlatform.Models;
@@ -107,6 +108,20 @@ namespace EnglishReadingPlatform.Services
         }
 
         /// <summary>
+        /// KURAL-14: Groq anahtarı TEK yerden okunur.
+        ///
+        /// Eskiden bu zincir dört ayrı yerde kopyalanmıştı; biri güncellenip
+        /// diğerleri unutulduğunda "anahtar tanımlı ama bir yolda görünmüyor"
+        /// gibi teşhis edilmesi zor bir bozukluk doğardı.
+        ///
+        /// Groq sözleşmede <see cref="ServisSinifi.IslevBozulur"/> sınıfındadır:
+        /// anahtar yoksa çeviri kalitesi düşer (sözlük/Google yedeği devreye girer)
+        /// ama kimse tehlikeye girmez — bu yüzden burada 503 DEĞİL, sessiz yedek
+        /// doğru davranıştır. Sessizlik açılış raporuyla telafi edilir.
+        /// </summary>
+        private string? GroqAnahtari => DisServisSozlesmesi.Deger(_configuration, "Groq:ApiKey");
+
+        /// <summary>
         /// KURAL-07: Groq istemcisi TEK yerden gelir.
         ///
         /// Adlandırılmış istemci Program.cs'te 60 saniyelik TAVAN zaman aşımı ve
@@ -175,9 +190,7 @@ namespace EnglishReadingPlatform.Services
             // Fallback: Google Translate patladıysa (Render IP ban vb.) Groq AI ile çevir
             try
             {
-                var apiKey = _configuration["Groq:ApiKey"] 
-                              ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
-                              ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+                var apiKey = GroqAnahtari;
 
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
@@ -293,9 +306,7 @@ namespace EnglishReadingPlatform.Services
                 }
 
                 // 2. Önbellekte Yoksa ve Kullanıcı Butona Basarak Yapay Zekayı Zorladıysa (forceAI == true) Groq'tan Al
-                var apiKey = _configuration["Groq:ApiKey"] 
-                              ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
-                              ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+                var apiKey = GroqAnahtari;
 
                 if (!string.IsNullOrWhiteSpace(apiKey) && forceAI)
                 {
@@ -481,9 +492,7 @@ namespace EnglishReadingPlatform.Services
             // 4. Fallback: Google Translate takıldıysa Groq AI ile kelimeyi çevir
             try
             {
-                var apiKey = _configuration["Groq:ApiKey"] 
-                              ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
-                              ?? Environment.GetEnvironmentVariable("Groq__ApiKey");
+                var apiKey = GroqAnahtari;
 
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
@@ -668,10 +677,7 @@ namespace EnglishReadingPlatform.Services
 
         public async Task<List<AnalyzedSentence>> AnalyzeTextAsync(string text)
         {
-            var apiKey = _configuration["Groq:ApiKey"] 
-                          ?? Environment.GetEnvironmentVariable("GROQ_API_KEY") 
-                          ?? Environment.GetEnvironmentVariable("Groq__ApiKey")
-                          ?? Environment.GetEnvironmentVariable("API_KEY");
+            var apiKey = GroqAnahtari;
 
             if (!string.IsNullOrWhiteSpace(apiKey))
             {

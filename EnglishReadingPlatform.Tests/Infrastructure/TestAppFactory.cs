@@ -96,6 +96,14 @@ public class TestAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
         Environment.SetEnvironmentVariable("Seed__AdminPassword", TestAdminPassword);
         Environment.SetEnvironmentVariable("Groq__ApiKey", "");
         Environment.SetEnvironmentVariable("CorsOrigins", "http://localhost:3000");
+
+        // KURAL-14: testler e-posta servisi KAPALI hâlde koşar — üretimin
+        // anahtarsız hâlini birebir taklit eder. Geliştiricinin kabuğunda
+        // (ör. .env source edilmiş bir terminalde) tanımlı bir anahtar bu
+        // varsayımı sessizce bozar ve "kapalıyken 503" testleri anlamsızlaşırdı.
+        // AÇIK dalı sınayan testler EpostaTestFabrikasi ile kendi değerini verir.
+        Environment.SetEnvironmentVariable("Resend__ApiKey", null);
+        Environment.SetEnvironmentVariable("App__FrontendUrl", null);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

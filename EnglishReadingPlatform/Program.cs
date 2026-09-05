@@ -232,11 +232,11 @@ builder.Services.AddHttpClient(HizSinirlari.GoogleIstemcisi, c =>
 builder.Services.AddSingleton<SifrePolitikasi>();
 builder.Services.AddScoped<SifreSifirlamaServisi>();
 
-// E-posta göndericisi. 00-BASLA-BURADAN madde 7 kararı: A (Resend).
-// Anahtar yoksa loglayan uygulamaya düşer — böylece anahtar gelmeden de
-// akış uçtan uca çalışır ve test edilebilir.
-var resendAnahtari = builder.Configuration["Resend:ApiKey"];
-if (!string.IsNullOrWhiteSpace(resendAnahtari))
+// ─── KURAL-14: e-posta göndericisi ────────────────────────────
+// Anahtar yoksa SIZDIRAN yedeğe değil, KAPALI uygulamaya düşülür.
+// Sınıflandırma DisServisSozlesmesi'nde: Resend "özellik kapanır" sınıfında,
+// yani uygulama açılır ama şifre sıfırlama ucu 503 döner.
+if (DisServisSozlesmesi.Kullanilabilir(builder.Configuration, "Resend:ApiKey"))
 {
     builder.Services.AddHttpClient(ResendEpostaGondericisi.IstemciAdi, c =>
     {
@@ -248,13 +248,7 @@ if (!string.IsNullOrWhiteSpace(resendAnahtari))
 }
 else
 {
-    // Üretimde anahtarsız çalışmak, sıfırlama bağlantısını loga yazmak demektir.
-    // Sessizce geçmek yerine açıkça uyar (KURAL-06: sessiz başarısızlık yasak).
-    if (!builder.Environment.IsDevelopment())
-        Console.Error.WriteLine(
-            "UYARI: Resend:ApiKey tanımlı değil. Şifre sıfırlama e-postaları GÖNDERİLMEYECEK, " +
-            "bağlantı yalnızca loga yazılacak. Üretimde Resend__ApiKey ortam değişkenini tanımlayın.");
-    builder.Services.AddScoped<IEpostaGondericisi, LoglayanEpostaGondericisi>();
+    builder.Services.AddScoped<IEpostaGondericisi, KapaliEpostaGondericisi>();
 }
 
 // ─── KURAL-11: HTTPS yönlendirmesi için hedef port ────────────
@@ -409,6 +403,17 @@ app.UseAuthorization();
 
 // Map Web API Controllers
 app.MapControllers();
+
+// ─── KURAL-14: hangi özellikler KAPALI? ───────────────────────
+// Operatör bunu ilk saniyede bilmeli, ilk kullanıcı şikâyetinde değil.
+// LogWarning bilinçli: üretimde log seviyesi Warning'e çekildiğinde
+// Information seviyesindeki bir rapor görünmez olurdu.
+foreach (var servis in DisServisSozlesmesi.KapaliOzellikler(app.Configuration))
+{
+    app.Logger.LogWarning(
+        "ÖZELLİK KAPALI: {Servis} yapılandırılmamış ({Anahtar}). {Sonuc}",
+        servis.Ad, servis.YapilandirmaAnahtari, servis.EksikseNeOlur);
+}
 
 app.Run();
 

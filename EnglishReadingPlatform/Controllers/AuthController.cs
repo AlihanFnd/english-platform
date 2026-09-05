@@ -308,15 +308,41 @@ namespace EnglishReadingPlatform.Controllers
         [EnableRateLimiting(HizSinirlari.KimlikDogrulama)]
         public async Task<IActionResult> SifremiUnuttum([FromBody] SifremiUnuttumIstegi req)
         {
+            // ── KURAL-14: gönderemeyeceksek HİÇ BAŞLAMA ──
+            // Jetonu üretip gönderememek en kötü sonuçtur: veritabanında geçerli bir
+            // sıfırlama jetonu durur, sahibinin haberi olmaz.
+            //
+            // Kontrol, kullanıcı aramasından ÖNCE. Sonrasına konsaydı "servis kapalı"
+            // yanıtı yalnızca KAYITLI e-postalarda dönerdi ve KURAL-09'un kapattığı
+            // hesap enumerasyonu, bu kez durum kodu üzerinden geri gelirdi.
+            var taban = _configuration["App:FrontendUrl"];
+            if (_epostaGondericisi is KapaliEpostaGondericisi || string.IsNullOrWhiteSpace(taban))
+            {
+                _logger.LogError("Şifre sıfırlama istendi ama e-posta servisi kapalı.");
+                return StatusCode(503, new
+                {
+                    error = "Şifre sıfırlama şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin."
+                });
+            }
+
             var eposta = (req.Eposta ?? "").Trim().ToLowerInvariant();
             var kullanici = await _db.Users.FirstOrDefaultAsync(u => u.Email == eposta);
 
             if (kullanici != null)
             {
                 var jeton = await _sifirlamaServisi.JetonUretAsync(kullanici.Id);
-                var taban = _configuration["App:FrontendUrl"] ?? "http://localhost:3000";
-                await _epostaGondericisi.SifreSifirlamaGonderAsync(
-                    kullanici.Email, $"{taban}/reset-password?token={jeton}");
+                try
+                {
+                    await _epostaGondericisi.SifreSifirlamaGonderAsync(
+                        kullanici.Email, $"{taban.TrimEnd('/')}/reset-password?token={jeton}");
+                }
+                catch (EpostaServisiKapaliException)
+                {
+                    // Yarış penceresi: servis istek işlenirken kapandıysa buraya düşer.
+                    // Yine de aşağıdaki tek tip yanıt döner — istisnayı yukarı bırakmak
+                    // 500 üretirdi ve "500 = kayıtlı, 200 = kayıtsız" ayrımı doğardı.
+                    _logger.LogError("E-posta gönderimi kapalı servis yüzünden başarısız.");
+                }
             }
 
             // ── KURAL-09: hesabın varlığını SIZDIRMA ──

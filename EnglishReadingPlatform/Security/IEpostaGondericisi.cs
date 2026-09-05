@@ -10,26 +10,45 @@ public interface IEpostaGondericisi
 }
 
 /// <summary>
-/// KURAL-09: Gerçek e-posta servisi yapılandırılmamışken kullanılan uygulama.
-/// Bağlantıyı LOGA yazar.
+/// KURAL-14: e-posta servisi yapılandırılmamışken kullanılan uygulama.
 ///
-/// ⚠️ ÜRETİMDE KULLANILMAMALIDIR: log erişimi olan herkes sıfırlama bağlantısını
-/// görür, yani her hesabı ele geçirebilir. Program.cs bu sınıfı yalnızca
-/// Resend anahtarı yokken kaydeder ve üretim ortamında ayrıca uyarı basar.
+/// ESKİ HÂLİ SİLİNDİ. Önceki "loglayan" yedek uygulama, sıfırlama
+/// bağlantısını LOGA yazıyordu — yani anahtar yokluğu, bir kullanılabilirlik
+/// sorunundan bir HESAP ELE GEÇİRME yoluna dönüşüyordu: /auth/forgot-password
+/// anonim olduğu için, logu görebilen herkes istediği hesabın bağlantısını
+/// üretip okuyabiliyordu.
+///
+/// Yeni davranış: gönderemiyorsak bunu SÖYLERİZ. Çağıran (AuthController)
+/// bunu 503'e çevirir ve jeton hiç üretilmez.
 /// </summary>
-public class LoglayanEpostaGondericisi : IEpostaGondericisi
+public class KapaliEpostaGondericisi : IEpostaGondericisi
 {
-    private readonly ILogger<LoglayanEpostaGondericisi> _logger;
-    public LoglayanEpostaGondericisi(ILogger<LoglayanEpostaGondericisi> logger) => _logger = logger;
+    private readonly ILogger<KapaliEpostaGondericisi> _logger;
+    public KapaliEpostaGondericisi(ILogger<KapaliEpostaGondericisi> logger) => _logger = logger;
 
     public Task SifreSifirlamaGonderAsync(string eposta, string baglanti, CancellationToken iptal = default)
     {
-        _logger.LogWarning(
-            "E-POSTA SERVİSİ YAPILANDIRILMAMIŞ. Şifre sıfırlama bağlantısı gönderilemedi. " +
-            "Alici={Alici} Baglanti={Baglanti}",
-            GuvenliLog.Eposta(eposta), baglanti);
-        return Task.CompletedTask;
+        // DİKKAT: 'baglanti' parametresi BİLEREK loglanmıyor. Bu satırın
+        // tamamı scripts/guard/14-yapilandirma.sh tarafından denetleniyor.
+        _logger.LogError(
+            "E-posta servisi yapılandırılmamış; gönderim reddedildi. Alici={Alici}",
+            GuvenliLog.Eposta(eposta));
+
+        throw new EpostaServisiKapaliException();
     }
+}
+
+/// <summary>
+/// KURAL-14: e-posta servisi yapılandırılmamış.
+///
+/// Mesaj SABİTTİR ve bağlantıyı TAŞIMAZ: merkezî HataYakalamaMiddleware
+/// yakalanmamış istisnaları tam ayrıntısıyla logluyor, yani mesaja konan
+/// her şey başka bir dosyadan tekrar sızardı.
+/// </summary>
+public class EpostaServisiKapaliException : Exception
+{
+    public EpostaServisiKapaliException()
+        : base("E-posta servisi yapılandırılmamış.") { }
 }
 
 /// <summary>

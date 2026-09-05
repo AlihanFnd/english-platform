@@ -15,12 +15,16 @@ TOPLAM_IHLAL=0
 # dosyadaki sırrı commit edilene kadar görmezden gelirdi — kapının tam olarak
 # yakalaması gereken an orasıdır. .gitignore'lu dosyalar (.env, .env.test.local)
 # --exclude-standard sayesinde kapsam dışında kalır; onlar zaten sır tutmak için var.
+#
+# guvenlik-kurallari/ ve guvenlik-kurallari-faz2/ HARİÇTİR: kural belgeleri
+# yasak deseni TARİF ETMEK için alıntılıyor. Onları taramak, her kuralı kendi
+# belgesiyle kırmızıya düşürürdü — kod tabanında hiçbir şey bozuk olmadan.
 depoda_ara() {
   local desen="$1"; shift
   { git ls-files -- "$@" 2>/dev/null
     git ls-files --others --exclude-standard -- "$@" 2>/dev/null; } \
     | sort -u \
-    | grep -v -E '^(dotnet_sdk/|.*/node_modules/|.*/\.next/|.*/wwwroot/lib/|guvenlik-kurallari/|scripts/guard/)' \
+    | grep -v -E '^(dotnet_sdk/|.*/node_modules/|.*/\.next/|.*/wwwroot/lib/|guvenlik-kurallari(-faz2)?/|scripts/guard/)' \
     | xargs -I{} grep -Hn -E "$desen" {} 2>/dev/null
 }
 
