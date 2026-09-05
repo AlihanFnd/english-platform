@@ -66,7 +66,14 @@ for yol in sorted(glob.glob("EnglishReadingPlatform/Controllers/*.cs")):
     for p in re.split(r'\n(?=\s*\[Http)', src)[1:]:
         if "PaylasilanYazmaBicimi.UzerineYazar" not in p:
             continue
-        oznitelikler = p.split("public")[0]
+        # Oznitelik bolumu YORUMLARDAN ARINDIRILARAK taranir.
+        # Aksi halde politikayi yorum satirina cevirmek kapiyi yesil birakir;
+        # MUTASYON B ile tam olarak bu oldu (faz 1 dersi 1).
+        # NOT: bu blokta TEK SAYIDA kesme isareti kullanilamaz — macOS bash 3.2,
+        # komut ikamesi icindeki heredoc icin tirnak esleme hatasi veriyor.
+        oznitelikler = "\n".join(
+            s for s in p.split("public")[0].split("\n")
+            if not s.strip().startswith("//"))
         if re.search(r'\[Authorize\((Policy|Roles)\s*=', oznitelikler):
             continue
         m = re.search(r'public\s+(?:async\s+)?(?:Task<)?IActionResult>?\s+(\w+)', p)

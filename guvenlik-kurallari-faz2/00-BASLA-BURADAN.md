@@ -459,8 +459,8 @@ Her kural bitince bu tabloyu güncelle (kural oturumunun son işi budur):
 | 13 | Köken ve kaynak denetimi | ✅ Kanıtlanarak kapandı | `c05d986` | 2026-09-05 |
 | 14 | Eksik yapılandırmada kapalı kal | ✅ Kanıtlanarak kapandı | `5cb8a2d` | 2026-09-05 |
 | 15 | Dağıtım kapısı | ✅ Kanıtlanarak kapandı | `47097cb` | 2026-09-06 |
-| 16 | Hesap yaşam döngüsü | ⬜ Başlamadı | — | — |
-| 17 | Maliyetli iş ve paylaşılan yazma | ⬜ Başlamadı | — | — |
+| 16 | Hesap yaşam döngüsü | ⬜ Başlamadı — Resend anahtarı bekliyor | — | — |
+| 17 | Maliyetli iş ve paylaşılan yazma | ✅ Kanıtlanarak kapandı | `770c04e` | 2026-09-06 |
 | 18 | Tedarik zinciri ve kripto sertleştirme | ⬜ Başlamadı | — | — |
 | 19 | Kişisel veri yaşam döngüsü | ⬜ Başlamadı | — | — |
 
