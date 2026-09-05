@@ -14,7 +14,11 @@
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 echo "[14] Eksik yapılandırmada kapalı kal"
 
-KOD_YOLLARI=(EnglishReadingPlatform/*.cs EnglishReadingPlatform.Tests/*.cs)
+# TIRNAKLAR ZORUNLU: tırnaksız yazılırsa kabuk glob'u ATAMA ANINDA genişletir ve
+# dizi, git pathspec'i yerine yalnızca KÖK dizindeki dosya adlarını taşır —
+# Security/, Services/, Controllers/ altındaki her şey taramanın dışında kalır.
+# Bu hata MUTASYON A ile yakalandı: kapı yeşil verdi, sızıntı geri gelmişti.
+KOD_YOLLARI=('EnglishReadingPlatform/*.cs' 'EnglishReadingPlatform.Tests/*.cs')
 SOZLESME="EnglishReadingPlatform/Configuration/DisServisSozlesmesi.cs"
 
 # Yalnızca YORUM olan eşleşmeleri eler.
