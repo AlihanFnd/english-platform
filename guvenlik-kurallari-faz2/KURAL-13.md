@@ -451,7 +451,10 @@ guard_bitir
 cd /Users/alihanfindikci/Desktop/ingilizceproje
 docker compose up -d postgres
 
-# 1) Testler — BEKLENEN: Başarısız: 0, Başarılı: 6
+# 1) Testler — BEKLENEN: Başarısız: 0, Başarılı: 10
+#    (kural metni 6 diyordu; uygulamada 4 test EKLENDİ — gerekçeleri
+#     KURAL-13 teslim raporunda: gerçek istek yolu, Host başlığı iki yön,
+#     joker alt alan adı)
 dotnet test Linguza.sln --filter "Category=Koken" --logger "console;verbosity=normal"
 echo "çıkış kodu: $?"
 
@@ -459,7 +462,12 @@ echo "çıkış kodu: $?"
 bash scripts/guard/13-koken.sh; echo "çıkış kodu: $?"
 
 # 3) Joker köken ifadesi kodda kalmadı — BEKLENEN: 0
-grep -c "SetIsOriginAllowed\|AllowAnyOrigin" EnglishReadingPlatform/Program.cs || echo 0
+# DİKKAT (2026-09-05'te düzeltildi): yorum satırları ayıklanmalı. Merkezî çözümün
+# kendi açıklaması "SetIsOriginAllowed ... BURADAN KALDIRILDI" cümlesini içeriyor;
+# ham grep o yorumu da sayar ve kriter hiçbir zaman 0 vermez. Kapı (13-koken.sh)
+# zaten yorumları ayıklayarak ölçüyor — kriter de aynısını yapmalı.
+grep -v '^[[:space:]]*//' EnglishReadingPlatform/Program.cs \
+  | grep -c "SetIsOriginAllowed\|AllowAnyOrigin" || echo 0
 
 # 4) Joker AllowedHosts kalmadı — BEKLENEN: 0
 grep -c '"AllowedHosts": "\*"' EnglishReadingPlatform/appsettings.json || echo 0

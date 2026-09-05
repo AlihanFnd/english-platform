@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -279,15 +280,46 @@ builder.Services.AddHsts(secenekler =>
     secenekler.Preload = false;
 });
 
-// ─── CORS Configuration for Next.js & Admin Panel ────────────
+// ─── KURAL-13: köken beyaz listesi ────────────────────────────
+// SetIsOriginAllowed(origin => true) BURADAN KALDIRILDI.
+// O ifade, ASP.NET Core'un "AllowAnyOrigin + AllowCredentials" için attığı
+// çalışma zamanı istisnasını ATLATIYORDU: sonuç aynı, uyarı yok. İstek yapan
+// kökenin kendisi Access-Control-Allow-Origin'e yansıtılıyor ve
+// Access-Control-Allow-Credentials: true ile birlikte dönüyordu.
+//
+// Liste tek kaynaktan (CorsOrigins) okunur; aynı kaynak aşağıda
+// AllowedHosts'u da besler. Üretimde tanımsızsa uygulama başlamaz.
+var guvenilirKokenler = GuvenilirKokenler.Oku(builder.Configuration, builder.Environment);
 
 builder.Services.AddCors(opt =>
-    opt.AddDefaultPolicy(policy =>
-        policy
-            .SetIsOriginAllowed(origin => true)
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials()));
+    opt.AddDefaultPolicy(policy => policy
+        .WithOrigins(guvenilirKokenler)
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()
+        // Tarayıcı ön-uçuş (preflight) sonucunu 10 dakika saklasın:
+        // her yazma isteğinden önce ikinci bir tur atmasın.
+        .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
+
+// ─── KURAL-13: Host başlığı doğrulaması ───────────────────────
+// Mutlak URL üreten her yer (şifre sıfırlama bağlantısı) Host'a güvenir.
+// Joker bırakılırsa saldırgan Host: kotu.example gönderip bağlantıyı
+// kendi alan adına ürettirebilir.
+//
+// Geliştirmede uygulanmaz: yerelde 127.0.0.1, ::1, makine adı ve konteyner
+// ana bilgisayar adları serbestçe kullanılıyor; orada kısıtlamak yalnızca
+// üretimde çıkmayan hatalar üretir.
+if (!builder.Environment.IsDevelopment())
+{
+    var izinliHostlar = GuvenilirKokenler.AnaBilgisayarlar(
+        guvenilirKokenler, builder.Configuration["PublicHost"]);
+
+    builder.Services.Configure<HostFilteringOptions>(o =>
+    {
+        o.AllowedHosts = izinliHostlar;
+        o.AllowEmptyHosts = false;
+    });
+}
 
 var app = builder.Build();
 

@@ -21,6 +21,7 @@
 > | #12 CDN/SRI, #13 localStorage, güvenlik başlıkları | [KURAL-11](../guvenlik-kurallari/KURAL-11.md) |
 > | #15 englishplatform.db, unique index eksikleri | [KURAL-12](../guvenlik-kurallari/KURAL-12.md) ✅ |
 > | (test altyapısı — tüm kuralların ön koşulu) | [KURAL-01](../guvenlik-kurallari/KURAL-01.md) |
+> | #16 CORS her kökene açık, `AllowedHosts: "*"` | [KURAL-13](../guvenlik-kurallari-faz2/KURAL-13.md) ✅ (faz 2) |
 >
 > **İnsan kararı gereken işler** sade dille anlatıldı:
 > [00-BASLA-BURADAN.md → İnsan kararı gereken işler](../guvenlik-kurallari/00-BASLA-BURADAN.md)
@@ -687,11 +688,51 @@ hiç kullanılmıyor (#3 ile aynı kök neden).
 
 </details>
 
+### ✅ #16 — CORS her kökene, üstelik kimlik bilgisiyle açıktı — KAPANDI (KURAL-13, 2026-09-05)
+
+**Neydi:** `Program.cs` CORS politikası `SetIsOriginAllowed(origin => true)` +
+`AllowCredentials()` kullanıyordu. Bu, spesifikasyonun yasakladığı bileşimdir:
+`AllowAnyOrigin()` yazılsaydı ASP.NET Core çalışma zamanında **istisna fırlatırdı**;
+`SetIsOriginAllowed` aynı sonucu üretip o kontrolü **atlatıyordu**. İstek yapan kökenin
+kendisi `Access-Control-Allow-Origin`'e yansıtılıyor, `Access-Control-Allow-Credentials:
+true` ile birlikte dönüyordu.
+
+`CorsOrigins` ayarı yalnızca **testlerde** tanımlıydı; üretim kodu onu hiç okumuyordu —
+ayarın işe yaradığı yanılsaması vardı.
+
+**Neden bugüne kadar sömürülmedi:** tek engel çerezin `SameSite=Lax` ayarıydı.
+Bir güvenlik kontrolünün işini başka bir kontrolün yan etkisine bırakmak, o kontrolün
+olmaması demektir.
+
+**Ne yapıldı:**
+
+| | |
+|---|---|
+| Merkezî kaynak | `Configuration/GuvenilirKokenler.cs` — köken listesi tek yerden okunur; aynı kaynak hem CORS'u hem `AllowedHosts`'u besler |
+| CORS | `WithOrigins(guvenilirKokenler)` + `SetPreflightMaxAge(10 dk)` |
+| Fail-fast | Üretimde `CorsOrigins` tanımsızsa uygulama **başlamaz**; joker (`*`) ve `http://` köken reddedilir |
+| Host başlığı | `appsettings.json`'daki `"AllowedHosts": "*"` **silindi**; değer üretimde `HostFilteringOptions` ile kökenlerden türetilir (`PublicHost` eklenir) |
+| Kapı | `scripts/guard/13-koken.sh` — 7 kontrol |
+| Test | `KokenSozlesmesiTests` — 10 test (`Category=Koken`) |
+
+**Kanıt:** dört mutasyonun dördü de testi kırdı — joker kökeni geri getirmek,
+beyaz listeyi boşaltmak ("her şeyi reddet" de bir hatadır), joker doğrulamasını
+`if (false)` ile öldürmek, Host filtresini jokere çevirmek. Tarayıcıda da
+doğrulandı: `http://localhost:3000` kökenli kimlikli `fetch` geçiyor,
+`http://127.0.0.1:3000` kökenli aynı istek *"blocked by CORS policy"* ile engelleniyor.
+
+**Açık kalan:** Vercel önizleme dağıtımları beyaz listede değil — her PR ayrı bir
+`*.vercel.app` alt alan adı üretir ve joker **kasten** kabul edilmiyor. Önizleme
+gerekiyorsa kökenler ayrı bir ortam değişkeniyle tek tek eklenmeli.
+
+---
+
 ### 🔵 #15 — Diğer notlar
 
 | Konu | Not |
 |---|---|
 | HTTPS zorlaması | ✅ KURAL-11: üretimde `UseHsts()` + `UseHttpsRedirection()` açık, hedef port (443) **açıkça** verildi (verilmezse yönlendirme sessizce hiç çalışmaz). `UseForwardedHeaders` proxy arkasındaki sonsuz döngüyü engelliyor |
+| CORS / Host başlığı | ✅ KURAL-13: köken beyaz listesi `GuvenilirKokenler` ile tek kaynaktan; üretimde `CorsOrigins` zorunlu, joker ve `http://` reddediliyor. `AllowedHosts` artık koddan geliyor. Kapı: `13-koken.sh` |
 | Prompt injection | Kullanıcı PDF içeriği doğrudan Groq prompt'una ekleniyor. Etki sınırlı (çıktı sadece gösteriliyor) ama model yanıltılabilir |
 | PII loglama | `UserActivityLogs.Details` alanına `"Word: {kelime}"` yazılıyor — kullanıcının bilmediği kelimeler kalıcı loga düşüyor. **KURAL-12 ile 90 günlük saklama süresi geldi** (süresiz değil artık); alanın içeriği hâlâ açık borç |
 | Otomatik migrate | `Database.Migrate()` her açılışta çalışıyor; çoklu replikada yarış durumu |

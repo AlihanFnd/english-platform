@@ -196,16 +196,7 @@ public class GuvenlikBasliklariTests
 [Collection("api")]
 public class UretimGuvenlikBasliklariTests : IDisposable
 {
-    private sealed class UretimFabrikasi : TestAppFactory
-    {
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            base.ConfigureWebHost(builder);
-            builder.UseEnvironment("Production");   // base'in Development'ını EZER
-        }
-    }
-
-    private readonly UretimFabrikasi _uretim = new();
+    private readonly UretimTestFabrikasi _uretim = new();
 
     public void Dispose() => _uretim.Dispose();
 

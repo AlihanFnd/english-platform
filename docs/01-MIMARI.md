@@ -270,17 +270,46 @@ Bu sayede "kullanıcı bu kitapta toplam 14 dakika geçirdi" bilgisi tek satırd
 ## 5. Middleware sırası (`Program.cs`)
 
 ```csharp
-app.UseStaticFiles();
 app.UseRouting();
 app.UseCors();          // ← Authentication'dan ÖNCE, doğru sıra
 app.UseAuthentication();
+app.UseRateLimiter();   // ← KURAL-07: Authentication'dan SONRA olmak ZORUNDA
 app.UseAuthorization();
 app.MapControllers();
 ```
 
-`app.UseHttpsRedirection()` **yoktur** — TLS sonlandırma ters proxy'ye bırakılmıştır.
-Üretimde önünde HTTPS zorunlu kılan bir katman (nginx/Caddy/Cloudflare) olmalıdır,
-aksi halde `Secure` cookie hiç gönderilmez.
+`app.UseStaticFiles()` **yoktur** — KURAL-11'de kaldırıldı, `Views/` ve `wwwroot/`
+silindi (backend hiç statik dosya sunmaz).
+
+Üretimde `app.UseHsts()` + `app.UseHttpsRedirection()` **açıktır** (KURAL-11);
+`UseForwardedHeaders` ters proxy'nin `X-Forwarded-Proto` başlığını okur, aksi hâlde
+proxy ile uygulama arasında sonsuz yönlendirme döngüsü oluşur.
+
+### Köken (CORS) ve `Host` başlığı — KURAL-13
+
+Tarayıcıdan API'ye erişebilecek kökenler **tek bir kaynaktan** okunur:
+
+```csharp
+var guvenilirKokenler = GuvenilirKokenler.Oku(builder.Configuration, builder.Environment);
+
+builder.Services.AddCors(opt => opt.AddDefaultPolicy(policy => policy
+    .WithOrigins(guvenilirKokenler)     // joker YOK — AllowCredentials ile birleşemez
+    .AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+    .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
+```
+
+| Ayar | Anlamı |
+|---|---|
+| `CorsOrigins` | Virgülle ayrılmış tam kökenler. **Üretimde zorunlu** — tanımsızsa uygulama başlamaz |
+| `PublicHost` | API'nin kendi alan adı; `AllowedHosts`'a eklenir |
+
+Kurallar: joker (`*`) hiçbir ortamda kabul edilmez; üretimde `http://` köken kabul
+edilmez; geliştirmede `CorsOrigins` boşsa `localhost:3000` + `localhost:3001`'e düşer.
+
+`appsettings.json` içinde **`AllowedHosts` satırı yoktur** — değer aynı köken
+listesinden türetilir (`HostFilteringOptions`, yalnızca üretimde). İki kaynak
+bırakmak, birinin güncellenip diğerinin unutulmasına yol açar; unutulan taraf
+her zaman gevşek olandır. Kapı: `scripts/guard/13-koken.sh`.
 
 ## 6. Otomatik migration
 
