@@ -461,7 +461,7 @@ Her kural bitince bu tabloyu güncelle (kural oturumunun son işi budur):
 | 15 | Dağıtım kapısı | ✅ Kanıtlanarak kapandı | `47097cb` | 2026-09-06 |
 | 16 | Hesap yaşam döngüsü | ⬜ Başlamadı — Resend anahtarı bekliyor | — | — |
 | 17 | Maliyetli iş ve paylaşılan yazma | ✅ Kanıtlanarak kapandı | `770c04e` | 2026-09-06 |
-| 18 | Tedarik zinciri ve kripto sertleştirme | ⬜ Başlamadı | — | — |
+| 18 | Tedarik zinciri ve kripto sertleştirme | ✅ Kanıtlanarak kapandı | `d2b26f9` | 2026-09-06 |
 | 19 | Kişisel veri yaşam döngüsü | ⬜ Başlamadı | — | — |
 
 Durum işaretleri: ⬜ Başlamadı · 🟨 Kısmen (neyin kaldığı yazılacak) · ✅ Kanıtlanarak kapandı

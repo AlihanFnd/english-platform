@@ -31,6 +31,19 @@ n=0; [ "$faktor" -ge 12 ] 2>/dev/null || n=1
 ihlal_bildir "BCrypt iş faktörü >= 12 (mevcut: $faktor)" "$n" \
   "sabit bulunamadı ya da 12'nin altında"
 
+# 3b. Hashle() sabiti GERÇEKTEN kullanıyor mu?
+#      "Sabiti 12 yaptım, iş bitti" yanılgısı: cagriyi HashPassword(sifre)
+#      olarak birakmak kutuphane varsayilanini (11) surdurur ve sabit YALAN
+#      soyler. Kapinin okudugu metin dogru, uretilen hash yanlis olur.
+#
+#      NOT: bu kontrol metin tabanli ve tek basina zayif. Asil olcum
+#      Uretilen_hash_dogru_is_faktorunu_TASIR testinde: o test URETILEN
+#      hash'e bakiyor, sabite degil. Ikisi birlikte katmanli savunma.
+n=0
+grep -v '^[[:space:]]*//' "$MERKEZ" | grep -q 'HashPassword(sifre, IsFaktoru)' || n=1
+ihlal_bildir "Hashle() sabiti gerçekten kullanıyor" "$n" \
+  "HashPassword sabiti almıyor — kütüphane varsayılanı sessizce sürer"
+
 # 4. Kademeli yenileme girişe bağlı mı?
 #    Yorumlar ayıklanarak taranıyor: yorumdaki bir ad kapıyı kandırmasın.
 n=0
