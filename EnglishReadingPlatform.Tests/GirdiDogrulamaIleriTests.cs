@@ -232,7 +232,10 @@ public class GirdiDogrulamaIleriTests
     private async Task<(HttpClient, int, int)> QuizHazirlaAsync()
     {
         var client = await OgrenciClientAsync();
-        var quiz = await client.GetFromJsonAsync<JsonElement>("/api/books/quiz/1");
+        // KURAL-17: GET artık quiz ÜRETMİYOR; yoksa POST ile üretilir.
+        var quizYanit = await client.QuizGetirVeyaUretAsync(1);
+        quizYanit.EnsureSuccessStatusCode();
+        var quiz = await quizYanit.Content.ReadFromJsonAsync<JsonElement>();
         return (client,
                 quiz.GetProperty("id").GetInt32(),
                 quiz.GetProperty("questions").EnumerateArray().First().GetProperty("id").GetInt32());

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, use } from 'react';
 import { api, Chapter } from '../../api';
+import { useAuth } from '../../context/AuthContext';
 import { useTelaffuz, KELIME_HIZI } from '../../hooks/useTelaffuz';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -24,6 +25,10 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
 
   const [bookTitle, setBookTitle]   = useState('');
   const [loading, setLoading]       = useState(true);
+  const { user } = useAuth();
+  // KURAL-17: paylaşılan analizi ezme yetkisi öğretmen/yönetimde.
+  const yenidenAnalizEdebilir = user?.role === 'teacher' || user?.role === 'admin';
+
   const [analyzing, setAnalyzing]   = useState(false);
   const [sentences, setSentences]   = useState<AnalyzedSentence[]>([]);
   const [error, setError]           = useState('');
@@ -195,9 +200,15 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     setAnalyzing(true);
     try {
       if (hasPages) {
-        const pd = await api.readPage(bookId, currentPage, true);
-        if (pd.currentPage?.sentencesJson && pd.currentPage.sentencesJson !== "[]") {
-          setSentences(normalizeSentences(JSON.parse(pd.currentPage.sentencesJson)));
+        // KURAL-17: paylaşılan analizi yeniden üretmek ayrı bir POST ucudur
+        // ve yalnızca öğretmen/yönetici çağırabilir. BookPage global —
+        // bu çağrı BÜTÜN kullanıcıların gördüğü çeviriyi değiştirir.
+        // 'aktifSayfa' sunucunun çözdüğü GERÇEK sayfa numarasıdır;
+        // adres çubuğundaki 'currentPage' tanımsız olabilir (kaldığı yerden
+        // devam senaryosu) ya da kitabın dışına taşmış olabilir.
+        const pd = await api.reanalyzePage(bookId, aktifSayfa);
+        if (pd.sentencesJson && pd.sentencesJson !== "[]") {
+          setSentences(normalizeSentences(JSON.parse(pd.sentencesJson)));
         }
       } else if (chapter?.content) {
         const a = await api.analyzeText(chapter.content);
@@ -392,14 +403,21 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                     : `${cevrilemeyen} satır çevrilemedi — çeviri servisine ulaşılamadı.`}
                   {' '}Aşağıda o satırların İngilizcesi görünüyor.
                 </span>
-                <button
-                  className="bk-ceviri-uyari__btn"
-                  onClick={handleReanalyze}
-                  disabled={analyzing || loading}
-                >
-                  <RefreshCw size={12} className={analyzing ? 'bk-spin-ikon' : undefined} />
-                  {analyzing ? 'Deneniyor...' : 'Yeniden dene'}
-                </button>
+                {/* KURAL-17: sayfa modunda bu buton PAYLAŞILAN analizi ezer —
+                    yalnızca öğretmen/yönetici görür. Bölüm modunda kalıcı bir
+                    etkisi yok, herkese açık. Butonu gizlemek TEK BAŞINA yetmez;
+                    asıl kontrol backend'de ([Authorize(Policy=…)]) — burası
+                    yalnızca kullanıcıya 403 gösterilmemesi için. */}
+                {(!hasPages || yenidenAnalizEdebilir) && (
+                  <button
+                    className="bk-ceviri-uyari__btn"
+                    onClick={handleReanalyze}
+                    disabled={analyzing || loading}
+                  >
+                    <RefreshCw size={12} className={analyzing ? 'bk-spin-ikon' : undefined} />
+                    {analyzing ? 'Deneniyor...' : 'Yeniden dene'}
+                  </button>
+                )}
               </div>
             )}
 

@@ -48,10 +48,15 @@ public class OkumaDevamTests
         return kitap.Id;
     }
 
+    /// <summary>
+    /// KURAL-17: okuma artık İKİ adım — salt okunur GET, sonra ilerlemeyi
+    /// kaydeden POST. Bu testlerin ÖLÇTÜĞÜ şey (kaldığı yerden devam, kırpma,
+    /// kullanıcıya özellik, tek satır) değişmedi; yalnızca ilerlemenin nasıl
+    /// yazıldığı değişti. Yardımcı, istemcinin yaptığı sırayı taklit eder.
+    /// </summary>
     private static async Task<SayfaYaniti> SayfaOkuAsync(HttpClient c, int kitapId, int? sayfa = null)
     {
-        var yol = sayfa is null ? $"/api/books/{kitapId}/read" : $"/api/books/{kitapId}/read?page={sayfa}";
-        var yanit = await c.GetAsync(yol);
+        var yanit = await c.SayfaOkuVeKaydetAsync(kitapId, sayfa);
         yanit.EnsureSuccessStatusCode();
         return (await yanit.Content.ReadFromJsonAsync<SayfaYaniti>())!;
     }

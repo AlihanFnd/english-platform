@@ -332,12 +332,15 @@ export const api = {
   login: (email: string, password: string) =>
     istek<{ token: string; user: User }>('/auth/login', 'POST', { email, password }),
 
-  register: (username: string, email: string, password: string, role: string) =>
+  /**
+   * KURAL-17: rol GÖNDERİLMEZ. Kayıt her zaman "student" üretir; öğretmenliği
+   * yalnızca bir yönetici verir (PUT /api/admin/users/{id}/role).
+   */
+  register: (username: string, email: string, password: string) =>
     istek<{ token: string; user: User }>('/auth/register', 'POST', {
       username,
       email,
       password,
-      role,
     }),
 
   me: () => istek<{ user: User }>('/auth/me'),
@@ -352,26 +355,64 @@ export const api = {
       book: Book & { chapters: Array<{ id: number; chapterNumber: number; title: string }> };
     }>(`/books/${id}`),
 
+  /**
+   * KURAL-17: okuma ucu artık SALT OKUNUR — ilerleme yazmaz, LLM çağırmaz.
+   * Sözleşme değişikliği bu katmanda soğurulur; ekran kodu aynı kalır.
+   */
+  saveProgress: (bookId: number, konum: number) =>
+    istek<{ success: boolean }>(`/books/${bookId}/progress`, 'POST', { bookId, konum }),
+
   /** `chapter` verilmezse sunucu KALDIĞI YERDEN devam ettirir. */
-  readChapter: (id: number, chapter?: number, reanalyze = false) =>
-    istek<{
+  readChapter: async (id: number, chapter?: number) => {
+    const d = await istek<{
       bookId: number;
       bookTitle: string;
       currentChapter: Chapter;
       totalChapters: number;
       chapterNumber: number;
-    }>(`/books/${id}/read?${chapter ? `chapter=${chapter}&` : ''}${reanalyze ? 'reanalyze=true' : ''}`),
+    }>(`/books/${id}/read${chapter ? `?chapter=${chapter}` : ''}`);
+
+    // Beklenmiyor: sayfanın görünmesi ilerleme kaydına takılmamalı.
+    void api.saveProgress(id, d.chapterNumber).catch(() => {});
+    return d;
+  },
 
   /** `page` verilmezse sunucu KALDIĞI YERDEN devam ettirir. */
-  readPage: (id: number, page?: number, reanalyze = false) =>
-    istek<{
+  readPage: async (id: number, page?: number) => {
+    const d = await istek<{
       bookId: number;
       bookTitle: string;
       hasPages: boolean;
       currentPage: { id: number; pageNumber: number; content: string; sentencesJson: string };
       totalPages: number;
       pageNumber: number;
-    }>(`/books/${id}/read?${page ? `page=${page}&` : ''}${reanalyze ? 'reanalyze=true' : ''}`),
+      analizBekliyor: boolean;
+    }>(`/books/${id}/read${page ? `?page=${page}` : ''}`);
+
+    void api.saveProgress(id, d.pageNumber).catch(() => {});
+
+    // KURAL-17: analiz okuma ucunda ÜRETİLMİYOR. Boşsa, yalnızca BOŞ alanı
+    // dolduran uç çağrılır — kimsenin gördüğü analizi bozamaz.
+    if (d.analizBekliyor) {
+      try {
+        const a = await istek<{ sentencesJson: string }>(
+          `/books/${id}/analyze-page?page=${d.pageNumber}`, 'POST');
+        return { ...d, currentPage: { ...d.currentPage, sentencesJson: a.sentencesJson } };
+      } catch {
+        return d;
+      }
+    }
+
+    return d;
+  },
+
+  /**
+   * KURAL-17: PAYLAŞILAN analizi yeniden üretir — yalnızca öğretmen/yönetici.
+   * BookPage global; bu çağrı BÜTÜN kullanıcıların gördüğü çeviriyi değiştirir.
+   */
+  reanalyzePage: (id: number, page: number) =>
+    istek<{ success: boolean; sentencesJson: string }>(
+      `/books/${id}/reanalyze?page=${page}`, 'POST'),
 
   addWord: (word: string, translation: string, context: string) =>
     istek<{ success: boolean }>('/books/addword', 'POST', { word, translation, context }),
@@ -390,7 +431,17 @@ export const api = {
   updateWord: (id: number, word: string, translation: string, context: string) =>
     istek<{ success: boolean }>(`/books/words/${id}`, 'PUT', { word, translation, context }),
 
-  getQuiz: (chapterId: number) => istek<Quiz>(`/books/quiz/${chapterId}`),
+  /**
+   * KURAL-17: GET artık quiz ÜRETMİYOR; yoksa POST ile üretilir.
+   * Sözleşme değişikliği ekran kodundan gizleniyor.
+   */
+  getQuiz: async (chapterId: number) => {
+    try {
+      return await istek<Quiz>(`/books/quiz/${chapterId}`);
+    } catch {
+      return await istek<Quiz>(`/books/quiz/${chapterId}`, 'POST');
+    }
+  },
 
   submitQuiz: (quizId: number, answers: Record<number, string>) =>
     istek<{

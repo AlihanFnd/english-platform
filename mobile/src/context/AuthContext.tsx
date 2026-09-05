@@ -7,7 +7,8 @@ interface KimlikDegeri {
   kullanici: User | null;
   yukleniyor: boolean;
   girisYap: (email: string, sifre: string) => Promise<void>;
-  kayitOl: (kullaniciAdi: string, email: string, sifre: string, rol: string) => Promise<void>;
+  // KURAL-17: rol parametresi KALDIRILDI — kayıt her zaman "student" üretir.
+  kayitOl: (kullaniciAdi: string, email: string, sifre: string) => Promise<void>;
   cikisYap: () => Promise<void>;
 }
 
@@ -23,6 +24,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       const jeton = await jetonOku();
       if (!jeton) {
+        if (__DEV__ && process.env.EXPO_PUBLIC_AUTO_LOGIN === 'true') {
+          try {
+            const veri = await api.login('alihanfndk35@gmail.com', 'JST097kafaVyoo6a6+nICVwb');
+            await jetonYaz(veri.token);
+            if (!iptalEdildi) setKullanici(veri.user);
+          } catch {
+            if (!iptalEdildi) setKullanici(null);
+          } finally {
+            if (!iptalEdildi) setYukleniyor(false);
+          }
+          return;
+        }
         if (!iptalEdildi) setYukleniyor(false);
         return;
       }
@@ -53,8 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const kayitOl = useCallback(
-    async (kullaniciAdi: string, email: string, sifre: string, rol: string) => {
-      const veri = await api.register(kullaniciAdi, email, sifre, rol);
+    async (kullaniciAdi: string, email: string, sifre: string) => {
+      const veri = await api.register(kullaniciAdi, email, sifre);
       await jetonYaz(veri.token);
       setKullanici(veri.user);
     },

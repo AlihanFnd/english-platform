@@ -18,6 +18,9 @@
 | [`/books`](#get-books) | GET | Token |
 | [`/books/{id}`](#get-booksid) | GET | Token |
 | [`/books/{id}/read`](#get-booksidread) | GET | Token |
+| [`/books/{id}/progress`](#post-booksidprogress) | POST | Token |
+| [`/books/{id}/analyze-page`](#post-booksidanalyze-page) | POST | Token |
+| [`/books/{id}/reanalyze`](#post-booksidreanalyze) | POST | **Öğretmen/Admin** |
 | [`/books/addword`](#post-booksaddword) | POST | Token |
 | [`/books/words`](#get-bookswords) | GET | Token |
 | [`/books/words/{id}`](#put-bookswordsid) | PUT / DELETE | Token + sahiplik |
@@ -252,7 +255,12 @@ Açık uç. Hız sınırı: `kimlik-dogrulama` politikası, IP başına 10/dk.
 |---|---|
 | Eksik alan | 400 |
 | Şifre < 6 | 400 |
-| Email/username kullanımda | 400 `"Bu email veya kullanıcı adı zaten kullanımda."` ⚠️ enumerasyon |
+| Email/username kullanımda | 400 `"Bu bilgilerle kayıt oluşturulamadı..."` (KURAL-09: enumerasyon kapandı) |
+
+> 🔒 **KURAL-17: `role` alanı artık KABUL EDİLMİYOR.** Gönderilse bile yok
+> sayılır; her kayıt `student` üretir. Öğretmenliği yalnızca bir yönetici verir:
+> `PUT /api/admin/users/{id}/role`. Eskiden istemci kendi rolünü seçebiliyordu
+> ve bu, öğretmen yetkisine bağlı her kontrolü göstermelik yapıyordu.
 
 ---
 
@@ -277,6 +285,69 @@ Token'daki `NameIdentifier` claim'inden kullanıcıyı çeker.
 
 > Not: Bu uçta `[Authorize]` özniteliği **yok**; kontrol elle yapılıyor
 > (`User.FindFirst(...) == null → 401`). Sonuç aynı ama tutarsız.
+
+---
+
+## KURAL-17 — okuma akışı üç uca ayrıldı
+
+Okuma ucu eskiden ÜÇ iş birden yapıyordu ve üçü de bir `GET`'in içindeydi:
+ilerleme yazıyor, `reanalyze=true` ile LLM çağırıyor, analiz boşsa **paylaşılan**
+satıra yazıyordu. Çerez `SameSite=Lax` olduğu için üst düzey bir gezinme bunları
+kurbanın hesabından tetikleyebiliyordu.
+
+| Eski | Yeni |
+|---|---|
+| `GET /books/{id}/read` ilerleme yazardı | `POST /books/{id}/progress` |
+| `GET /books/{id}/read?reanalyze=true` | `POST /books/{id}/reanalyze` (öğretmen/admin) |
+| `GET /books/{id}/read` boş analizi doldururdu | `POST /books/{id}/analyze-page` |
+| `GET /books/quiz/{id}` quiz üretirdi | `POST /books/quiz/{id}` |
+
+> İstemcilerde bu değişiklik `api.ts` katmanında soğuruldu: ekran kodu hâlâ tek
+> `readPage()` çağırıyor, ikinci istekleri sarmalayıcı yapıyor.
+
+---
+
+### `POST /books/{id}/progress`
+
+Okuma ilerlemesini kaydeder. Hız sınırı: `yazma`.
+
+**İstek** `{ "bookId": 1, "konum": 7 }` — `konum` sayfa modunda sayfa, bölüm modunda bölüm.
+
+**200** `{ "success": true, "konum": 7, "yuzde": 70.0 }`
+
+> Yüzde **istemciden alınmaz**, sunucuda hesaplanır; kitabın dışına taşan
+> `konum` kırpılır.
+
+---
+
+### `POST /books/{id}/analyze-page`
+
+Sayfanın analizi **boşsa** üretir. `?page=N`. Hız sınırı: `agir-analiz` (dakikada 20).
+Herhangi bir giriş yapmış kullanıcı çağırabilir.
+
+**200** `{ "success": true, "sentencesJson": "...", "uretildi": true|false }`
+**502** analiz üretilemedi (mevcut veri **değiştirilmez**)
+
+> 🔒 Bu uç **yalnızca boş alanı doldurur**, doluyu asla değiştirmez — bu yüzden
+> rol kısıtı yok: bir öğrencinin başkalarının gördüğü analizi bozması mümkün
+> değil. Dolu bir sayfada dış servise **hiç gidilmez** (maliyet savunması).
+
+---
+
+### `POST /books/{id}/reanalyze`
+
+Sayfanın analizini **yeniden üretir ve üzerine yazar**. `?page=N`.
+**Yetki: `teacher` veya `admin`.** Hız sınırı: `agir-analiz`.
+
+**200** `{ "success": true, "sentencesJson": "..." }`
+**403** öğrenci · **502** analiz üretilemedi
+
+> 🔴 `BookPage` **globaldir** — `UserId` taşımaz. Bu uç **bütün kullanıcıların
+> gördüğü** çeviriyi değiştirir. Eskiden aynı iş `GET .../read?reanalyze=true`
+> ile, üç kat gevşek "okuma" kotasında ve **yetki kontrolsüz** yapılıyordu.
+>
+> Boş sonuç mevcut analizi **ezmez**: başarısız bir LLM çağrısı herkesin
+> okuduğu içeriği silmemeli — 502 döner.
 
 ---
 

@@ -98,10 +98,11 @@ namespace EnglishReadingPlatform.Controllers
                 ErrorMessage = "Şifre {2}-{1} karakter olmalıdır.")]
             public string Password { get; set; } = "";
 
-            // KayitRolleri whitelist'inde "admin" YOK: kendine admin rolü
-            // yazdırma denemesi sessizce "student"a düşmek yerine 400 alır.
-            [IzinliDeger(nameof(IzinliDegerler.KayitRolleri))]
-            public string Role { get; set; } = "student";
+            // KURAL-17: 'Role' alanı KALDIRILDI. Eskiden istemci kendi rolünü
+            // seçiyordu; bir whitelist "admin"i engelliyordu ama "teacher"ı
+            // serbest bırakıyordu. Rolü artık yalnızca yönetici atar.
+            // Eski istemciler bu alanı göndermeye devam ederse sessizce yok
+            // sayılır — [ApiController] bilinmeyen alanları reddetmez.
         }
 
         // POST /api/auth/login
@@ -196,7 +197,15 @@ namespace EnglishReadingPlatform.Controllers
                 Username = req.Username.KirpEnCok(AlanSinirlari.KullaniciAdi),
                 Email = req.Email.KirpEnCok(AlanSinirlari.Eposta).ToLower(),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-                Role = req.Role == "teacher" ? "teacher" : "student",
+                // ── KURAL-17: rol İSTEMCİDEN ALINMAZ. ──
+                // Kayıt her zaman "student" üretir. Öğretmenliği yalnızca bir
+                // yönetici verir: PUT /api/admin/users/{id}/role
+                //
+                // Neden: bu kural 'EgitmenVeyaAdmin' politikasını ilk kez gerçek
+                // bir uca (POST books/{id}/reanalyze) bağlıyor. Rol kayıtta
+                // seçilebilir kalsaydı, yetki göstermelik olurdu — bir öğrenci
+                // kayıt olurken "Öğretmen"e basıp paylaşılan analizi ezebilirdi.
+                Role = "student",
                 CreatedAt = DateTime.UtcNow
             };
 

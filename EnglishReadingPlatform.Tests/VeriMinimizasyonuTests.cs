@@ -24,10 +24,9 @@ public class VeriMinimizasyonuTests
         var (sahipClient, uyeClient, grupId, atanan, atanmayan) = await SinifKurAsync();
 
         // Üye İKİ kitabı da okusun: biri gruba atanacak, diğeri kişisel okuma.
-        (await uyeClient.GetAsync($"/api/books/{atanan.Id}/read?chapter=1"))
-            .EnsureSuccessStatusCode();
-        (await uyeClient.GetAsync($"/api/books/{atanmayan.Id}/read?chapter=1"))
-            .EnsureSuccessStatusCode();
+        // KURAL-17: ilerleme artık okuma ucunda değil, ayrı POST'ta yazılıyor.
+        (await uyeClient.BolumOkuVeKaydetAsync(atanan.Id, 1)).EnsureSuccessStatusCode();
+        (await uyeClient.BolumOkuVeKaydetAsync(atanmayan.Id, 1)).EnsureSuccessStatusCode();
 
         // Gruba YALNIZCA bir kitap atansın.
         (await sahipClient.PostAsJsonAsync("/api/groups/assignbook",
@@ -269,7 +268,11 @@ public class VeriMinimizasyonuTests
         kitap!.Chapters.Should().NotBeEmpty();
         var bolumId = kitap.Chapters[0].Id;
 
-        var quiz = await client.GetFromJsonAsync<QuizDto>($"/api/books/quiz/{bolumId}");
+        // KURAL-17: GET artık quiz ÜRETMİYOR (yazma işlemi GET'te olmaz).
+        // Yardımcı, istemcinin yaptığını yapar: yoksa POST ile üret.
+        var quizYanit = await client.QuizGetirVeyaUretAsync(bolumId);
+        quizYanit.EnsureSuccessStatusCode();
+        var quiz = await quizYanit.Content.ReadFromJsonAsync<QuizDto>(Secenekler);
         var gonder = await client.PostAsJsonAsync("/api/books/submitquiz",
             new { quizId = quiz!.Id, answers = new Dictionary<int, string>() });
         gonder.EnsureSuccessStatusCode();

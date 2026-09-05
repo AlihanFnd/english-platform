@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CumleGorunumu } from '@/components/CumleGorunumu';
 import { KelimePaneli, KelimeSecimi } from '@/components/KelimePaneli';
 import { Buton, EkranZemini, HataKutusu, Kart, Metin, Yukleniyor } from '@/components/ui';
+import { useKimlik } from '@/context/AuthContext';
 import { useRenk } from '@/context/ThemeContext';
 import { Chapter, api } from '@/lib/api';
 import { OkumaCumlesi, cumleleriDuzenle } from '@/lib/cumleler';
@@ -34,13 +35,18 @@ const YAZI_EN_BUYUK = 26;
 export default function OkuyucuEkrani() {
   const palet = useRenk();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, kelime, ekle } = useLocalSearchParams<{ id: string; kelime?: string; ekle?: string }>();
   const kitapId = Number(id);
 
   const [konum, setKonum] = useState<Konum>(undefined);
 
   const [kitapAdi, setKitapAdi] = useState('');
   const [yukleniyor, setYukleniyor] = useState(true);
+  const { kullanici } = useKimlik();
+  // KURAL-17: paylaşılan analizi ezme yetkisi öğretmen/yönetimde.
+  const yenidenAnalizEdebilir =
+    kullanici?.role === 'teacher' || kullanici?.role === 'admin';
+
   const [analizEdiliyor, setAnalizEdiliyor] = useState(false);
   const [cumleler, setCumleler] = useState<OkumaCumlesi[]>([]);
   const [hata, setHata] = useState('');
@@ -125,14 +131,35 @@ export default function OkuyucuEkrani() {
     yukle();
   }, [yukle]);
 
+  useEffect(() => {
+    if (kelime && cumleler.length > 0 && !secim) {
+      const bulunan = cumleler.find((c) =>
+        c.words.some((w) => w.word.toLowerCase().replace(/[^a-z]/g, '') === kelime.toLowerCase()),
+      );
+      if (bulunan) {
+        const w = bulunan.words.find(
+          (x) => x.word.toLowerCase().replace(/[^a-z]/g, '') === kelime.toLowerCase(),
+        );
+        setSecim({
+          kelime: w?.word ?? kelime,
+          cumle: bulunan.original,
+          tur: w?.type ?? 'sıfat',
+        });
+      }
+    }
+  }, [kelime, cumleler, secim]);
+
   const yenidenAnalizEt = async () => {
     if (analizEdiliyor || yukleniyor) return;
     setAnalizEdiliyor(true);
     try {
       if (sayfaliMi) {
-        const veri = await api.readPage(kitapId, aktifSayfa, true);
-        if (veri.currentPage?.sentencesJson && veri.currentPage.sentencesJson !== '[]') {
-          setCumleler(cumleleriDuzenle(JSON.parse(veri.currentPage.sentencesJson)));
+        // KURAL-17: paylaşılan analizi yeniden üretmek ayrı bir POST ucudur
+        // ve yalnızca öğretmen/yönetici çağırabilir. BookPage global —
+        // bu çağrı BÜTÜN kullanıcıların gördüğü çeviriyi değiştirir.
+        const veri = await api.reanalyzePage(kitapId, aktifSayfa);
+        if (veri.sentencesJson && veri.sentencesJson !== '[]') {
+          setCumleler(cumleleriDuzenle(JSON.parse(veri.sentencesJson)));
         }
       } else if (bolum?.content) {
         const analiz = await api.analyzeText(bolum.content);
@@ -307,10 +334,13 @@ export default function OkuyucuEkrani() {
               </Metin>
             </Kart>
           ) : (
+            /* KURAL-17: sayfa modunda "yeniden dene" PAYLAŞILAN analizi ezer —
+               buton yalnızca öğretmen/yöneticiye verilir. Gizlemek TEK BAŞINA
+               yetmez; asıl kontrol backend'de ([Authorize(Policy=…)]). */
             <CumleGorunumu
               cumleler={cumleler}
               kelimeSecildi={setSecim}
-              yenidenDene={yenidenAnalizEt}
+              yenidenDene={!sayfaliMi || yenidenAnalizEdebilir ? yenidenAnalizEt : undefined}
               yenileniyor={analizEdiliyor}
               yaziBoyutu={yaziBoyutu}
             />
@@ -402,7 +432,7 @@ export default function OkuyucuEkrani() {
           </Pressable>
         </View>
 
-        <KelimePaneli secim={secim} kapat={() => setSecim(null)} />
+        <KelimePaneli secim={secim} kapat={() => setSecim(null)} otoEkle={ekle === 'true'} />
       </SafeAreaView>
     </EkranZemini>
   );

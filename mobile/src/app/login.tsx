@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { BookOpen, GraduationCap, Lock, Mail, User as UserIcon } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -24,11 +24,16 @@ export default function GirisEkrani() {
 
   const [girisModu, setGirisModu] = useState(true);
   const [kullaniciAdi, setKullaniciAdi] = useState('');
-  const [eposta, setEposta] = useState('');
-  const [sifre, setSifre] = useState('');
-  const [rol, setRol] = useState('student');
+  const [eposta, setEposta] = useState(__DEV__ ? 'alihanfndk35@gmail.com' : '');
+  const [sifre, setSifre] = useState(__DEV__ ? 'JST097kafaVyoo6a6+nICVwb' : '');
   const [hata, setHata] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
+
+  useEffect(() => {
+    if (__DEV__ && process.env.EXPO_PUBLIC_AUTO_LOGIN === 'true') {
+      gonder();
+    }
+  }, []);
 
   const gonder = async () => {
     setHata('');
@@ -37,7 +42,7 @@ export default function GirisEkrani() {
       if (girisModu) {
         await girisYap(eposta.trim(), sifre);
       } else {
-        await kayitOl(kullaniciAdi.trim(), eposta.trim(), sifre, rol);
+        await kayitOl(kullaniciAdi.trim(), eposta.trim(), sifre);
       }
       // Başarılıysa yönlendirmeyi useKorumaliYonlendirme yapar.
     } catch (e) {
@@ -223,51 +228,17 @@ export default function GirisEkrani() {
                   </View>
                 </View>
 
+                {/* KURAL-17: rol seçimi KALDIRILDI. Herkes öğrenci olarak
+                    kaydolur; öğretmen yetkisini yalnızca bir yönetici verir.
+                    Seçilebilir kalsaydı öğretmene bağlı her kontrol (ör.
+                    paylaşılan analizi yeniden üretme) göstermelik olurdu. */}
                 {!girisModu && (
-                  <View style={{ gap: Bosluk.sm }}>
-                    <Metin tur="etiket" ikincil>
-                      Rol Seçimi
+                  <View style={{ flexDirection: 'row', gap: Bosluk.sm, alignItems: 'flex-start' }}>
+                    <GraduationCap size={16} color={palet.onSurfaceVariant} />
+                    <Metin tur="kucuk" ikincil style={{ flex: 1 }}>
+                      Öğretmen hesabı mı gerekiyor? Önce öğrenci olarak kaydol,
+                      sonra yöneticiden hesabını öğretmene yükseltmesini iste.
                     </Metin>
-                    <View style={{ flexDirection: 'row', gap: Bosluk.sm }}>
-                      {[
-                        { id: 'student', ad: 'Öğrenci', Simge: UserIcon },
-                        { id: 'teacher', ad: 'Öğretmen', Simge: GraduationCap },
-                      ].map(({ id, ad, Simge }) => {
-                        const secili = rol === id;
-                        return (
-                          <Pressable
-                            key={id}
-                            onPress={() => setRol(id)}
-                            style={{
-                              flex: 1,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: Bosluk.sm,
-                              paddingVertical: Bosluk.md,
-                              borderRadius: Yaricap.lg,
-                              borderWidth: 1,
-                              borderColor: secili ? palet.primary : palet.outlineVariant,
-                              backgroundColor: secili
-                                ? alpha(palet.primary, 0.12)
-                                : palet.surfaceContainer,
-                            }}
-                          >
-                            <Simge
-                              size={16}
-                              color={secili ? palet.primary : palet.onSurfaceVariant}
-                            />
-                            <Metin
-                              tur="kucuk"
-                              kalin
-                              renk={secili ? palet.primary : palet.onSurfaceVariant}
-                            >
-                              {ad}
-                            </Metin>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
                   </View>
                 )}
 

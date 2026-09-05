@@ -15,7 +15,6 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('student');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -43,7 +42,7 @@ export default function LoginPage() {
       if (isLogin) {
         await login(email, password);
       } else {
-        await register(username, email, password, role);
+        await register(username, email, password);
       }
     } catch (err: any) {
       setError(err.message || 'Bir hata oluştu. Lütfen tekrar deneyin.');
@@ -132,35 +131,15 @@ export default function LoginPage() {
             </div>
 
             {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Rol Seçimi</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setRole('student')}
-                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
-                      role === 'student'
-                        ? 'bg-violet-600/20 border-violet-500 text-white'
-                        : 'border-white/5 hover:bg-white/5 text-slate-400'
-                    }`}
-                  >
-                    <User className="h-4 w-4" />
-                    Öğrenci
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRole('teacher')}
-                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold transition-all ${
-                      role === 'teacher'
-                        ? 'bg-violet-600/20 border-violet-500 text-white'
-                        : 'border-white/5 hover:bg-white/5 text-slate-400'
-                    }`}
-                  >
-                    <GraduationCap className="h-4 w-4" />
-                    Öğretmen
-                  </button>
-                </div>
-              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {/* KURAL-17: rol seçimi KALDIRILDI. Herkes öğrenci olarak
+                    kaydolur; öğretmen yetkisini yalnızca bir yönetici verir.
+                    Seçilebilir kalsaydı, öğretmene bağlı her kontrol (ör.
+                    paylaşılan analizi yeniden üretme) göstermelik olurdu. */}
+                <GraduationCap className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />
+                Öğretmen hesabı mı gerekiyor? Önce öğrenci olarak kaydol,
+                sonra yöneticiden hesabını öğretmene yükseltmesini iste.
+              </p>
             )}
 
             <div>

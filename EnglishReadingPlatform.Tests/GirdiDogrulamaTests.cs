@@ -293,10 +293,24 @@ public class GirdiDogrulamaTests
         yanit.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    /// <summary>Kayıt whitelist'inde "admin" YOK — sessizce student'a düşmek yerine 400.</summary>
-    [Fact]
+    /// <summary>
+    /// KURAL-17: kayıt artık HİÇBİR rol kabul etmiyor.
+    ///
+    /// Eski hâli "admin istenirse 400" diyordu ama "teacher" serbestti —
+    /// ve bu kural 'EgitmenVeyaAdmin' politikasını ilk kez gerçek bir uca
+    /// bağladığı için o serbestlik yetkiyi göstermelik yapardı.
+    ///
+    /// Test artık DAHA GÜÇLÜ bir garantiyi ölçüyor: istemci ne gönderirse
+    /// göndersin, oluşan hesap "student" olur. İddia hesabın GERÇEK rolüne
+    /// bakıyor — durum koduna değil; sessizce yok saymak ile reddetmek
+    /// arasındaki fark, güvenlik açısından önemsizdir ama davranış farkı
+    /// testin ölçtüğü şeyi değiştirmemeli.
+    /// </summary>
+    [Theory]
     [Trait("Category", "GirdiDogrulama")]
-    public async Task Kayitta_admin_rolu_istenemez()
+    [InlineData("admin")]
+    [InlineData("teacher")]
+    public async Task Kayitta_YUKSEK_yetkili_rol_ALINAMAZ(string istenenRol)
     {
         var client = _fabrika.CreateClient();
         var yanit = await client.PostAsJsonAsync("/api/auth/register", new
@@ -304,10 +318,16 @@ public class GirdiDogrulamaTests
             username = "yetki_" + Guid.NewGuid().ToString("N")[..6],
             email = $"yetki_{Guid.NewGuid():N}@test.local",
             password = "GucluSifre123!",
-            role = "admin"
+            role = istenenRol
         });
 
-        yanit.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        yanit.EnsureSuccessStatusCode();
+        var govde = await yanit.Content.ReadFromJsonAsync<JsonElement>();
+
+        govde.GetProperty("user").GetProperty("role").GetString()
+            .Should().Be("student",
+                "kayıt hiçbir rol kabul etmemeli — öğretmenliği yalnızca " +
+                "bir yönetici verir (PUT /api/admin/users/{id}/role)");
     }
 
     // ── İstemci sözleşmesi ──────────────────────────────────────────────
@@ -368,8 +388,13 @@ public class GirdiDogrulamaTests
     {
         var client = await OgrenciClientAsync();
 
-        await client.GetAsync("/api/books/1/read?chapter=1");          // meşru okuma
-        await client.GetAsync("/api/books/1/read?chapter=-999999");    // saldırı
+        // KURAL-17: ilerleme artık ayrı POST'ta yazılıyor. Saldırı yolu da
+        // yeni uca yöneltiliyor — test, "bozuk girdi ilerlemeyi bozamaz"
+        // iddiasını AYNEN ölçmeye devam ediyor.
+        await client.BolumOkuVeKaydetAsync(1, 1);                       // meşru okuma
+        await client.GetAsync("/api/books/1/read?chapter=-999999");     // saldırı (okuma)
+        await client.PostAsJsonAsync("/api/books/1/progress",
+            new { bookId = 1, konum = -999999 });                       // saldırı (yazma)
 
         var panel = await client.GetFromJsonAsync<JsonElement>("/api/dashboard/stats");
         var ilerleme = panel.GetProperty("recentProgress").EnumerateArray().First();

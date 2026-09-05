@@ -177,8 +177,13 @@ export const api = {
   login: (email: string, password: string) => 
     apiRequest<{ token: string; user: User }>('/auth/login', 'POST', { email, password }),
   
-  register: (username: string, email: string, password: string, role: string) =>
-    apiRequest<{ token: string; user: User }>('/auth/register', 'POST', { username, email, password, role }),
+  /**
+   * KURAL-17: rol GÖNDERİLMEZ. Kayıt her zaman "student" üretir; öğretmenliği
+   * yalnızca bir yönetici verir. Eskiden istemci kendi rolünü seçiyordu ve bu,
+   * öğretmen yetkisine bağlı her kontrolü göstermelik yapıyordu.
+   */
+  register: (username: string, email: string, password: string) =>
+    apiRequest<{ token: string; user: User }>('/auth/register', 'POST', { username, email, password }),
   
   me: () => 
     apiRequest<{ user: User }>('/auth/me', 'GET'),
@@ -193,19 +198,35 @@ export const api = {
   getBook: (id: number) => 
     apiRequest<{ book: Book & { chapters: Array<{ id: number; chapterNumber: number; title: string }> } }>(`/books/${id}`),
   
+  /**
+   * KURAL-17: okuma ucu artık SALT OKUNUR — ilerleme yazmaz, LLM çağırmaz.
+   * Sözleşme değişikliği bu katmanda soğurulur: ekran kodu eskisi gibi tek
+   * çağrı yapar, ilerleme kaydını sarmalayıcı üstlenir.
+   *
+   * İlerleme POST'u BEKLENMİYOR (fire-and-forget): sayfanın görünmesi, kaydın
+   * yazılmasını beklememeli. Başarısız olursa kullanıcı sayfayı yine de görür;
+   * kaybedilen şey yalnızca "kaldığın yer" işaretidir.
+   */
+  saveProgress: (bookId: number, konum: number) =>
+    apiRequest<{ success: boolean }>(`/books/${bookId}/progress`, 'POST', { bookId, konum }),
+
   /** `chapter` verilmezse sunucu KALDIĞI YERDEN devam ettirir. */
-  readChapter: (id: number, chapter?: number, reanalyze: boolean = false) =>
-    apiRequest<{
+  readChapter: async (id: number, chapter?: number) => {
+    const d = await apiRequest<{
       bookId: number;
       bookTitle: string;
       currentChapter: Chapter;
       totalChapters: number;
       chapterNumber: number;
-    }>(`/books/${id}/read?${chapter ? `chapter=${chapter}&` : ''}${reanalyze ? 'reanalyze=true' : ''}`),
-  
+    }>(`/books/${id}/read${chapter ? `?chapter=${chapter}` : ''}`);
+
+    void api.saveProgress(id, d.chapterNumber).catch(() => {});
+    return d;
+  },
+
   /** `page` verilmezse sunucu KALDIĞI YERDEN devam ettirir. */
-  readPage: (id: number, page?: number, reanalyze: boolean = false) =>
-    apiRequest<{
+  readPage: async (id: number, page?: number) => {
+    const d = await apiRequest<{
       bookId: number;
       bookTitle: string;
       hasPages: boolean;
@@ -217,7 +238,36 @@ export const api = {
       };
       totalPages: number;
       pageNumber: number;
-    }>(`/books/${id}/read?${page ? `page=${page}&` : ''}${reanalyze ? 'reanalyze=true' : ''}`),
+      analizBekliyor: boolean;
+    }>(`/books/${id}/read${page ? `?page=${page}` : ''}`);
+
+    void api.saveProgress(id, d.pageNumber).catch(() => {});
+
+    // KURAL-17: analiz artık okuma ucunda ÜRETİLMİYOR. Sayfa hiç analiz
+    // edilmemişse boşluğu dolduran uç çağrılır — bu uç yalnızca BOŞ alanı
+    // doldurur, kimsenin gördüğü analizi bozamaz.
+    if (d.analizBekliyor) {
+      try {
+        const a = await apiRequest<{ sentencesJson: string }>(
+          `/books/${id}/analyze-page?page=${d.pageNumber}`, 'POST');
+        return { ...d, currentPage: { ...d.currentPage, sentencesJson: a.sentencesJson } };
+      } catch {
+        // Analiz üretilemedi: sayfa metniyle gösterilir, çeviri paneli boş kalır.
+        return d;
+      }
+    }
+
+    return d;
+  },
+
+  /**
+   * KURAL-17: PAYLAŞILAN analizi yeniden üretir — yalnızca öğretmen/yönetici.
+   * BookPage global olduğu için bu çağrı BÜTÜN kullanıcıların gördüğü
+   * çeviriyi değiştirir; en dar kotaya (dakikada 20) bağlıdır.
+   */
+  reanalyzePage: (id: number, page: number) =>
+    apiRequest<{ success: boolean; sentencesJson: string }>(
+      `/books/${id}/reanalyze?page=${page}`, 'POST'),
   
   addWord: (word: string, translation: string, context: string) =>
     apiRequest<{ success: boolean }>('/books/addword', 'POST', { word, translation, context }),
@@ -246,8 +296,18 @@ export const api = {
   updateWord: (id: number, word: string, translation: string, context: string) =>
     apiRequest<{ success: boolean }>(`/books/words/${id}`, 'PUT', { word, translation, context }),
   
-  getQuiz: (chapterId: number) => 
-    apiRequest<Quiz>(`/books/quiz/${chapterId}`),
+  /**
+   * KURAL-17: GET artık quiz ÜRETMİYOR (üretmek bir yazma işlemidir ve
+   * GET, üst düzey gezinmeyle tetiklenebilir). Yoksa POST ile üretilir —
+   * sözleşme değişikliği ekran kodundan gizleniyor.
+   */
+  getQuiz: async (chapterId: number) => {
+    try {
+      return await apiRequest<Quiz>(`/books/quiz/${chapterId}`);
+    } catch {
+      return await apiRequest<Quiz>(`/books/quiz/${chapterId}`, 'POST');
+    }
+  },
   
   submitQuiz: (quizId: number, answers: Record<number, string>) =>
     apiRequest<{

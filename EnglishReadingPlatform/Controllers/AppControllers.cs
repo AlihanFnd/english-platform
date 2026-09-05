@@ -365,6 +365,7 @@ namespace EnglishReadingPlatform.Controllers
 
         [HttpPost("word")]
         [EnableRateLimiting(HizSinirlari.Ceviri)]   // KURAL-07: elle yazılan sayaçtan devralındı
+        [ParaHarcar("Groq/Google Translate", "her istekte")]   // KURAL-17: maliyet bildirimi
         public async Task<IActionResult> Word([FromBody] KelimeCeviriIstegi req)
         {
             if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "" });
@@ -419,6 +420,7 @@ namespace EnglishReadingPlatform.Controllers
 
         [HttpPost("sentence")]
         [EnableRateLimiting(HizSinirlari.Ceviri)]   // KURAL-07: word ucuyla AYNI kovayı paylaşır
+        [ParaHarcar("Groq/Google Translate", "her istekte")]   // KURAL-17: maliyet bildirimi
         public async Task<IActionResult> Sentence([FromBody] CumleCeviriIstegi req)
         {
             if (string.IsNullOrWhiteSpace(req.Text)) return Ok(new { translation = "", ceviriBasarili = true, kaynak = "yok" });
@@ -431,6 +433,7 @@ namespace EnglishReadingPlatform.Controllers
 
         [HttpPost("analyze")]
         [EnableRateLimiting(HizSinirlari.AgirAnaliz)]   // KURAL-07: LLM maliyeti — en dar kova
+        [ParaHarcar("Groq", "her istekte")]             // KURAL-17: maliyet bildirimi
         public async Task<IActionResult> Analyze([FromBody] MetinAnaliziIstegi req)
         {
             if (string.IsNullOrWhiteSpace(req.Text)) return BadRequest(new { error = "Metin boş." });

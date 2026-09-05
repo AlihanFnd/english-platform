@@ -240,8 +240,10 @@ public class VeriButunluguTests
         kitaplar.Should().NotBeNullOrEmpty();
         var kitapId = kitaplar![0].Id;
 
-        (await client.GetAsync($"/api/books/{kitapId}/read?chapter=1")).EnsureSuccessStatusCode();
-        (await client.GetAsync($"/api/books/{kitapId}/read?chapter=2")).EnsureSuccessStatusCode();
+        // KURAL-17: ilerleme artık ayrı bir POST ile yazılıyor; test yine
+        // "aynı kitabı iki kez okumak TEK satır bırakır" iddiasını ölçüyor.
+        (await client.BolumOkuVeKaydetAsync(kitapId, 1)).EnsureSuccessStatusCode();
+        (await client.BolumOkuVeKaydetAsync(kitapId, 2)).EnsureSuccessStatusCode();
 
         using var kapsam = _fabrika.Services.CreateScope();
         var satirlar = await Db(kapsam).ReadingProgresses

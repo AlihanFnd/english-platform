@@ -55,6 +55,50 @@ public static class AuthHelper
     }
 
     /// <summary>
+    /// ÖĞRETMEN hesabı üretir.
+    ///
+    /// KURAL-17: kayıt artık rol kabul etmiyor — her hesap "student" doğar.
+    /// Öğretmenliği yalnızca bir yönetici verir. Bu yardımcı üretimdeki tek
+    /// meşru yolu izler: kaydol → yönetici rolü yükseltsin → YENİDEN giriş yap.
+    ///
+    /// Yeniden giriş ZORUNLU: KURAL-04, rol değişince kullanıcının bütün
+    /// tokenlarını iptal ediyor. Eski token'la devam eden bir test 401 alır ve
+    /// sebebi "yetki bozuk" sanılır.
+    /// </summary>
+    /// <param name="client">Öğretmen olacak hesabın istemcisi.</param>
+    /// <param name="yoneticiClient">Rolü yükseltecek yöneticinin istemcisi.</param>
+    public static async Task<TokenSonucu> OgretmenOlarakGirisYapAsync(
+        HttpClient client, HttpClient yoneticiClient)
+    {
+        var ek = Guid.NewGuid().ToString("N")[..8];
+        var hesap = await OgrenciOlarakGirisYapAsync(client, ek);
+
+        var yukselt = await yoneticiClient.PutAsJsonAsync(
+            $"/api/admin/users/{hesap.UserId}/role", new { role = "teacher" });
+        yukselt.EnsureSuccessStatusCode();
+
+        // KURAL-04'ün kesim payı: rol değişince kullanıcının kesim zamanı
+        // 'şimdi' olur ve İKİ SANİYE öncesine kadar üretilmiş her token
+        // geçersiz sayılır. Hemen alınan YENİ token da bu pencereye düşer.
+        //
+        // Neden 2 değil 3+ saniye: token'ın 'iat' değeri SANİYEYE YUVARLANIR
+        // (aşağı). 2,3 saniye beklendiğinde iat bir tam saniye geriye
+        // düşebiliyor ve tam sınıra oturuyor — test koşuya göre bazen geçip
+        // bazen 401 alıyordu. Yuvarlama payı da eklendi.
+        await Task.Delay(TimeSpan.FromMilliseconds(3300));
+
+        var giris = await IpIleGonderAsync(client, "/api/auth/login", new
+        {
+            email = $"ogr_{ek}@test.local",
+            password = "TestSifre123!"
+        });
+        giris.EnsureSuccessStatusCode();
+
+        var govde = await giris.Content.ReadFromJsonAsync<KayitYaniti>();
+        return new TokenSonucu(govde!.token, govde.user.id, govde.user.role);
+    }
+
+    /// <summary>
     /// Tohumlanan yönetici hesabıyla giriş yapar.
     /// KURAL-02: koda gömülü tohum yöneticisi (admin@platform.com) yerine
     /// TestAppFactory'nin ortamdan verdiği test hesabı kullanılır.

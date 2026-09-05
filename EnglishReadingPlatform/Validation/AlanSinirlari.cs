@@ -91,8 +91,11 @@ public static class IzinliDegerler
     /// <summary>Sistemdeki tüm roller — yönetici ataması için.</summary>
     public static readonly string[] Roller = { "student", "teacher", "admin" };
 
-    /// <summary>Kayıt sırasında SEÇİLEBİLEN roller. "admin" bilerek YOK.</summary>
-    public static readonly string[] KayitRolleri = { "student", "teacher" };
+    // KURAL-17: 'KayitRolleri' KALDIRILDI. Kayıt artık rol kabul etmiyor —
+    // her yeni hesap "student" olur, öğretmenliği yalnızca bir yönetici verir
+    // (PUT /api/admin/users/{id}/role, yukarıdaki Roller listesiyle doğrulanır).
+    // Ölü bir whitelist bırakmak yanıltıcı olurdu: "kayıt rol kabul ediyor"
+    // izlenimi verir ve bir sonraki geliştirici onu yeniden bağlayabilir.
 
     /// <summary>
     /// CEFR seviyeleri. frontend/app/books/page.tsx LEVELS listesiyle

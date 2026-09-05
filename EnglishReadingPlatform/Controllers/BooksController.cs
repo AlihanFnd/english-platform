@@ -178,13 +178,24 @@ namespace EnglishReadingPlatform.Controllers
         // Eskiden ikisi de 1 varsayılanıyla geliyordu; yani ilerleme her okumada
         // KAYDEDİLİYOR ama hiç OKUNMUYORDU. 300 sayfalık bir kitabı 120. sayfada
         // bırakan kullanıcı, kitabı her açtığında 1. sayfayı görüyordu.
+        // GET /api/books/{id}/read?chapter=1&page=1
+        //
+        // ── KURAL-17: bu uç artık SALT OKUNUR. ──
+        // Eskiden üç iş birden yapıyordu ve üçü de bir GET'in içindeydi:
+        //   1) okuma ilerlemesini YAZIYORDU        → POST {id}/progress'e taşındı
+        //   2) 'reanalyze=true' ile LLM ÇAĞIRIYORDU → POST {id}/reanalyze'a taşındı
+        //   3) analiz boşsa LLM çağırıp PAYLAŞILAN satıra yazıyordu
+        //                                          → POST {id}/analyze-page'e taşındı
+        //
+        // Neden önemli: çerez SameSite=Lax, üst düzey GET gezinmesinde gönderilir.
+        // Kurbanı bir bağlantıyla bu uca yönlendirmek, onun hesabından Groq
+        // maliyeti yaratmaya yetiyordu.
         [HttpGet("{id}/read")]
-        [EnableRateLimiting(HizSinirlari.Okuma)]   // KURAL-07: elle yazılan sayaçtan devralındı
+        [EnableRateLimiting(HizSinirlari.Okuma)]
         public async Task<IActionResult> Read(
             [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id,
             [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Bölüm numarası 1'den küçük olamaz.")] int? chapter = null,
-            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Sayfa numarası 1'den küçük olamaz.")] int? page = null,
-            [FromQuery] bool reanalyze = false)
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Sayfa numarası 1'den küçük olamaz.")] int? page = null)
         {
             var book = await _db.Books
                 .Include(b => b.Chapters)
@@ -223,22 +234,8 @@ namespace EnglishReadingPlatform.Controllers
 
                 if (currentPage == null) return NotFound(new { error = "Sayfa bulunamadı." });
 
-                // KURAL-12: (UserId, BookId) artık veritabanında TEKİL.
-                // Konum, sayfa numarasıyla eşlenir (ilerleme sözleşmesi korunur).
-                await IlerlemeyiYazAsync(id, sayfaNo, (float)sayfaNo / book.Pages.Count * 100);
-
-                // JIT (Just-In-Time) Translation or Forced Re-analysis
-                if (reanalyze || string.IsNullOrWhiteSpace(currentPage.SentencesJson) || currentPage.SentencesJson == "[]")
-                {
-                    var sentencesData = await _transService.AnalyzeTextAsync(currentPage.Content);
-                    if (sentencesData.Any())
-                    {
-                        currentPage.SentencesJson = System.Text.Json.JsonSerializer.Serialize(sentencesData);
-                    }
-                }
-
-                await _db.SaveChangesAsync();
-
+                // KURAL-17: burada HİÇBİR ŞEY YAZILMAZ. İlerleme POST {id}/progress,
+                // analiz POST {id}/analyze-page ile kaydedilir.
                 return Ok(new {
                     BookId = book.Id,
                     BookTitle = book.Title,
@@ -252,7 +249,13 @@ namespace EnglishReadingPlatform.Controllers
                     TotalPages = book.Pages.Count,
                     // İstemci bu değerle adres çubuğunu eşitler; kaldığı yer
                     // buradan öğrenilir.
-                    PageNumber = currentPage.PageNumber
+                    PageNumber = currentPage.PageNumber,
+                    // KURAL-17: analiz artık bu uçta ÜRETİLMİYOR. İstemci bu
+                    // bayrağı görünce POST {id}/analyze-page çağırır. Sessizce
+                    // boş dizi döndürmek yerine SÖYLEMEK bilinçli: istemci
+                    // "analiz yok" ile "analiz henüz üretilmedi"yi ayırt edebilmeli.
+                    AnalizBekliyor = string.IsNullOrWhiteSpace(currentPage.SentencesJson)
+                                     || currentPage.SentencesJson == "[]"
                 });
             }
             else
@@ -263,11 +266,7 @@ namespace EnglishReadingPlatform.Controllers
 
                 if (currentChapter == null) return NotFound(new { error = "Bölüm bulunamadı." });
 
-                // KURAL-12: (UserId, BookId) artık veritabanında TEKİL.
-                await IlerlemeyiYazAsync(id, bolumNo, (float)bolumNo / book.Chapters.Count * 100);
-
-                await _db.SaveChangesAsync();
-
+                // KURAL-17: ilerleme burada YAZILMAZ — POST {id}/progress.
                 return Ok(new {
                     BookId = book.Id,
                     BookTitle = book.Title,
@@ -282,6 +281,137 @@ namespace EnglishReadingPlatform.Controllers
                     ChapterNumber = currentChapter.ChapterNumber
                 });
             }
+        }
+
+        public class IlerlemeIstegi
+        {
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")]
+            public int BookId { get; set; }
+
+            /// <summary>Sayfa modunda sayfa, bölüm modunda bölüm numarası.</summary>
+            [Range(1, int.MaxValue, ErrorMessage = "Konum 1'den küçük olamaz.")]
+            public int Konum { get; set; }
+        }
+
+        // POST /api/books/{id}/progress
+        //
+        // KURAL-17: okuma ilerlemesi artık AYRI bir yazma ucudur.
+        // 'GET {id}/read' salt okunur olduğu için istemci sayfayı gösterdikten
+        // sonra bunu çağırır.
+        //
+        // Yüzde istemciden ALINMAZ, sunucuda hesaplanır: istemciden gelen bir
+        // yüzde, panodaki ilerlemeyi istediği gibi yazdırabilirdi.
+        [HttpPost("{id}/progress")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]
+        public async Task<IActionResult> IlerlemeKaydet(
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id,
+            [FromBody] IlerlemeIstegi req)
+        {
+            // KURAL-08: Include yerine PROJEKSİYON. Burada gereken tek şey
+            // iki SAYI; bütün sayfa ve bölüm gövdelerini belleğe çekmenin
+            // (yüzlerce KB) hiçbir gerekçesi yok.
+            var olcu = await _db.Books
+                .Where(b => b.Id == id)
+                .Select(b => new { SayfaSayisi = b.Pages.Count, BolumSayisi = b.Chapters.Count })
+                .FirstOrDefaultAsync();
+
+            if (olcu == null) return NotFound(new { error = "Kitap bulunamadı." });
+
+            var toplam = olcu.SayfaSayisi > 0 ? olcu.SayfaSayisi : olcu.BolumSayisi;
+            if (toplam == 0) return BadRequest(new { error = "Kitapta okunacak içerik yok." });
+
+            // Kitabın dışına taşan konum kırpılır — istemci hatası yüzünden
+            // %400 ilerleme kaydı oluşmasın.
+            var konum = Math.Clamp(req.Konum, 1, toplam);
+
+            await IlerlemeyiYazAsync(id, konum, (float)konum / toplam * 100);
+
+            return Ok(new { success = true, konum, yuzde = (float)konum / toplam * 100 });
+        }
+
+        // POST /api/books/{id}/analyze-page?page=1
+        //
+        // ── KURAL-17: BOŞ analizi doldurur, dolu olanı ASLA değiştirmez. ──
+        //
+        // Neden ayrı bir uç ve neden herkese açık:
+        // Sayfaların büyük çoğunluğu yüklenirken analiz edilmiyor; analiz ilk
+        // okumada üretiliyordu. O iş 'GET {id}/read' içindeydi — yani bir GET
+        // hem para harcıyor hem paylaşılan satıra yazıyordu. Buraya taşındı.
+        //
+        // Yetki kısıtı YOK ama etki yarıçapı da yok: bu uç yalnızca BOŞ alanı
+        // doldurur. Bir öğrencinin başka kullanıcıların gördüğü bir analizi
+        // BOZMASI mümkün değil — üzerine yazan yol ayrı bir uçta ve
+        // öğretmen/yönetici yetkisine bağlı.
+        //
+        // Para harcadığı için en dar kotada (AgirAnaliz).
+        [HttpPost("{id}/analyze-page")]
+        [EnableRateLimiting(HizSinirlari.AgirAnaliz)]
+        [ParaHarcar("Groq", "yalnızca analiz BOŞKEN")]
+        [PaylasilanVeriYazar("BookPages.SentencesJson", PaylasilanYazmaBicimi.BosAlaniDoldurur)]
+        public async Task<IActionResult> SayfayiAnalizEt(
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Sayfa numarası 1'den küçük olamaz.")] int page = 1)
+        {
+            var sayfa = await _db.BookPages
+                .FirstOrDefaultAsync(p => p.BookId == id && p.PageNumber == page);
+
+            if (sayfa is null) return NotFound(new { error = "Sayfa bulunamadı." });
+
+            // Zaten analizliyse PARA HARCAMADAN döner. Bu kontrol bir
+            // maliyet savunmasıdır: aksi hâlde uç, dolu bir sayfa için de
+            // Groq'a gidip sonucu atardı.
+            if (!string.IsNullOrWhiteSpace(sayfa.SentencesJson) && sayfa.SentencesJson != "[]")
+                return Ok(new { success = true, sentencesJson = sayfa.SentencesJson, uretildi = false });
+
+            var cumleler = await _transService.AnalyzeTextAsync(sayfa.Content);
+
+            // Boş sonuç YAZILMAZ: başarısız bir LLM çağrısı "analiz denendi ve
+            // boş" diye kalıcılaşırsa sayfa bir daha hiç analiz edilmez.
+            if (cumleler.Count == 0)
+                return StatusCode(502, new { error = "Analiz şu anda yapılamadı. Lütfen tekrar deneyin." });
+
+            sayfa.SentencesJson = System.Text.Json.JsonSerializer.Serialize(cumleler);
+            await _db.SaveChangesAsync();
+
+            return Ok(new { success = true, sentencesJson = sayfa.SentencesJson, uretildi = true });
+        }
+
+        // POST /api/books/{id}/reanalyze?page=1
+        //
+        // ── KURAL-17 — üç ayrı sebep, tek uçta: ──
+        //   1) PARA HARCAR              → en dar kotaya (AgirAnaliz) bağlandı
+        //   2) PAYLAŞILAN VERİ ÜZERİNE YAZAR → BookPage global; yetki gerekir
+        //   3) DURUM DEĞİŞTİRİR         → GET değil POST
+        //
+        // 00-BASLA-BURADAN madde 3 kararı: seçenek A (yalnızca öğretmen/yönetici).
+        // Kullanıcı ayrıca kayıtta rol seçimini kaldırmayı seçti; aksi hâlde bu
+        // politika göstermelik olurdu (herkes kendini öğretmen kaydedebiliyordu).
+        [HttpPost("{id}/reanalyze")]
+        [Authorize(Policy = "EgitmenVeyaAdmin")]
+        [EnableRateLimiting(HizSinirlari.AgirAnaliz)]
+        [ParaHarcar("Groq", "her istekte")]
+        [PaylasilanVeriYazar("BookPages.SentencesJson", PaylasilanYazmaBicimi.UzerineYazar)]
+        public async Task<IActionResult> YenidenAnalizEt(
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Sayfa numarası 1'den küçük olamaz.")] int page = 1)
+        {
+            var sayfa = await _db.BookPages
+                .FirstOrDefaultAsync(p => p.BookId == id && p.PageNumber == page);
+
+            if (sayfa is null) return NotFound(new { error = "Sayfa bulunamadı." });
+
+            var cumleler = await _transService.AnalyzeTextAsync(sayfa.Content);
+
+            // Boş sonuç mevcut analizi EZMEZ: başarısız bir LLM çağrısı,
+            // HERKESİN okuduğu içeriği silmemeli. Eski kod bunu 'if (Any())'
+            // ile sağlıyordu ama sessizce — kullanıcı başarılı sanıyordu.
+            if (cumleler.Count == 0)
+                return StatusCode(502, new { error = "Analiz şu anda yapılamadı. Lütfen tekrar deneyin." });
+
+            sayfa.SentencesJson = System.Text.Json.JsonSerializer.Serialize(cumleler);
+            await _db.SaveChangesAsync();
+
+            return Ok(new { success = true, sentencesJson = sayfa.SentencesJson });
         }
 
         public class AddWordRequest
@@ -525,13 +655,44 @@ namespace EnglishReadingPlatform.Controllers
         }
 
         // GET /api/books/quiz/{chapterId}
+        // GET /api/books/quiz/{chapterId} — SALT OKUNUR.
+        //
+        // KURAL-17: quiz ÜRETİMİ bu uçtan çıkarıldı. Üretmek bir yazma
+        // işlemidir ve GET, üst düzey gezinmeyle tetiklenebilir
+        // (çerez SameSite=Lax olduğu için gönderilir).
+        // Quiz yoksa 404 döner; üretmek için POST quiz/{chapterId}.
         [HttpGet("quiz/{chapterId}")]
         public async Task<IActionResult> GetQuiz([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int chapterId)
         {
-            var chapter = await _db.Chapters.Include(c => c.Book).FirstOrDefaultAsync(c => c.Id == chapterId);
+            var quiz = await _db.Quizzes
+                .Include(q => q.Questions)
+                .FirstOrDefaultAsync(q => q.ChapterId == chapterId);
+
+            if (quiz == null)
+                return NotFound(new { error = "Bu bölüm için henüz quiz üretilmemiş." });
+
+            return Ok(QuizYaniti(quiz));
+        }
+
+        // POST /api/books/quiz/{chapterId}
+        //
+        // KURAL-17: quiz üretimi bir YAZMA işlemidir; kendi ucu ve kotası var.
+        // Zaten varsa yenisini üretmez — mevcut olanı döner (idempotent).
+        [HttpPost("quiz/{chapterId}")]
+        [EnableRateLimiting(HizSinirlari.Yazma)]
+        public async Task<IActionResult> QuizUret([Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int chapterId)
+        {
+            var chapter = await _db.Chapters.FirstOrDefaultAsync(c => c.Id == chapterId);
             if (chapter == null) return NotFound(new { error = "Bölüm bulunamadı." });
 
-            // Mevcut quiz var mı?
+            // KURAL-08: Include(c => c.Book) yerine tek alan projeksiyonu.
+            // Başlıktan başka hiçbir şeye ihtiyaç yok; kitabın tamamını
+            // (bölümleriyle birlikte) belleğe almanın gerekçesi yoktu.
+            var kitapAdi = await _db.Books
+                .Where(b => b.Id == chapter.BookId)
+                .Select(b => b.Title)
+                .FirstOrDefaultAsync() ?? "";
+
             var quiz = await _db.Quizzes
                 .Include(q => q.Questions)
                 .FirstOrDefaultAsync(q => q.ChapterId == chapterId);
@@ -542,7 +703,7 @@ namespace EnglishReadingPlatform.Controllers
                 {
                     BookId = chapter.BookId,
                     ChapterId = chapterId,
-                    Title = $"{chapter.Book.Title} — {chapter.Title} Quiz",
+                    Title = $"{kitapAdi} — {chapter.Title} Quiz",
                     CreatedAt = DateTime.UtcNow
                 };
                 _db.Quizzes.Add(yeniQuiz);
@@ -563,18 +724,22 @@ namespace EnglishReadingPlatform.Controllers
                 if (quiz == null) return NotFound(new { error = "Quiz oluşturulamadı." });
             }
 
-            return Ok(new {
-                quiz.Id,
-                quiz.Title,
-                quiz.BookId,
-                quiz.ChapterId,
-                Questions = quiz.Questions.Select(q => new {
-                    q.Id,
-                    q.QuestionText,
-                    Options = new[] { q.OptionA, q.OptionB, q.OptionC, q.OptionD }
-                })
-            });
+            return Ok(QuizYaniti(quiz));
         }
+
+        /// <summary>Quiz yanıt biçimi TEK yerde — iki uç da aynı gövdeyi döner.</summary>
+        private static object QuizYaniti(Quiz quiz) => new
+        {
+            quiz.Id,
+            quiz.Title,
+            quiz.BookId,
+            quiz.ChapterId,
+            Questions = quiz.Questions.Select(q => new {
+                q.Id,
+                q.QuestionText,
+                Options = new[] { q.OptionA, q.OptionB, q.OptionC, q.OptionD }
+            })
+        };
 
         public class SubmitQuizRequest
         {

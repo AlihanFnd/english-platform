@@ -8,7 +8,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string, role: string) => Promise<void>;
+  register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -59,10 +59,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async (username: string, email: string, password: string, role: string) => {
+  // KURAL-17: rol artık gönderilmiyor — her kayıt "student" üretir.
+  const register = async (username: string, email: string, password: string) => {
     setLoading(true);
     try {
-      const data = await api.register(username, email, password, role);
+      const data = await api.register(username, email, password);
       localStorage.setItem('token', data.token);
       setUser(data.user);
       router.push('/');
