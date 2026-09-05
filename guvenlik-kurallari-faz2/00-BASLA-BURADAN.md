@@ -456,7 +456,7 @@ Her kural bitince bu tabloyu güncelle (kural oturumunun son işi budur):
 
 | # | Kural | Durum | Commit | Tarih |
 |---|---|---|---|---|
-| 13 | Köken ve kaynak denetimi | ✅ Kanıtlanarak kapandı | `4da456b` | 2026-09-05 |
+| 13 | Köken ve kaynak denetimi | ✅ Kanıtlanarak kapandı | `c05d986` | 2026-09-05 |
 | 14 | Eksik yapılandırmada kapalı kal | ⬜ Başlamadı | — | — |
 | 15 | Dağıtım kapısı | ⬜ Başlamadı | — | — |
 | 16 | Hesap yaşam döngüsü | ⬜ Başlamadı | — | — |
