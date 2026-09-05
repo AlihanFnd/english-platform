@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.HostFiltering;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -22,6 +24,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Eksik/zayıf/sızmış sır varsa uygulama burada durur. Varsayılana
 // düşmek yerine hiç başlamamak bilinçli tercihtir.
 SirDogrulayici.Dogrula(builder.Configuration, builder.Environment);
+
+// ─── KURAL-15: dağıtım eksiksiz mi? ───────────────────────────
+// SirDogrulayici "sır geçerli mi" diye sorar; bu "dağıtım tam mı" diye sorar.
+// Ayrı olmalarının sebebi: PublicHost bir sır değildir ama eksikliği Host
+// doğrulamasını sessizce düşürür. Üretimde eksik zorunlu değişken varsa
+// uygulama BAŞLAMAZ — yarım yapılandırılmış bir dağıtımın çalışıyor GÖRÜNMESİ
+// en kötü sonuçtur.
+OrtamSozlesmesi.UretimdeDogrula(builder.Configuration, builder.Environment);
 
 // ─── KURAL-05: istek gövdesi üst sınırı ───────────────────────
 // [StringLength] gövde ÇÖZÜMLENDİKTEN SONRA çalışır: 20.000 karakterlik bir
@@ -47,6 +57,14 @@ builder.WebHost.ConfigureKestrel(opt =>
 // ─── Veritabanı ───────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+// ─── KURAL-15: sağlık kontrolü ────────────────────────────────
+// Yalnızca "ayakta mıyım" değil, "veritabanına ULAŞABİLİYOR muyum".
+// İkincisi olmadan, Database.Migrate() düşmüş bir örnek de 'sağlıklı' görünür
+// ve platform kötü dağıtımı geri almaz. AddDbContextCheck hafif bir
+// CanConnect yapar — sağlık ucu her 30 saniyede çağrıldığı için bu önemli.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("veritabani");
 
 // ─── JWT Authentication ───────────────────────────────────────
 var jwtKey      = builder.Configuration["Jwt:Key"]!;        // SirDogrulayici doğruladı, null olamaz
@@ -400,6 +418,25 @@ app.UseCors();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
+
+// ─── KURAL-15: sağlık ucu ─────────────────────────────────────
+// GÜVENLİK NOTU: yanıt gövdesinde AYRINTI YOK. Varsayılan yanıt yazıcısı
+// kontrol adlarını, kütüphane adlarını ve istisna metinlerini döker; bu,
+// KURAL-06'nın kapattığı iç detay sızıntısının anonim bir uçtan geri
+// gelmesi olurdu. Gövde iki sabit dizeden ibaret.
+//
+// AllowAnonymous bilinçli: platformun sağlık yoklaması token gönderemez.
+// Uç yalnızca "OK"/"BOZUK" döndüğü için kimlik doğrulaması ardına koymanın
+// koruyacağı bir bilgi de yok.
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = async (ctx, rapor) =>
+    {
+        ctx.Response.ContentType = "text/plain";
+        await ctx.Response.WriteAsync(
+            rapor.Status == HealthStatus.Healthy ? "OK" : "BOZUK");
+    }
+}).AllowAnonymous();
 
 // Map Web API Controllers
 app.MapControllers();

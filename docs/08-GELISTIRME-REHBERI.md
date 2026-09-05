@@ -348,6 +348,85 @@ Kalanlar: `englishplatform.db` (git'ten çıkarıldı ama **diskte duruyor** —
 
 ---
 
+## 9. Dağıtım (KURAL-15)
+
+> **Dağıtım kontrol listesi bir belge değil, bir komuttur.** Aşağıdaki iki betik
+> çalıştırılabilir; markdown maddeleri unutulur, çıkış kodu unutulmaz.
+
+### Dağıtımdan ÖNCE
+
+```bash
+DB_URL="postgres://kullanici:sifre@host/veritabani" bash scripts/dagitim/on-kontrol.sh
+```
+
+Ne ölçer: test takımı, 15 güvenlik kapısı, üretim log ayarının `.gitignore`'a
+takılmadığı ve **üretim veritabanında mükerrer kayıt olmadığı.**
+
+> 🔴 Son madde kritik: KURAL-12'nin 11 tekillik kısıtı açılışta
+> `Database.Migrate()` ile uygulanıyor. Üretimde tek bir mükerrer satır varsa
+> migration düşer ve **uygulama hiç açılmaz.** Temizlik SQL'i
+> `guvenlik-kurallari/KURAL-12.md` adım 2'de — **önce yedek al.**
+>
+> `DB_URL` vermezsen betik o kontrolü *atladığını* söyler ve yine de **1** döner.
+> Atlanan kontrol geçmiş sayılmaz.
+
+### Zorunlu ortam değişkenleri
+
+Tek kaynak: `EnglishReadingPlatform/Configuration/OrtamSozlesmesi.cs`.
+Üretimde eksik olan zorunlu bir değişken varsa **uygulama başlamaz** ve hata
+mesajı hangi değişkenin eksik olduğunu, ortam değişkeni adını ve eksikse ne
+olacağını söyler.
+
+| Değişken | Üretimde zorunlu | Eksikse |
+|---|---|---|
+| `Jwt__Key` · `Jwt__Issuer` · `Jwt__Audience` | ✅ | Kimlik doğrulama çalışmaz |
+| `ConnectionStrings__Default` | ✅ | Hiçbir uç çalışmaz |
+| `Seed__AdminPassword` · `Seed__AdminEmail` | ✅ | Yönetici hesabı **hiç oluşmaz** (eskiden sessizdi) |
+| `CorsOrigins` | ✅ | Tarayıcıdan hiçbir istemci bağlanamaz |
+| `PublicHost` | ✅ | Host doğrulaması düşer (eskiden sessizdi) |
+| `Resend__ApiKey` · `App__FrontendUrl` | ❌ | Uygulama **açılır**, yalnızca şifre sıfırlama 503 döner (KURAL-14) |
+| `Groq__ApiKey` | ❌ | Yapay zekâ çevirisi yerine sözlük yedeği |
+| `ASPNETCORE_ENVIRONMENT` | ✅ (elle) | **HSTS, HTTPS yönlendirmesi ve Host filtresi hiç kurulmaz** |
+
+> `ASPNETCORE_ENVIRONMENT` sözleşmede **yok**: o değişken yapılandırma
+> sisteminin kendisini belirler, `IConfiguration`'dan doğrulamak döngüsel olur.
+> Dolaylı ölçülüyor — `canli-dogrula.sh` HSTS başlığının varlığına bakar.
+
+### Dağıtımdan SONRA
+
+```bash
+bash scripts/dagitim/canli-dogrula.sh https://YAYINDAKI-API-ADRESIN
+```
+
+Ne ölçer: sağlık ucu, HTTP→HTTPS yönlendirmesi, dört güvenlik başlığı,
+`Server` başlığının sızmadığı, yabancı kökene CORS izni verilmediği (KURAL-13),
+şifre sıfırlamanın yapılandırılmış olduğu (KURAL-14).
+
+Betiğin **ölçemediği** iki şeyi ekrana yazıp elle yapmanı ister:
+`X-Forwarded-For`'un en sağdaki girdisi ve CSP nonce zincirinin çalıştığı.
+
+### Sağlık ucu
+
+`GET /health` — anonim, gövde yalnızca `OK` ya da `BOZUK`.
+Veritabanına da bağlanır (`AddDbContextCheck`): yalnızca "ayaktayım" diyen bir
+uç, `Database.Migrate()`'i düşmüş bir örneği de sağlıklı gösterir ve kötü
+dağıtımın geri alınmasını tam gerektiği anda engeller.
+
+Render'da **health check path'i `/health` olarak ayarla.**
+
+### Üretim log seviyeleri
+
+`appsettings.Production.json` — **bilerek sürüm kontrolünde.** Sır içermez.
+`.gitignore`'a alınırsa üretime hiç gitmez ve her SQL sorgusu loglanmaya devam
+eder. Üretime özel bir *sır* gerekirse `appsettings.Production.Local.json`
+kullan (o yok sayılıyor).
+
+`EnglishReadingPlatform` ad alanı bilerek `Information`'da: KURAL-06'nın
+`GuvenliLog` kayıtları ve KURAL-14'ün "ÖZELLİK KAPALI" açılış raporu görünür
+kalmalı.
+
+---
+
 ## 8. Dokümantasyonu güncel tutmak
 
 Kod değişikliği yaptığında ilgili dosyayı da güncelle:

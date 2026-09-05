@@ -43,7 +43,12 @@ yedek-*.sql
 neon_dump.sql
 
 # ─── KURAL-02: sırlar ve hassas çıktılar ───────────────────
-EnglishReadingPlatform/appsettings.Production.json
+# KURAL-15: appsettings.Production.json ARTIK YOK SAYILMIYOR.
+# KURAL-02 bu satırı sır sızmasın diye eklemişti; dosya bugün yalnızca log
+# seviyeleri taşıyor ve üretime GİTMESİ gerekiyor — yok sayılırsa üretimde
+# her SQL sorgusu loglanmaya devam eder ve kural sessizce hiçbir şey yapmaz.
+# Üretime özel SIR gerekiyorsa aşağıdaki .Local dosyasını kullan.
+EnglishReadingPlatform/appsettings.Production.Local.json
 EnglishReadingPlatform/appsettings.Local.json
 *.pfx
 *.p12

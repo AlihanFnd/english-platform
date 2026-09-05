@@ -8,6 +8,7 @@
 
 | Yol | Metot | Yetki |
 |---|---|---|
+| [`/health`](#get-health) | GET | Açık |
 | [`/auth/login`](#post-authlogin) | POST | Açık |
 | [`/auth/register`](#post-authregister) | POST | Açık |
 | [`/auth/logout`](#post-authlogout) | POST | Açık |
@@ -183,6 +184,21 @@ dönüşür. Tek istisna `BookPage.SentencesJson` — bu bir **string içindeki 
 ---
 
 ## Auth
+
+### `GET /health`
+
+Dağıtım sağlığı. **Anonim** — platformun sağlık yoklaması token gönderemez.
+
+**200** `OK` · **503** `BOZUK`
+
+Gövde bu iki sabit dizeden ibarettir. Varsayılan sağlık yanıt yazıcısı kontrol
+adlarını, kütüphane adlarını ve istisna metinlerini dökerdi; anonim bir uçta bu,
+KURAL-06'nın kapattığı iç detay sızıntısının geri gelmesi olurdu.
+
+Kontrol veritabanına da bağlanır: `Database.Migrate()` düşmüş bir örnek
+"sağlıklı" görünmemeli, yoksa kötü dağıtım geri alınmaz.
+
+---
 
 ### `POST /auth/login`
 
