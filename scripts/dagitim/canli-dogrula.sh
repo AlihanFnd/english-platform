@@ -14,7 +14,10 @@ echo "════ CANLI DOĞRULAMA — $TABAN ════"
 
 bildir() {
   if [ "$2" -eq 0 ]; then printf '  %-46s ✓\n' "$1"
-  else printf '  %-46s ✗\n' "$1"; [ -n "${3:-}" ] && printf '      %s\n' "$3"; SONUC=1; fi
+  else printf '  %-46s ✗\n' "$1"
+       # Çok satırlı ayrıntı da girintilenir; hizasız blok operatörü yavaşlatır.
+       [ -n "${3:-}" ] && printf '%s\n' "$3" | sed 's/^/      /'
+       SONUC=1; fi
 }
 
 # ── 1. Sağlık ─────────────────────────────────────────────────────────

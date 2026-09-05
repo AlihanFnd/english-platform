@@ -38,14 +38,21 @@ ihlal_bildir "ortam sözleşmesi dosyası mevcut" "$n" "OrtamSozlesmesi.cs yok"
 n=0; [ -f "$URETIM_AYARI" ] || n=1
 ihlal_bildir "appsettings.Production.json mevcut" "$n" "dosya yok"
 
-# Üretilmiş durumdan oku: .gitignore satırını grep'lemek yetmez, çünkü dosya
-# başka bir desene de takılabilir. git'in KENDİ kararı sorulur.
+# Üretilmiş durumdan oku. DİKKAT: burada `git check-ignore` YETMEZ —
+# .gitignore, zaten TAKİP EDİLEN bir dosyaya uygulanmaz, yani dosya
+# commit'liyken ignore satırı geri konsa bile check-ignore sessiz kalır.
+# MUTASYON D bunu ortaya çıkardı: kapı yeşil verdi.
+#
+# Gerçek soru "yok sayılıyor mu" değil, "ÜRETİME GİDİYOR MU" — cevabı
+# dosyanın takip edilip edilmediğidir. İkisi birden kontrol ediliyor:
+# takipten çıkarılmışsa VEYA yok sayılıyorsa kapı kırmızı.
 n=0
 if [ -f "$URETIM_AYARI" ]; then
+  git ls-files --error-unmatch "$URETIM_AYARI" >/dev/null 2>&1 || n=1
   git check-ignore -q "$URETIM_AYARI" && n=1
 fi
 ihlal_bildir "üretim log ayarı depoya giriyor" "$n" \
-  ".gitignore'a takılıyor — dosya ÜRETİME HİÇ GİTMEZ, kural sessizce çalışmaz"
+  "takip edilmiyor ya da .gitignore'a takılıyor — dosya ÜRETİME HİÇ GİTMEZ"
 
 # 6. EF komut logu üretimde kısılmış mı?
 n=0

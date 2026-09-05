@@ -16,7 +16,10 @@ echo "════ DAĞITIM ÖNCESİ KONTROL ════"
 
 bildir() {  # ad · durum(0/1) · ayrıntı
   if [ "$2" -eq 0 ]; then printf '  %-46s ✓\n' "$1"
-  else printf '  %-46s ✗\n' "$1"; [ -n "${3:-}" ] && printf '      %s\n' "$3"; SONUC=1; fi
+  else printf '  %-46s ✗\n' "$1"
+       # Çok satırlı ayrıntı da girintilenir; hizasız blok operatörü yavaşlatır.
+       [ -n "${3:-}" ] && printf '%s\n' "$3" | sed 's/^/      /'
+       SONUC=1; fi
 }
 
 # ── 1. Yerelde her şey yeşil mi? ────────────────────────────────────────
@@ -28,10 +31,13 @@ bildir "güvenlik kapıları" $? "bir kapı kırık — DAĞITMA (ayrıntı: bas
 
 # ── 2. Üretim log ayarı gerçekten üretime gidiyor mu? ───────────────────
 # KURAL-01'in "üretime hiç gitmeyen güvenlik dosyası" sınıfı.
+# check-ignore TEK BAŞINA yetmez: .gitignore takip edilen dosyaya uygulanmaz.
+# Asıl soru dosyanın takip edilip edilmediği.
 n=0
+git ls-files --error-unmatch EnglishReadingPlatform/appsettings.Production.json >/dev/null 2>&1 || n=1
 git check-ignore -q EnglishReadingPlatform/appsettings.Production.json && n=1
 bildir "üretim log ayarı depoya giriyor" $n \
-  ".gitignore'a takılıyor — dosya ÜRETİME HİÇ GİTMEZ"
+  "takip edilmiyor ya da .gitignore'a takılıyor — dosya ÜRETİME HİÇ GİTMEZ"
 
 # ── 3. ÜRETİM veritabanında mükerrer kayıt var mı? ─────────────────────
 # KURAL-12'nin tekillik kısıtları açılışta Database.Migrate() ile uygulanıyor.
