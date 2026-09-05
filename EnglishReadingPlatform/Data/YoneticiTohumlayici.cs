@@ -1,6 +1,7 @@
 using EnglishReadingPlatform.Configuration;
 using EnglishReadingPlatform.Models;
 using Microsoft.EntityFrameworkCore;
+using EnglishReadingPlatform.Security;
 
 namespace EnglishReadingPlatform.Data;
 
@@ -52,7 +53,7 @@ public static class YoneticiTohumlayici
         {
             Username     = TekilKullaniciAdiUret(db, normalize),
             Email        = normalize,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(sifre),
+            PasswordHash = SifreHashleme.Hashle(sifre),
             Role         = "admin",
             CreatedAt    = DateTime.UtcNow
         });

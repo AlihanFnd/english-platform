@@ -348,6 +348,87 @@ Kalanlar: `englishplatform.db` (git'ten çıkarıldı ama **diskte duruyor** —
 
 ---
 
+## 10. Bağımlılıklar ve şifre saklama (KURAL-18)
+
+### Sürümler SABİT
+
+`frontend/package.json` ve `admin-panel/package.json` artık **aralık (`^`, `~`)
+kullanmıyor** — her sürüm tam yazılı. `.csproj` tarafında zaten sabitti.
+
+> **Neden:** `package-lock.json` tek başına yetmez. `npm ci` kilide uyar ama
+> `npm install` aralığı yeniden çözer ve sürüm **sessizce kayar.** Bu kuralın
+> ölçümünde tam olarak bu olmuştu: iki istemci farklı `browserslist`
+> sürümlerinde ayrışmış, biri yamalı diğeri değildi ve aylarca kimse görmedi.
+
+Sürüm yükseltirken:
+
+```bash
+cd frontend
+npm install <paket>@<yeni-sürüm>     # package.json + kilit birlikte güncellenir
+npm ci && npm audit --audit-level=high && npm run build
+```
+
+### Zafiyet taraması
+
+```bash
+bash scripts/guard/18-tedarik.sh
+```
+
+İki istemcide `npm audit --audit-level=high`, .NET tarafında
+`dotnet list package --vulnerable`. CI de aynı taramaları yapıyor
+(`.github/workflows/guvenlik.yml`) ve kapı, CI'nin bu adımı **gerçekten
+taşıdığını** ayrıca denetliyor — yerelde `node_modules` yokken kapsam
+sessizce kaybolmasın diye.
+
+### Bir zafiyeti kabul etmek zorundaysan
+
+`npm audit fix` kırıcıysa ya da düzeltme henüz yayımlanmadıysa
+**kapıyı gevşetme** — istisna yaz:
+
+```jsonc
+// guvenlik/zafiyet-istisnalari.json
+{ "tanimlayici": "GHSA-xxxx", "paket": "...", "ekosistem": "npm",
+  "gerekce": "Yalnızca lint zincirinde; 'npm ls' ile üretim paketine girmediği doğrulandı.",
+  "dogrulayan": "adin", "sonKullanma": "2026-12-31" }
+```
+
+> `sonKullanma` **zorunlu.** Tarih geçince kapı yine kırılır. Tarihsiz istisna
+> kalıcı olur ve kontrolü sessizce öldürür — faz 1'in "üretime hiç gitmeyen
+> güvenlik dosyası" sınıfıyla aynı aile.
+>
+> `--audit-level`'i gevşetmek ya da adımı kaldırmak **yasak**: o, tek bir
+> zafiyeti değil bütün taramayı körleştirir.
+
+### Şifre saklama
+
+Tek kaynak: `EnglishReadingPlatform/Security/SifreHashleme.cs`.
+BCrypt iş faktörü **12** (2026 önerisi ≥ 12). Doğrudan
+`BCrypt.Net.BCrypt.*` çağırmak yasak — kapı bunu denetliyor.
+
+> **Sahte hash de merkezden gelmeli.** `AuthController`'daki zamanlama
+> eşitleyici hash daha düşük bir faktörle üretilseydi, "kullanıcı yok" dalı
+> ölçülebilir biçimde hızlı biter ve KURAL-09'un kapattığı enumerasyon
+> zamanlama üzerinden geri gelirdi.
+
+**İş faktörünü yükseltmek:** `IsFaktoru` sabitini değiştir, hepsi bu.
+Mevcut hash'ler toplu olarak güçlendirilemez (bcrypt tek yönlü, ham şifre
+elde yok) — kullanıcı her giriş yaptığında **sessizce yenilenir**
+(`AuthController.Login`). Yani taşıma zamana yayılır:
+
+```sql
+-- Kaç hesap hangi faktörde? '11' sayısı haftalar içinde düşmeli.
+SELECT split_part("PasswordHash",'$',3) AS faktor, COUNT(*)
+FROM "Users" GROUP BY 1 ORDER BY 1;
+```
+
+Düşmüyorsa kademeli yenileme çalışmıyordur.
+
+> ⚠️ **Her +1 iş faktörü süreyi İKİYE katlar** (12 ≈ 250 ms/hash). 14 ve
+> üstü giriş ucunu tek başına bir DoS yüzeyine çevirir. 12 → test takımının
+> süresi 35 sn'den 61 sn'ye çıktı; bu beklenen bedeldir.
+
+---
+
 ## 9. Dağıtım (KURAL-15)
 
 > **Dağıtım kontrol listesi bir belge değil, bir komuttur.** Aşağıdaki iki betik

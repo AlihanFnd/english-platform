@@ -62,7 +62,7 @@ namespace EnglishReadingPlatform.Controllers
         /// Değer rastgeledir: koda gömülü bir dize kullanmak, sır tarayıcısının
         /// (KURAL-02 kapısı) haklı olarak "gömülü şifre" diye işaretlemesine yol açar.
         private static readonly string SahteHash =
-            BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"));
+            SifreHashleme.Hashle(Guid.NewGuid().ToString("N"));
 
         public class LoginRequest
         {
@@ -137,7 +137,7 @@ namespace EnglishReadingPlatform.Controllers
             // Kullanıcı yoksa BCrypt hiç çalışmıyordu; yanıt belirgin biçimde daha
             // hızlı dönüyor ve mesaj aynı olsa bile hesabın varlığını sızdırıyordu.
             // Şimdi her iki dalda da bir doğrulama yapılıyor.
-            var sifreDogru = BCrypt.Net.BCrypt.Verify(req.Password, user?.PasswordHash ?? SahteHash);
+            var sifreDogru = SifreHashleme.Dogrula(req.Password, user?.PasswordHash ?? SahteHash);
 
             if (user == null || !sifreDogru)
             {
@@ -146,6 +146,31 @@ namespace EnglishReadingPlatform.Controllers
                 // maliyet getirmez — brute-force zaten yanlış şifrelerden oluşur.
                 _hesapSayaci.BasarisizDenemeKaydet(hedefAnahtar);
                 return Unauthorized(new { error = "Email veya şifre hatalı." });
+            }
+
+            // ── KURAL-18: kademeli yeniden hash'leme ──
+            // Ham şifre YALNIZCA burada, doğrulandığı anda elimizde. Eski
+            // hash'leri toplu bir migration ile güçlendirmek İMKÂNSIZDIR —
+            // bcrypt tek yönlüdür. Tek yol, kullanıcı her giriş yaptığında
+            // sessizce yenilemek.
+            //
+            // Başarısız olması girişi ENGELLEMEZ: bu bir iyileştirmedir, bir
+            // kimlik kontrolü değil. Yazma hatası yüzünden kullanıcıyı dışarıda
+            // bırakmak, çözdüğünden büyük bir sorun yaratırdı.
+            if (SifreHashleme.YenilenmeliMi(user.PasswordHash))
+            {
+                try
+                {
+                    user.PasswordHash = SifreHashleme.Hashle(req.Password);
+                    await _db.SaveChangesAsync();
+                    _logger.LogInformation("Şifre hash'i güçlendirildi. KullaniciId={Id}", user.Id);
+                }
+                catch (Exception ex)
+                {
+                    // KURAL-06: mesaj değil, tip loglanır.
+                    _logger.LogError("Hash güçlendirme başarısız. Tip={Tip} KullaniciId={Id}",
+                        ex.GetType().Name, user.Id);
+                }
             }
 
             var token = _jwt.GenerateToken(user);
@@ -196,7 +221,7 @@ namespace EnglishReadingPlatform.Controllers
             {
                 Username = req.Username.KirpEnCok(AlanSinirlari.KullaniciAdi),
                 Email = req.Email.KirpEnCok(AlanSinirlari.Eposta).ToLower(),
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+                PasswordHash = SifreHashleme.Hashle(req.Password),
                 // ── KURAL-17: rol İSTEMCİDEN ALINMAZ. ──
                 // Kayıt her zaman "student" üretir. Öğretmenliği yalnızca bir
                 // yönetici verir: PUT /api/admin/users/{id}/role
@@ -276,7 +301,7 @@ namespace EnglishReadingPlatform.Controllers
                 return Unauthorized(new { error = "Oturum geçersiz." });
             }
 
-            if (!BCrypt.Net.BCrypt.Verify(req.MevcutSifre, kullanici.PasswordHash))
+            if (!SifreHashleme.Dogrula(req.MevcutSifre, kullanici.PasswordHash))
             {
                 _logger.LogWarning("Yanlış mevcut şifreyle değiştirme denemesi. KullaniciId={Id}", kullaniciId);
                 return BadRequest(new { error = "Mevcut şifreniz hatalı." });
@@ -288,12 +313,12 @@ namespace EnglishReadingPlatform.Controllers
                 return BadRequest(new { error = sonuc.BirlesikMesaj });
             }
 
-            if (BCrypt.Net.BCrypt.Verify(req.YeniSifre, kullanici.PasswordHash))
+            if (SifreHashleme.Dogrula(req.YeniSifre, kullanici.PasswordHash))
             {
                 return BadRequest(new { error = "Yeni şifre eskisiyle aynı olamaz." });
             }
 
-            kullanici.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.YeniSifre);
+            kullanici.PasswordHash = SifreHashleme.Hashle(req.YeniSifre);
             await _db.SaveChangesAsync();
 
             // ── KURAL-04 + KURAL-09: şifre değişimi TÜM oturumları sonlandırır ──
@@ -378,7 +403,7 @@ namespace EnglishReadingPlatform.Controllers
                 return BadRequest(new { error = sonuc.BirlesikMesaj });
             }
 
-            kullanici.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.YeniSifre);
+            kullanici.PasswordHash = SifreHashleme.Hashle(req.YeniSifre);
             await _db.SaveChangesAsync();
 
             // Sıfırlama da bir şifre değişimidir: eski oturumlar düşmeli.

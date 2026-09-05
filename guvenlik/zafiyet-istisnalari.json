@@ -1,0 +1,13 @@
+{
+  "$aciklama": "KURAL-18: bilinçli olarak kabul edilen zafiyetler. Her kaydın SON KULLANMA TARİHİ zorunludur; tarih geçince scripts/guard/18-tedarik.sh yine kırılır. Tarihsiz bir istisna kalıcı olur ve kapıyı sessizce öldürür.",
+  "$nasil": "Bir zafiyeti buraya yazmadan önce 'npm ls <paket>' ile üretim paketine girip girmediğini DOĞRULA ve gerekçeye yaz. 'Geliştirme bağımlılığı, önemli değil' tek başına gerekçe değildir.",
+  "$alanlar": {
+    "tanimlayici": "GHSA/CVE kimliği",
+    "paket": "etkilenen paket adı",
+    "ekosistem": "npm | nuget",
+    "gerekce": "neden kabul edildi — ölçümle birlikte",
+    "dogrulayan": "kararı veren kişi",
+    "sonKullanma": "YYYY-AA-GG — bu tarihten sonra kapı yine kırılır"
+  },
+  "istisnalar": []
+}
