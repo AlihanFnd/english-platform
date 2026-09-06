@@ -462,7 +462,7 @@ Her kural bitince bu tabloyu güncelle (kural oturumunun son işi budur):
 | 16 | Hesap yaşam döngüsü | ⬜ Başlamadı — Resend anahtarı bekliyor | — | — |
 | 17 | Maliyetli iş ve paylaşılan yazma | ✅ Kanıtlanarak kapandı | `770c04e` | 2026-09-06 |
 | 18 | Tedarik zinciri ve kripto sertleştirme | ✅ Kanıtlanarak kapandı | `d2b26f9` | 2026-09-06 |
-| 19 | Kişisel veri yaşam döngüsü | ⬜ Başlamadı | — | — |
+| 19 | Kişisel veri yaşam döngüsü | ✅ Kanıtlanarak kapandı | `84231a8` | 2026-09-06 |
 
 Durum işaretleri: ⬜ Başlamadı · 🟨 Kısmen (neyin kaldığı yazılacak) · ✅ Kanıtlanarak kapandı
 

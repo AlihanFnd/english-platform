@@ -85,7 +85,18 @@ public class KisiselVeriTests
             || t == typeof(Guid) || t == typeof(TimeSpan);
     }
 
-    /// <summary>Sırlar dışa aktarmaya GİRMEZ — bayrak yanlış konsa bile.</summary>
+    /// <summary>
+    /// Sırlar dışa aktarmaya GİRMEZ.
+    ///
+    /// İki katman:
+    ///   1) Hiçbir Sir kalemi dışa aktarma listesinde olamaz.
+    ///   2) BİLİNEN kimlik doğrulama sırları ADIYLA Sir sınıfında olmalı.
+    ///
+    /// İkincisi olmadan test kandırılabilir: PasswordHash'i Sir sınıfından
+    /// ÇIKARMAK birinci iddiayı otomatik olarak sağlar ("artık Sir değil, o
+    /// hâlde ihlal de yok") ve kapı yeşil kalırdı. Mutasyon A tam olarak
+    /// bunu gösterdi.
+    /// </summary>
     [Fact]
     [Trait("Category", "KisiselVeri")]
     public void Sirlar_disa_aktarmaya_GIRMEZ()
@@ -93,9 +104,25 @@ public class KisiselVeriTests
         KisiselVeriEnvanteri.DisaAktarilanlar()
             .Should().NotContain(k => k.Sinif == VeriSinifi.Sir);
 
-        KisiselVeriEnvanteri.Kalemler
-            .Where(k => k.Sinif == VeriSinifi.Sir)
-            .Should().NotBeEmpty("en az bir sır kalemi olmalı — yoksa bu test hiçbir şey ölçmez");
+        // Kimlik doğrulama sırları ADIYLA sabitlenmiş: sınıfı değiştirilirse
+        // burası kırılır.
+        var sirlar = new[]
+        {
+            ("Users", "PasswordHash"),
+            ("SifreSifirlamaJetonlari", "JetonHash"),
+        };
+
+        foreach (var (tablo, alan) in sirlar)
+        {
+            var kalem = KisiselVeriEnvanteri.Kalemler
+                .FirstOrDefault(k => k.Tablo == tablo && k.Alan == alan);
+
+            kalem.Should().NotBeNull("{0}.{1} envanterde olmalı", tablo, alan);
+            kalem!.Sinif.Should().Be(VeriSinifi.Sir,
+                "{0}.{1} bir kimlik doğrulama sırrıdır", tablo, alan);
+            kalem.DisaAktarilir.Should().BeFalse(
+                "{0}.{1} kullanıcının indirdiği dosyaya konamaz", tablo, alan);
+        }
     }
 
     /// <summary>

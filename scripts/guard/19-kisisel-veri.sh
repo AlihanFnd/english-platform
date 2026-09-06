@@ -25,6 +25,17 @@ grep -v '^[[:space:]]*//' "$TEMIZLIK" 2>/dev/null \
 ihlal_bildir "OCR temizliği uygulanıyor" "$n" \
   "sabit var ama db.OcrRecords üzerinde silme yok"
 
+# 3b. Kimlik doğrulama sırları SIR sınıfında mı?
+#      Bir alanı Sir sınıfından çıkarmak, "hicbir Sir disa aktarilmiyor"
+#      iddiasini otomatik olarak saglar ve kapiyi yesil birakirdi.
+eksik=""
+grep -q 'new("Users", "PasswordHash", VeriSinifi.Sir' "$ENVANTER" 2>/dev/null \
+  || eksik="Users.PasswordHash Sir sınıfında değil"$'\n'
+grep -q 'new("SifreSifirlamaJetonlari", "JetonHash", VeriSinifi.Sir' "$ENVANTER" 2>/dev/null \
+  || eksik="${eksik}SifreSifirlamaJetonlari.JetonHash Sir sınıfında değil"$'\n'
+n=$(printf '%s' "$eksik" | grep -c . || true)
+ihlal_bildir "kimlik sırları Sir sınıfında" "$n" "$eksik"
+
 # 4. Veri sahibi hakları uçları var mı?
 eksik=""
 for uc in "envanter" "disa-aktar" "hesabimi-sil"; do
