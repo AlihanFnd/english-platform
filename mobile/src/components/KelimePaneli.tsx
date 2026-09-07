@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { BookMarked, CheckCircle, Volume2, X } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,9 +38,11 @@ interface Cozum {
 export function KelimePaneli({
   secim,
   kapat,
+  otoEkle,
 }: {
   secim: KelimeSecimi | null;
   kapat: () => void;
+  otoEkle?: boolean;
 }) {
   const palet = useRenk();
   const kenar = useSafeAreaInsets();
@@ -84,16 +86,12 @@ export function KelimePaneli({
       });
   }, [secim]);
 
-  if (!secim) return null;
-
-  const anahtar = secim.kelime.toLowerCase();
-  const eklendi = eklenenler[anahtar];
-
-  const kaydet = async () => {
-    if (!cozum || eklendi) return;
+  const kaydet = useCallback(async () => {
+    if (!secim || !cozum) return;
+    const anahtar = secim.kelime.toLowerCase();
+    if (eklenenler[anahtar]) return;
     setKaydediliyor(true);
     try {
-      // Web ile aynı kayıt biçimi: genel anlam varsa o, altında eş anlamlılar.
       const metin = cozum.generalMeaning
         ? `${cozum.generalMeaning}${cozum.synonyms ? '\n\nEş Anlamlılar:\n' + cozum.synonyms : ''}`
         : cozum.translation;
@@ -101,11 +99,25 @@ export function KelimePaneli({
       setEklenenler((oncekiler) => ({ ...oncekiler, [anahtar]: true }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch {
-      // Kayıt düşerse kullanıcı yeniden deneyebilir; paneli kapatmıyoruz.
+      // Kayıt düşerse kullanıcı yeniden deneyebilir
     } finally {
       setKaydediliyor(false);
     }
-  };
+  }, [secim, cozum, eklenenler]);
+
+  useEffect(() => {
+    if (otoEkle && cozum && secim) {
+      const anahtar = secim.kelime.toLowerCase();
+      if (!eklenenler[anahtar] && !kaydediliyor) {
+        kaydet();
+      }
+    }
+  }, [otoEkle, cozum, secim, eklenenler, kaydediliyor, kaydet]);
+
+  if (!secim) return null;
+
+  const anahtar = secim.kelime.toLowerCase();
+  const eklendi = eklenenler[anahtar];
 
   return (
     <Animated.View
