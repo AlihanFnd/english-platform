@@ -57,8 +57,9 @@ export default function GroupsPage() {
   };
 
   useEffect(() => {
+    if (!user) return;
     loadGroupsList();
-  }, []);
+  }, [user]);
 
   const loadGroupDetail = async (id: number) => {
     setLoadingDetails(true);

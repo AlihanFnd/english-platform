@@ -2,6 +2,7 @@ import { statikGuvenlikBasliklari } from "./guvenlik-basliklari.mjs";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: process.env.OUTPUT_STANDALONE === "true" ? "standalone" : undefined,
   // NOT: `typescript.ignoreBuildErrors` ve `eslint` anahtarları bilerek YOK.
   // Öncekinde ignoreBuildErrors=true vardı; tip hataları sessizce üretime gidiyordu.
   // Artık `next build` tip hatasında kırılır — kapı build'in kendisi.

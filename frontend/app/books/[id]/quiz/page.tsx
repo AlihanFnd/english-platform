@@ -2,11 +2,13 @@
 
 import React, { useEffect, useState, use } from 'react';
 import { api, Quiz, QuizQuestion } from '../../../api';
+import { useAuth } from '../../../context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, XCircle, Award, RefreshCw, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function QuizPage({ params }: { params: Promise<{ id: string }> }) {
+  const { user } = useAuth();
   const { id: bookIdStr } = use(params);
   const bookId = parseInt(bookIdStr);
   const router = useRouter();
@@ -33,6 +35,7 @@ export default function QuizPage({ params }: { params: Promise<{ id: string }> }
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     if (!chapterId) {
       setError('Geçersiz bölüm parametresi.');
       setLoading(false);
@@ -51,7 +54,7 @@ export default function QuizPage({ params }: { params: Promise<{ id: string }> }
     }
 
     loadQuiz();
-  }, [chapterId]);
+  }, [chapterId, user]);
 
   const handleSelectOption = (questionId: number, optionLetter: string) => {
     if (result) return; // Prevent selection after submission

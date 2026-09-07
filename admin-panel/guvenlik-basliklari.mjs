@@ -34,9 +34,18 @@ export const statikGuvenlikBasliklari = [
  */
 export function cspUret(nonce) {
   const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+  const isDev = process.env.NODE_ENV !== "production";
+  const scriptDirectives = [
+    "'self'",
+    `'nonce-${nonce}'`,
+    "'strict-dynamic'",
+    "'wasm-unsafe-eval'",
+    ...(isDev ? ["'unsafe-eval'"] : []),
+  ].join(" ");
+
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'`,
+    `script-src ${scriptDirectives}`,
     // Tailwind ve Next satır içi stil üretiyor; stil enjeksiyonu script
     // enjeksiyonuyla aynı sınıf değil, bilinçli olarak gevşek bırakıldı.
     "style-src 'self' 'unsafe-inline'",

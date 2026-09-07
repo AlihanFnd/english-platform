@@ -20,31 +20,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  // 1. Initial auth bootstrap on component mount
   useEffect(() => {
-    async function loadUser() {
-      const token = localStorage.getItem('token');
+    let isMounted = true;
+
+    async function bootstrapAuth() {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       if (!token) {
-        setLoading(false);
-        if (pathname !== '/login' && pathname !== '/register') {
-          router.push('/login');
-        }
+        if (isMounted) setLoading(false);
         return;
       }
 
       try {
         const data = await api.me();
-        setUser(data.user);
-      } catch (err) {
-        console.error('Failed to load user info', err);
-        localStorage.removeItem('token');
-        setUser(null);
-        router.push('/login');
+        if (isMounted) {
+          setUser(data.user);
+        }
+      } catch (err: any) {
+        // Only invalidate token if backend explicitly responded with 401 Unauthorized
+        if (err?.status === 401 || err?.message?.includes('401')) {
+          localStorage.removeItem('token');
+          if (isMounted) setUser(null);
+        } else {
+          console.warn('Could not verify session with server', err);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
-    loadUser();
-  }, [pathname, router]);
+
+    bootstrapAuth();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Client-side route protection
+  useEffect(() => {
+    if (loading) return;
+
+    const isAuthPage = pathname === '/login' || pathname === '/register';
+
+    if (!user && !isAuthPage) {
+      router.push('/login');
+    } else if (user && isAuthPage) {
+      router.push('/');
+    }
+  }, [user, loading, pathname, router]);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
@@ -52,10 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await api.login(email, password);
       localStorage.setItem('token', data.token);
       setUser(data.user);
-      router.push('/');
-    } catch (err) {
+      window.location.href = '/';
+    } finally {
       setLoading(false);
-      throw err;
     }
   };
 
@@ -66,10 +88,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await api.register(username, email, password);
       localStorage.setItem('token', data.token);
       setUser(data.user);
-      router.push('/');
-    } catch (err) {
+      window.location.href = '/';
+    } finally {
       setLoading(false);
-      throw err;
     }
   };
 
@@ -81,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     localStorage.removeItem('token');
     setUser(null);
-    router.push('/login');
+    window.location.href = '/login';
   };
 
   return (

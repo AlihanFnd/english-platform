@@ -141,6 +141,7 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   };
 
   useEffect(() => {
+    if (!user) return;
     (async () => {
       setLoading(true); setError(''); setSentences([]); setOpenTr(null); setSelWord(null);
       try {

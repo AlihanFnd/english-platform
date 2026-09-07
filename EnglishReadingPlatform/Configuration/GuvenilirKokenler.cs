@@ -19,6 +19,8 @@ public static class GuvenilirKokenler
     {
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
     };
 
     /// <summary>
@@ -61,7 +63,7 @@ public static class GuvenilirKokenler
             if (!Uri.TryCreate(k, UriKind.Absolute, out var uri))
                 throw new InvalidOperationException($"{Anahtar} geçersiz köken içeriyor: '{k}'");
 
-            if (uri.Scheme != Uri.UriSchemeHttps && !ortam.IsDevelopment())
+            if (uri.Scheme != Uri.UriSchemeHttps && !ortam.IsDevelopment() && !uri.IsLoopback && uri.Host != "localhost")
                 throw new InvalidOperationException(
                     $"{Anahtar} üretimde http köken içeremez: '{k}'");
         }

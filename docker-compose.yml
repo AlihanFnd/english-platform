@@ -65,13 +65,15 @@ services:
       Jwt__Key: ${JWT_KEY:?JWT_KEY tanımlı değil — openssl rand -base64 48 ile üretin}
       Jwt__Issuer: EnglishPlatform
       Jwt__Audience: EnglishPlatformUsers
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       # İlk yönetici — boşsa hiç yönetici oluşturulmaz (uyarı loglanır).
       Seed__AdminEmail: ${Seed__AdminEmail:-}
       Seed__AdminPassword: ${Seed__AdminPassword:-}
       Groq__ApiKey: ${GROQ_API_KEY:-}
+      CorsOrigins: ${CorsOrigins:-http://localhost:3000,http://localhost:3001}
+      PublicHost: ${PublicHost:-localhost}
     ports:
-      - "5001:8080"
+      - "5001:5001"
     depends_on:
       postgres:
         condition: service_healthy

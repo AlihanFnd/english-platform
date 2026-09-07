@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!jeton) {
         if (__DEV__ && process.env.EXPO_PUBLIC_AUTO_LOGIN === 'true') {
           try {
-            const veri = await api.login('alihanfndk35@gmail.com', 'JST097kafaVyoo6a6+nICVwb');
+            const veri = await api.login('alihanfnd35@gmail.com', '12345678');
             await jetonYaz(veri.token);
             if (!iptalEdildi) setKullanici(veri.user);
           } catch {

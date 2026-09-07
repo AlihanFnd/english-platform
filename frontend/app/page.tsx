@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!user) return;
     async function loadStats() {
       try {
         const data = await api.getDashboardStats();
@@ -34,7 +35,7 @@ export default function Dashboard() {
       }
     }
     loadStats();
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (

@@ -24,8 +24,8 @@ export default function GirisEkrani() {
 
   const [girisModu, setGirisModu] = useState(true);
   const [kullaniciAdi, setKullaniciAdi] = useState('');
-  const [eposta, setEposta] = useState(__DEV__ ? 'alihanfndk35@gmail.com' : '');
-  const [sifre, setSifre] = useState(__DEV__ ? 'JST097kafaVyoo6a6+nICVwb' : '');
+  const [eposta, setEposta] = useState(__DEV__ ? 'alihanfnd35@gmail.com' : '');
+  const [sifre, setSifre] = useState(__DEV__ ? '12345678' : '');
   const [hata, setHata] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
 

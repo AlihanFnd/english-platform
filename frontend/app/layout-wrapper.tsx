@@ -65,9 +65,21 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     );
   }
 
-  // If on login or register, do not render sidebar/navbar
-  if (isAuthPage || !user) {
+  // If on login or register, render children directly without dashboard shell
+  if (isAuthPage) {
     return <>{children}</>;
+  }
+
+  // If unauthenticated on a protected route, do NOT mount children (prevents 401 API calls while redirecting)
+  if (!user) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background text-on-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-primary font-medium animate-pulse text-sm">Yönlendiriliyor...</p>
+        </div>
+      </div>
+    );
   }
 
   const navItems = [

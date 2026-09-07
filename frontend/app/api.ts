@@ -166,7 +166,9 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    const err: any = new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    err.status = response.status;
+    throw err;
   }
 
   return response.json();

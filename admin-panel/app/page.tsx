@@ -35,7 +35,7 @@ export default function AdminLoginPage() {
         }
         localStorage.setItem("admin_token", data.token);
         localStorage.setItem("admin_user", JSON.stringify(data.user));
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
       }
     } catch (err) {
       console.error(err);

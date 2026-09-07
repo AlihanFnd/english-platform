@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { statikGuvenlikBasliklari } from "./guvenlik-basliklari.mjs";
 
 const nextConfig: NextConfig = {
+  output: process.env.OUTPUT_STANDALONE === "true" ? "standalone" : undefined,
   // KURAL-11: sunucu parmak izi. Next varsayılan olarak "X-Powered-By: Next.js"
   // yazıyor; hangi yığının çalıştığını söylemenin bir faydası yok.
   poweredByHeader: false,

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api, OcrRecord } from '../api';
+import { useAuth } from '../context/AuthContext';
 import { useTelaffuz, KELIME_HIZI } from '../hooks/useTelaffuz';
 import Tesseract from 'tesseract.js';
 import { 
@@ -34,6 +35,7 @@ interface AnalyzedSentence {
 }
 
 export default function OcrPage() {
+  const { user } = useAuth();
   const { seslendir: speak } = useTelaffuz();
 
   // OCR states
@@ -70,8 +72,9 @@ export default function OcrPage() {
   };
 
   useEffect(() => {
+    if (!user) return;
     loadOcrHistory();
-  }, []);
+  }, [user]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

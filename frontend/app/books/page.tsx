@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { api, Book, Taxonomy } from '../api';
+import { useAuth } from '../context/AuthContext';
 import { BookOpen, Search, ArrowRight, Layers, FileText, Bookmark, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -49,6 +50,7 @@ const YEDEK_TAKSONOMI: Taxonomy = {
 };
 
 export default function BooksPage() {
+  const { user } = useAuth();
   const [books, setBooks] = useState<Book[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -58,6 +60,7 @@ export default function BooksPage() {
   const [taksonomi, setTaksonomi] = useState<Taxonomy>(YEDEK_TAKSONOMI);
 
   useEffect(() => {
+    if (!user) return;
     async function loadBooks() {
       try {
         const data = await api.getBooks();
@@ -77,7 +80,7 @@ export default function BooksPage() {
         if (t?.levels?.length) setTaksonomi(t);
       })
       .catch(() => { /* yedekte kalınır */ });
-  }, []);
+  }, [user]);
 
   // Filtre seçenekleri: 'all' bir taksonomi değeri DEĞİL, arayüz seçeneğidir.
   const LEVELS = useMemo(() => [
