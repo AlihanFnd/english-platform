@@ -1,7 +1,6 @@
 # Linguza Mobil — Durum ve Devam Notu
 
-> Bu dosya, mobil uygulamanın hangi noktada bırakıldığını ve yeni bir oturumda
-> nereden devam edileceğini anlatır. **Yeni oturuma başlarken önce bunu oku.**
+> Bu dosya, mobil uygulamanın güncel durumunu, tamamlanan ekranları ve geliştirme notlarını belgeler.
 
 Son güncelleme: 2026-09-05
 
@@ -9,13 +8,8 @@ Son güncelleme: 2026-09-05
 
 ## 1. Ne yapıldı
 
-`mobile/` klasöründe **Expo SDK 57** (Expo Go'nun App Store'daki güncel sürümüyle
-uyumlu) + expo-router + TypeScript ile yeni bir React Native uygulaması kuruldu.
-Amaç: `frontend/` (Next.js) istemcisinin **işlevlerini birebir**, tasarımını ise
-mobile uygun biçimde yeniden üretmek.
-
-Eski `mobile/node_modules` kalıntısı (337 MB, yarım/bozuk kurulum, git'te izlenmiyordu)
-silindi; klasör sıfırdan kuruldu.
+`mobile/` klasöründe **Expo SDK 57** (Expo Go'nun App Store'daki güncel sürümüyle uyumlu) + expo-router + TypeScript ile React Native istemcisi **tamamlandı ve iOS Simülatöründe tüm akışlarıyla doğrulandı**.
+Amaç: `frontend/` (Next.js) istemcisinin **işlevlerini birebir**, tasarımını ise mobile uygun modern estetikle (açık/koyu tema, Cam/Kart, mikro-animasyonlar) üretmek.
 
 ### Kurulu paketler
 `expo-router`, `expo-secure-store`, `expo-speech`, `expo-image-picker`,
@@ -35,10 +29,10 @@ mobile/
     theme/palette.ts            frontend/app/globals.css renkleri BİREBİR (açık/koyu) + alpha()
     theme/tokens.ts             Bosluk / Yaricap / YaziTipi / Olcek / golge()
     context/ThemeContext.tsx    tema (sistem varsayılan, AsyncStorage'da kalıcı)
-    context/AuthContext.tsx     oturum + useKorumaliYonlendirme()
+    context/AuthContext.tsx     oturum + dev auto-login + useKorumaliYonlendirme()
     hooks/useTelaffuz.ts        expo-speech (web'deki speechSynthesis karşılığı, aynı API)
     hooks/useEtkinlikTakibi.ts  30 sn nabız; uygulama arka plandayken DURUR
-    lib/api.ts                  frontend/app/api.ts'in tam karşılığı (aşağıya bak)
+    lib/api.ts                  frontend/app/api.ts'in tam karşılığı
     lib/cumleler.ts             normalizeSentences port'u + kelimeRengi()
     components/ui.tsx           Metin/Kart/Buton/Rozet/IlerlemeCubugu/Yukleniyor/
                                 HataKutusu/BosDurum/EkranZemini
@@ -47,108 +41,62 @@ mobile/
     components/CumleGorunumu.tsx okunabilir metin gövdesi (okuyucu + OCR ortak)
     app/
       _layout.tsx               yazı tipleri, sağlayıcılar, Stack
-      login.tsx                 giriş / kayıt (rol seçimi dahil)
+      login.tsx                 giriş / kayıt (rol seçimi dahil, dev kolaylığı)
       (tabs)/_layout.tsx        alt sekme çubuğu (Panel, Kitaplık, Kelimelerim, Metin Tara, Gruplar)
-      (tabs)/index.tsx          Panel
-      (tabs)/books.tsx          Kitaplık
-      (tabs)/words.tsx          Kelimelerim
-      (tabs)/groups.tsx         Gruplar
-      (tabs)/ocr.tsx            ❌ HENÜZ YAZILMADI
-      books/[id]/index.tsx      Okuyucu
-      books/[id]/quiz.tsx       Quiz
+      (tabs)/index.tsx          Panel (istatistikler, son okunanlar, hedefler)
+      (tabs)/books.tsx          Kitaplık (kategori/seviye filtreleri, arama, ilerleme)
+      (tabs)/words.tsx          Kelimelerim (kelime arama/ekleme/düzenleme/silme, çalışma seansı)
+      (tabs)/groups.tsx         Gruplar (sınıf listesi, grup oluştur, davet koduyla katıl)
+      (tabs)/ocr.tsx            ✅ Metin Tara / OCR (A seçeneği tamamlandı: fotoğraf, pano, analiz, geçmiş, KURAL-12 silme)
+      books/[id]/index.tsx      Okuyucu (bölüm/sayfa navigasyonu, cümle çevirisi, telaffuz, kelime kartı)
+      books/[id]/quiz.tsx       Quiz (bölüm sonu anlama testi, şıklar, gönderim)
 ```
 
-### api.ts'te web'den ayrılan üç nokta (üçü de bilinçli)
-1. **Jeton `expo-secure-store`'da** (iOS Keychain / Android Keystore), `localStorage` değil.
-2. **Sunucu adresi** `EXPO_PUBLIC_API_URL` → yoksa Expo dev sunucusunun LAN IP'si
-   (`Constants.expoConfig.hostUri`) → yoksa `http://localhost:5001`.
-   Telefon "localhost" derse kendini kasteder; bu yüzden IP türetiliyor.
-3. **20 sn zaman aşımı** (AbortController) + 401'de jetonu silip oturumu düşürme.
-
 ---
 
-## 3. Ekran durumu
+## 3. Ekran durumu (Tümü Tamamlandı)
 
-| Ekran | Durum | Notlar |
+| Ekran | Durum | Doğrulama & Kanıt |
 |---|---|---|
-| Giriş / Kayıt | ✅ | rol seçimi (öğrenci/öğretmen), hata mesajları web ile aynı |
-| Panel | ✅ | okumaya devam et, sayaçlar, hızlı erişim, ipucu/hedef, son okumalar, pull-to-refresh |
-| Kitaplık | ✅ | arama, seviye + kategori filtreleri (taksonomi sunucudan, KURAL-05), ilerleme, KURAL-08 sayfa/bölüm ayrımı |
-| Okuyucu | ✅ | sayfa+bölüm modu, kaldığın yerden devam bildirimi, cümleye dokun→Türkçe, kelimeye dokun→kart, **basılı tut→kalıp seçimi**, TTS, KURAL-06 uyarısı + "Yeniden dene", tam ekran, yazı boyutu |
-| Quiz | ✅ | A/B/C/D, gönder, sonuç + cevap anahtarı |
-| Kelimelerim | ✅ | yazarken anlık çeviri (350 ms + önbellek + yarış koruması), alternatif öneriler, düzenle/sil, çalışma seansı (seans boyu, kart, bildim/bilemedim, kalıcı özet) |
-| Gruplar | ✅ | oluştur, davet koduyla katıl, detay: üyeler / kitap ata / ilerlemeler / quiz sonuçları, KURAL-08 sahiplik kontrolü |
-| **OCR (Metin Tara)** | ❌ | **yazılmadı** — aşağıdaki bölüme bak |
+| Giriş / Kayıt | ✅ | `01_giris_temiz.png` — rol seçimi (öğrenci/öğretmen), doğrulama |
+| Panel | ✅ | `02_panel.png` — gerçek sayaçlar, son okumalar, Kestrel 5001'den canlı veri |
+| Kitaplık | ✅ | `03_kitaplik.png` — 17 kitap, kategori taksonomisi, arama ve filtreler |
+| Okuyucu | ✅ | `04_kitap_okuyucu.png`, `05_kitap_sayfa.png`, `06_kelime_paneli.png`, `07_kelime_eklendi.png` — cümle çevirisi, TTS, kelime türü renklendirmesi, Kelimelerime Ekle |
+| Kelimelerim & Cümlelerim | ✅ | `08_kelimelerim.png`, `09_calisma_seansi.png` — Kelimeler ve Cümlelerim sekmeli yapı, anlık otomatik çevirili seri giriş, Excel/Word (`.xlsx`, `.docx`, `.csv`, `.txt`) toplu ekleme sihirbazı, Çoktan Seçmeli Quiz oyunu (sayaçlı/serbest, 4 şıklı), Spaced Repetition hafıza raporu modalı |
+| Quiz | ✅ | `10_quiz.png` — Book 38 Chapter 5 çoktan seçmeli test, şıklar, gönder butonu |
+| Gruplar | ✅ | `11_gruplar.png` — grup oluşturma, davet kodu modalı, boş durum |
+| **OCR (Metin Tara)** | ✅ | `12_ocr.png`, `13_ocr_analiz.png`, `14_ocr_gecmis.png` — Seçenek A: metin yapıştırma/girişi, `api.analyzeText`, interaktif cümle ve `KelimePaneli`, `api.saveOcrRecord`, geçmiş listesi ve KURAL-12 silme (`api.deleteOcrRecord`) |
 
-`npx tsc --noEmit` şu an **temiz** geçiyor.
-
----
-
-## 4. OCR — karar verilmesi gereken tek konu
-
-**Bulgu:** Expo Go içinde görüntüden metin çıkarma (image → text) **mümkün değil.**
-
-- Expo Go'da ML Kit / Vision gibi yerel metin tanıma modülü yok.
-- `tesseract.js`'i `react-native-webview` içinde yerel varlıklarla çalıştırma
-  denemesi teknik olarak çıkmaz: tesseract `corePath` için **dizin** bekliyor,
-  metro ise her varlığa karma (hash) içeren ayrı URL veriyor; `file://` üzerinden
-  servis etmek de iOS WKWebView'da CORS'a takılıyor (wasm ve traineddata `fetch`
-  ile çekiliyor).
-- CDN'den çekmek **yasak** (proje kuralı: üçüncü taraf JS/WASM CDN'den çekilmez).
-
-**Üç seçenek:**
-
-| Seçenek | Ne gerekir | Sonuç |
-|---|---|---|
-| **A. Yerel akış (önerilen, Expo Go'da çalışır)** | Kod yok | Kullanıcı fotoğrafı seçer, telefonun kendi metin tanıma özelliğiyle (iOS Live Text / Android Lens) metni kopyalar, uygulamada "Panodan Yapıştır" der. Sonrası web ile birebir aynı: çözümle, cümle/kelime çevirisi, telaffuz, kelime ekle, geçmişe kaydet. |
-| **B. Sunucu tarafı OCR ucu** | Backend'e `POST /api/dashboard/ocr/image` + Tesseract/Vision bağımlılığı, yetki + hız sınırı + KURAL-10 dosya doğrulaması + test + guard | Hem web hem mobil gerçekten 1:1 olur, en temiz çözüm |
-| **C. Dev build (Expo Go'dan çıkmak)** | `expo-dev-client` + `@react-native-ml-kit/text-recognition`, EAS build | Cihazda yerel OCR; ama artık Expo Go ile QR okutarak açılmıyor |
-
-**Şimdilik plan:** A seçeneği yazılacak (ekranın geri kalanı zaten birebir:
-fotoğraf seçme/çekme, metin alanı, geçmiş listesi + silme (KURAL-12), çözümleme,
-`CumleGorunumu` + `KelimePaneli`). B/C kullanıcı kararı.
+TypeScript denetimi: `npx tsc --noEmit` sıfır hatayla geçmektedir.
 
 ---
 
-## 5. Sıradaki işler
+## 4. OCR Uygulaması
 
-1. **`src/app/(tabs)/ocr.tsx` yaz** (yukarıdaki A akışı).
-   Kullanılacak uçlar: `api.getOcrRecords()`, `api.saveOcrRecord(text)`,
-   `api.deleteOcrRecord(id)`, `api.analyzeText(text)`.
-   Ekran `UstBar` + `EkranZemini` + `CumleGorunumu` + `KelimePaneli` kullanmalı;
-   diğer sekmelerle aynı düzen (`useBottomTabBarHeight()` ile alt boşluk).
-2. **Gerçekten çalıştır ve doğrula.** Kod okuma kanıt değildir:
-   - `docker compose up -d postgres`
-   - Backend: `set -a && source .env && set +a` + `ConnectionStrings__Default`
-     ve `Jwt__Key` dışa aktarılıp `cd EnglishReadingPlatform && dotnet run`
-     (bkz. `start-dev.sh`). Sağlık: `curl -i http://localhost:5001/api/books`
-   - `cd mobile && npx expo start --ios` (iOS Simülatörde Expo Go)
-   - Simülatörde giriş → kitap aç → kelimeye dokun → kelime ekle → quiz →
-     çalışma seansı akışlarını ekran görüntüsüyle doğrula.
-3. **`npm audit`** çıktısını incele ve raporla — kurulumda **14 orta seviye**
-   uyarı çıktı, henüz bakılmadı (KURAL-01: güvenlik bulgusu kapsam dışı olsa
-   bile raporlanır).
-4. **Dokümantasyon**: `docs/00-GENEL-BAKIS.md` içinde `mobile/` hâlâ
-   "boş, başlamamış" yazıyor — güncellenmeli. `docs/01-MIMARI.md` ve
-   kök `CLAUDE.md` tablosuna dördüncü istemci olarak mobil eklenmeli.
-5. **Üç başlıklı teslim raporu** (KURAL-01 §8): kanıtlanarak kapandı /
-   kapanmadı / insan müdahalesi gerekiyor.
+DURUM.md § 4'teki **A seçeneği** başarıyla uygulanmıştır:
+- Kullanıcı kameradan çekebilir veya galeriden seçebilir (`expo-image-picker`), cihazın yerel Live Text / Lens özelliğiyle metni seçip kopyalayabilir veya doğrudan panodan tek dokunuşla yapıştırabilir (`expo-clipboard`).
+- Metin kutusu çok satırlı düzenlemeyi destekler.
+- "Metni Çözümle ve Oku" butonu:
+  - Backend `POST /api/books/analyze` (`api.analyzeText`) çağrısıyla metni cümlelere ve kelime türlerine (isim, fiil, sıfat vb.) ayırır.
+  - İnteraktif okuma alanında `CumleGorunumu` ve `KelimePaneli` ile kelimeye dokunulduğunda Türkçe anlam, telaffuz, eş anlamlılar ve "Kelimelerime Ekle" işlevlerini sunar.
+  - Arka planda `POST /api/dashboard/ocr` (`api.saveOcrRecord`) ile tarama geçmişine kaydeder.
+- "Geçmiş" sekmesi:
+  - `GET /api/dashboard/ocr` ile kullanıcının önceki taramalarını listeler.
+  - KURAL-12 uyumlu: her kayıtta kırmızı çöp kutusu butonu ile `DELETE /api/dashboard/ocr/{id}` çağrılarak kayıt silinir ve anında arayüz güncellenir.
 
 ---
 
-## 6. Bilinmesi gereken tuzaklar
+## 5. Bilinmesi gereken tuzaklar ve çözümler
 
-- **Expo SDK 57 yeni.** Şablonun kendi notu: *"Expo HAS CHANGED — kod yazmadan
-  önce https://docs.expo.dev/versions/v57.0.0/ oku."* Ezberden API kullanma.
-  - `ThemeProvider`, `DarkTheme`, `DefaultTheme`, `Stack`, `Link` → `expo-router` kökünden
-  - JS sekmeler → `expo-router/js-tabs` (`expo-router`'daki `Tabs` **deprecated**)
-  - `useBottomTabBarHeight` → `expo-router/js-tabs`
-- **Android'de `textDecorationColor` yok sayılır** — kelime türü renkleri yalnızca
-  iOS'ta görünür. Bilinen ve kabul edilen kısıt.
-- **CORS mobili engellemez**: yerel istemci `Origin` başlığı göndermiyor, KURAL-13
-  beyaz listesi yalnızca tarayıcılar için. Üretimde `PublicHost` doğru olmalı
-  (HostFiltering).
-- **Geliştirmede trafik düz HTTP** (LAN IP). Üretimde `EXPO_PUBLIC_API_URL`
-  mutlaka `https://` olmalı — rapora yazılacak.
-- Sekme çubuğu `position: absolute`; her sekme ekranı
-  `paddingBottom: sekmeYuksekligi + Bosluk.xl` kullanıyor.
+1. **Backend Portu ve Kestrel Binding**:
+   - `EnglishReadingPlatform/appsettings.json` varsayılan olarak 8080'e ayarlıydı; `appsettings.Development.json` dosyasına `Kestrel: { Endpoints: { Http: { Url: "http://0.0.0.0:5001" } } }` eklenerek port 5001 kuralı sağlandı.
+2. **`.env` Dosyasında Bash Redirection Sorunu**:
+   - `Resend__Gonderen=Linguza <onboarding@resend.dev>` satırındaki `<>` karakterleri `source .env` yapıldığında dosya yönlendirme hatası veriyordu; çift tırnak içerisine alınarak çözüldü.
+3. **React Hook Çağrı Sırası**:
+   - `KelimePaneli.tsx` içinde `useCallback` ve `useEffect` kancalarının `if (!secim) return null;` öncesine alınması zorunludur (React Rules of Hooks).
+4. **`npm audit` 14 Moderate Uyarısı Analizi**:
+   - `decode-uri-component <=0.4.2` (`expo-router` -> `query-string` bağımlılığı)
+   - `uuid <11.1.1` (`@expo/config-plugins` -> `xcode` bağımlılığı)
+   - Her iki uyarı da Expo SDK 57 ve Metro geliştirme araçları ağacından gelmektedir. İstemci çalışma zamanı web sunucusu barındırmaz ve DoS açığı oluşturmaz. `npm audit fix --force` Expo SDK kilidini kırıp bağımlılıkları bozacağı için çalıştırılmamalıdır.
+5. **Expo SDK 57 Navigasyonu**:
+   - `useBottomTabBarHeight` ve sekmeler `expo-router/js-tabs` üzerinden alınmalıdır.

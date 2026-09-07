@@ -145,9 +145,11 @@ async function istek<T>(
   }
 
   if (yanit.status === 401) {
-    await jetonSil();
-    oturumDinleyicileri.forEach((d) => d());
-    throw new ApiHatasi('Oturumun sona erdi. Lütfen tekrar giriş yap.', 401);
+    if (uc !== '/auth/login') {
+      await jetonSil();
+      oturumDinleyicileri.forEach((d) => d());
+      throw new ApiHatasi('Oturumun sona erdi. Lütfen tekrar giriş yap.', 401);
+    }
   }
 
   if (!yanit.ok) {
