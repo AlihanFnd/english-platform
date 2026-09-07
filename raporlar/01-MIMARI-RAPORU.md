@@ -510,6 +510,11 @@ Yanıt her koşulda AYNI: "Eğer bu e-posta kayıtlıysa…"
 
 ## 10. İstemciler
 
+> 📄 **Ayrıntı ayrı raporlarda:** istemciler kod tabanının **%62'si**
+> (13.234 satır) — bu bölüm yalnızca özet.
+> · Mobil için → [02-MOBIL-RAPORU.md](02-MOBIL-RAPORU.md)
+> · Web ikilisi için → [03-WEB-ISTEMCILERI-RAPORU.md](03-WEB-ISTEMCILERI-RAPORU.md)
+
 Üçü de **aynı API'yi** kullanır ve HTTP çağrıları **yalnızca kendi `api.ts`
 katmanından** geçer. Bu kural, KURAL-17'nin sözleşme değişikliğini ekran
 kodlarına hiç dokunmadan soğurmayı mümkün kıldı.
