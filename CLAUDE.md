@@ -1,7 +1,7 @@
 # Linguza — Proje Kılavuzu
 
 İngilizce okuma + anlık çeviri platformu. Backend ASP.NET Core 8, iki ayrı Next.js
-istemcisi, PostgreSQL.
+istemcisi, Expo Go mobil istemcisi, PostgreSQL.
 
 ## 📚 Dokümantasyon
 
@@ -16,6 +16,7 @@ istemcisi, PostgreSQL.
 | Servislerin iç işleyişi | [docs/04-BACKEND.md](docs/04-BACKEND.md) |
 | Sayfalar, context'ler, tasarım sistemi | [docs/05-FRONTEND.md](docs/05-FRONTEND.md) |
 | Yönetici paneli | [docs/06-ADMIN-PANEL.md](docs/06-ADMIN-PANEL.md) |
+| Mobil istemci (Expo Go) | [mobile/DURUM.md](mobile/DURUM.md) |
 | **Açık güvenlik bulguları** | [docs/07-GUVENLIK.md](docs/07-GUVENLIK.md) |
 | **Güvenlik çalışması faz 1 (kapandı)** | [guvenlik-kurallari/00-BASLA-BURADAN.md](guvenlik-kurallari/00-BASLA-BURADAN.md) |
 | **Güvenlik çalışması faz 2 (sıradaki)** | [guvenlik-kurallari-faz2/00-BASLA-BURADAN.md](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) |
@@ -27,7 +28,12 @@ istemcisi, PostgreSQL.
 docker compose up -d postgres && ./start-dev.sh
 ```
 
-Frontend :3000 · Admin :3001 · API :5001 · pgAdmin :8080
+Frontend :3000 · Admin :3001 · API :5001 · pgAdmin :8080 · Mobil Metro :8081
+
+Mobil istemciyi başlatmak için:
+```bash
+cd mobile && npx expo start
+```
 
 > ⚠️ Backend portu üç yerde farklı yazıyor. İlk kurulumda "Failed to fetch" alırsan
 > [docs/08-GELISTIRME-REHBERI.md § 1](docs/08-GELISTIRME-REHBERI.md) bölümüne bak.
@@ -37,7 +43,7 @@ Frontend :3000 · Admin :3001 · API :5001 · pgAdmin :8080
 | Faz | Klasör | Durum |
 |---|---|---|
 | **Faz 1** — KURAL-01…12 | [`guvenlik-kurallari/`](guvenlik-kurallari/00-BASLA-BURADAN.md) | ✅ 12/12 kapandı (`2bd12bc`) |
-| **Faz 2** — KURAL-13…19 | [`guvenlik-kurallari-faz2/`](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) | 🟨 2/7 (13, 14 kapandı) |
+| **Faz 2** — KURAL-13…19 | [`guvenlik-kurallari-faz2/`](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) | 🟨 6/7 (16 hariç hepsi kapandı) |
 
 Her oturum **önce** ilgili fazın `00-BASLA-BURADAN.md`, **sonra** sıradaki
 `KURAL-NN.md` okunarak yürütülür. Disiplin, pazarlıksız maddeler ve teslim
@@ -59,6 +65,24 @@ formatı 00 dosyasındadır. İlerleme tablosu da oradadır — bitirdiğin kura
 - Yeni bir uç eklerken: yetki kontrolü, girdi uzunluğu, hız sınırı, hata mesajında
   iç detay sızıntısı — dördünü de kontrol et
   ([docs/07-GUVENLIK.md § D](docs/07-GUVENLIK.md)).
+- **Yeni bir kişisel veri alanı eklerken `Data/KisiselVeriEnvanteri.cs`'e yaz**
+  (KURAL-19: sebebi, ömrü, dışa aktarılıp aktarılmadığı). Yazmazsan
+  `KisiselVeriTests` kırılır. Dışa aktarma envanterden üretiliyor.
+- **Şifre hash'lemek için `Security/SifreHashleme.cs` kullan** (KURAL-18) —
+  doğrudan `BCrypt.Net.BCrypt.*` çağırmak yasak, kapı denetliyor. İş faktörü
+  tek yerde (12). **`package.json` sürümleri sabittir**, aralık (`^`) eklenmez.
+- **Para harcayan ya da PAYLAŞILAN veri yazan bir uç eklerken bunu
+  `[ParaHarcar]` / `[PaylasilanVeriYazar]` ile BİLDİR** (KURAL-17). Ücretli uç
+  en dar kotada (`AgirAnaliz`/`Ceviri`) olmalı; paylaşılan veriyi **üzerine
+  yazan** uç yetki politikası ister. **Durum değiştiren iş `GET` ile yapılmaz** —
+  çerez `SameSite=Lax`, üst düzey gezinmede gönderilir.
+- **Kayıt rol kabul etmez** — her hesap `student` doğar, öğretmenliği yalnızca
+  yönetici verir (`PUT /api/admin/users/{id}/role`).
+- **Dağıtımdan önce `bash scripts/dagitim/on-kontrol.sh`, sonra
+  `bash scripts/dagitim/canli-dogrula.sh <adres>`** (KURAL-15). Zorunlu ortam
+  değişkenleri `Configuration/OrtamSozlesmesi.cs` içinde; üretimde biri eksikse
+  **uygulama başlamaz.** `appsettings.Production.json` bilerek sürüm
+  kontrolündedir — `.gitignore`'a alınırsa üretime hiç gitmez.
 - **Yeni bir dış servis bağımlılığı eklerken `Configuration/DisServisSozlesmesi.cs`
   içine sınıfını yaz** (KURAL-14: uygulama açılmaz / özellik kapanır / işlev bozulur).
   Sınıflandırılmamış bir `X:ApiKey` okuması `scripts/guard/14-yapilandirma.sh`
@@ -87,6 +111,9 @@ formatı 00 dosyasındadır. İlerleme tablosu da oradadır — bitirdiğin kura
 1. **Kitaplar iki farklı biçimde saklanıyor:** `Chapter` (eski, her okumada yeniden
    çevrilir) veya `BookPage` (güncel, çeviri `SentencesJson`'a bir kez yazılır).
    `hasPages` bayrağı hangisinin geçerli olduğunu söyler.
+   **`BookPage` GLOBALDİR** — `UserId` taşımaz, içeriği bütün kullanıcılar paylaşır.
+   Bu yüzden analizi *üzerine yazan* uç öğretmen/yönetici yetkisine bağlı;
+   *boşluğu dolduran* uç herkese açık (KURAL-17).
 2. **Backend hiç statik dosya sunmaz.** `Views/` ve `wwwroot/` ölü koddu, 2026-09-01'de
    silindi; `app.UseStaticFiles()` de kaldırıldı. Razor pipeline'ı hiç kurulmamıştı.
    Statik dosya sunmak gerekirse kökü açma — `RequestPath` ile tek dizin yayınla ve

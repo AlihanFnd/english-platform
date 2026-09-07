@@ -3,18 +3,19 @@
 ## 1. Yüksek seviye görünüm
 
 ```
-┌──────────────────┐        ┌──────────────────┐
-│  frontend        │        │  admin-panel     │
-│  Next.js 16      │        │  Next.js 14      │
-│  React 19        │        │  React 18        │
-│  :3000           │        │  :3001           │
-│                  │        │                  │
-│ localStorage:    │        │ localStorage:    │
-│   "token"        │        │   "admin_token"  │
-└────────┬─────────┘        └────────┬─────────┘
-         │  Authorization: Bearer …  │
-         └───────────┬───────────────┘
-                     ▼
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│  frontend        │    │  admin-panel     │    │  mobile (Expo Go)│
+│  Next.js 16      │    │  Next.js 14      │    │  Expo SDK 57     │
+│  React 19        │    │  React 18        │    │  React Native 86 │
+│  :3000           │    │  :3001           │    │  :8081 (Metro)   │
+│                  │    │                  │    │                  │
+│ localStorage:    │    │ localStorage:    │    │ SecureStore:     │
+│   "token"        │    │   "admin_token"  │    │   "linguza_token"│
+└────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │ Authorization: Bearer …
+                                 ▼
          ┌───────────────────────────┐
          │  ASP.NET Core 8 Web API   │
          │  :5001 → konteynerde 8080 │
@@ -47,10 +48,12 @@
     │ :5432        │   │ api.groq.com            │
     └──────────────┘   └─────────────────────────┘
 
-Tarayıcıda çalışan (backend'e uğramayan) dış bağımlılıklar:
-  • tesseract.js  — OCR, frontend'de npm paketi
+İstemcilerde çalışan (backend'e uğramayan) dış bağımlılıklar:
+  • tesseract.js  — OCR, frontend web'de npm paketi
+  • expo-clipboard / expo-image-picker — OCR metin girişi, mobile Expo Go
+  • expo-speech   — sesli okuma (TTS), mobilde yerel sentezleyici
+  • Web Speech API — sesli okuma (TTS), web tarayıcıda
   • pdf.js        — admin panelde CDN'den <script> ile
-  • Web Speech API — sesli okuma (TTS)
 ```
 
 ---
@@ -103,6 +106,30 @@ app/{dashboard,books,users,feedbacks}/page.tsx
 
 Ortak API istemcisi **yoktur**; her sayfa `const API = process.env.NEXT_PUBLIC_API_URL`
 tanımlayıp elle `fetch` çağırır ve `localStorage.getItem("admin_token")` okur.
+
+### Mobil istemci — `mobile/`
+
+```
+src/
+  theme/palette.ts            → Material 3 renk token'ları (web ile birebir)
+  theme/tokens.ts             → Bosluk, Yaricap, YaziTipi, Olcek, golge()
+  context/ThemeContext.tsx    → Açık/koyu tema (AsyncStorage)
+  context/AuthContext.tsx     → SecureStore tabanlı oturum + useKorumaliYonlendirme
+  hooks/useTelaffuz.ts        → expo-speech (yerel TTS motoru)
+  hooks/useEtkinlikTakibi.ts  → 30 sn nabız (arka planda durur)
+  lib/api.ts                  → TEK API istemcisi (SecureStore + AbortController + LAN IP türetimi)
+  lib/cumleler.ts             → Cümle normalizasyonu + kelime türü renklendirmesi
+  components/                 → UstBar, CumleGorunumu, KelimePaneli, ui.tsx
+  app/
+    login.tsx                 → Giriş / Kayıt
+    (tabs)/                   → Alt sekme çubuğu (Panel, Kitaplık, Kelimelerim, Metin Tara, Gruplar)
+    books/[id]/index.tsx      → Sayfa & Bölüm Okuyucu
+    books/[id]/quiz.tsx       → Çoktan seçmeli Quiz
+```
+
+Jeton web'deki gibi `localStorage`'da değil, güvenli depolama olan `expo-secure-store`
+(iOS Keychain / Android Keystore) üzerinde tutulur. HTTP çağrıları yalnızca `src/lib/api.ts`
+üzerinden yapılır.
 
 ---
 

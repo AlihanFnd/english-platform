@@ -29,19 +29,21 @@ yönetilir, kullanıcı geri bildirimleri ve canlı aktivite akışı izlenir.
 
 ---
 
-## 2. Sistem dört parçadan oluşur
+## 2. Sistem beş parçadan oluşur
 
 | Parça | Klasör | Teknoloji | Port |
 |---|---|---|---|
 | **Backend API** | `EnglishReadingPlatform/` | ASP.NET Core 8 Web API + EF Core | 5001 (Docker) / 8080 (konteyner içi) |
 | **Kullanıcı arayüzü** | `frontend/` | Next.js 16 (App Router) + React 19 + Tailwind v4 | 3000 |
 | **Yönetici paneli** | `admin-panel/` | Next.js 14 (App Router) + React 18 + Tailwind v3 | 3001 |
+| **Mobil İstemci** | `mobile/` | Expo SDK 57 + React Native 0.86 + expo-router + TypeScript | 8081 (Metro / Expo Go) |
 | **Veritabanı** | — | PostgreSQL 15 | 5432 |
 
 Ek olarak `pgadmin` (8080) geliştirme kolaylığı için `docker-compose.yml` içinde tanımlıdır.
 
 > **Not:** İki Next.js uygulaması **kasıtlı olarak farklı sürümlerde**. `frontend`
-> Next 16 / React 19, `admin-panel` Next 14 / React 18 kullanıyor. Ortak paket yok,
+> Next 16 / React 19, `admin-panel` Next 14 / React 18 kullanıyor. `mobile` ise
+> Expo Go / React Native 0.86 ve React 19 ekosistemindedir. Ortak paket yok,
 > monorepo aracı yok — her biri kendi `package.json` ve `node_modules`'una sahip.
 
 ### Aktif olmayan / ölü parçalar
@@ -50,7 +52,6 @@ Ek olarak `pgadmin` (8080) geliştirme kolaylığı için `docker-compose.yml` i
 |---|---|
 | `EnglishReadingPlatform/Views/**/*.cshtml` | **Ölü kod.** `Program.cs` yalnızca `AddControllers()` çağırıyor; `AddControllersWithViews()` veya `MapDefaultControllerRoute()` yok. Razor View pipeline'ı hiç kurulmuyor, bu dosyalar hiçbir zaman render edilmez. Projenin API-first mimariye geçmeden önceki MVC döneminden kalmıştır. |
 | `EnglishReadingPlatform/wwwroot/js/app.js`, `css/app.css`, `lib/jquery*` | Aynı sebeple ölü. `UseStaticFiles()` aktif olduğu için servis edilebilirler ama hiçbir sayfa onları çağırmıyor. |
-| `mobile/` | Sadece boş bir `node_modules` içeriyor. React Native uygulaması **henüz başlamamış**. |
 | `EnglishReadingPlatform/englishplatform.db` | SQLite kalıntısı. Proje PostgreSQL'e geçti (`UseNpgsql`), bu dosya kullanılmıyor ama git'te duruyor. |
 | `dotnet_sdk/` | Yerel .NET SDK kopyası, `.gitignore` içinde. `start-dev.sh` bunu kullanıyor. |
 
