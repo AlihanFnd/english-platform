@@ -39,7 +39,11 @@ export function useEtkinlikTakibi() {
   const { kullanici } = useKimlik();
 
   const yolRef = useRef(yol);
-  yolRef.current = yol;
+  // Zamanlayıcı en güncel yolu okur; ref render'da değil commit sonrası yazılır.
+  // Bu effect aşağıdakinden ÖNCE tanımlı olmalı: effect'ler tanım sırasıyla çalışır.
+  useEffect(() => {
+    yolRef.current = yol;
+  }, [yol]);
 
   useEffect(() => {
     if (!kullanici) return;

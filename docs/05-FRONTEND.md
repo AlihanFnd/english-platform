@@ -41,10 +41,11 @@ app/
 ├── login/page.tsx          /login
 ├── register/page.tsx       /register — 5 satır, login sayfasını yeniden kullanır
 ├── books/page.tsx          /books — kitaplık + filtreler
-├── books/[id]/page.tsx     /books/5 — OKUYUCU (en karmaşık sayfa, 449 satır)
+├── books/[id]/page.tsx     /books/5 — OKUYUCU (kelime kutucukları, cümle kurma modu, anlık çeviri)
 ├── books/[id]/quiz/page.tsx
-├── words/page.tsx          /words — kelime listesi + flashcard + kalıcı çalışma seansı + telaffuz
+├── words/page.tsx          /words — kelime & cümle listesi + flashcard + çalışma seansı + telaffuz
 ├── ocr/page.tsx            /ocr — Tesseract.js ile metin tarama
+├── seri/page.tsx           /seri — Günlük seri, hedef XP seçimi, CEFR seviyesi & haftalık takvim
 └── groups/page.tsx         /groups — grup oluştur/katıl/yönet
 ```
 

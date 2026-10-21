@@ -2,6 +2,16 @@
 # .github/workflows/guvenlik.yml içindeki HER adımı yerelde aynı sırayla çalıştırır.
 # Amaç: push etmeden önce CI'nin yeşil yanacağını kanıtlamak.
 # Çıkış kodu: 0 = tüm adımlar geçti, 1 = en az bir adım kırıldı.
+#
+# İKİSİ AYRIŞAMAZ: iş akışına eklenen her `run:` komutu buraya da eklenir.
+# scripts/guard/18-tedarik.sh "ci-yerel.sh CI adımlarını içeriyor" maddesi bunu
+# denetler. (Faz 3'te bu dosya yalnızca mobil adımlarla yeniden yazılmış; backend
+# testleri, zafiyet taraması ve web derlemeleri sessizce düşmüştü.)
+#
+# Mobil üretim yapılandırma denetimi (scripts/mobil/uretim-yapilandirma.mjs) BURADA
+# DEĞİL, EAS derlemesinde çalışır (mobile/package.json → eas-build-pre-install):
+# CI'da gerçek üretim adresleri yoktur ve uydurma bir adresle "geçti" demek
+# denetimi anlamsızlaştırır.
 
 set -uo pipefail
 PROJE_KOK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -58,6 +68,17 @@ for uygulama in frontend admin-panel; do
   adim "$uygulama: npm audit"  bash -c "cd '$PROJE_KOK/$uygulama' && npm audit --audit-level=high"
   adim "$uygulama: npm run build" bash -c "cd '$PROJE_KOK/$uygulama' && npm run build"
 done
+
+# ── mobil işi ──────────────────────────────────────────────
+# Komutlar iş akışındakiyle BİREBİR aynı yazılır (working-directory: mobile).
+mobil() { bash -c "cd '$PROJE_KOK/mobile' && $1"; }
+adim "mobil: npm ci"                        mobil "npm ci"
+adim "mobil: tip denetimi"                  mobil "npx tsc --noEmit"
+adim "mobil: lint"                          mobil "npx expo lint"
+adim "mobil: npm audit"                     mobil "npm audit --audit-level=high"
+adim "mobil: birim testleri"                mobil "npx jest --ci"
+adim "mobil: erişilebilirlik denetimi"      mobil "node ../scripts/mobil/erisilebilirlik-denetimi.mjs"
+adim "mobil: web↔mobil tip sözleşmesi"      mobil "node ../scripts/mobil/tip-sozlesmesi.mjs"
 
 echo ""
 echo "════════════════════════════════════════════════════════"

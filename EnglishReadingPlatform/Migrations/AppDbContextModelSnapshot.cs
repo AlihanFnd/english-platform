@@ -203,6 +203,68 @@ namespace EnglishReadingPlatform.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EnglishReadingPlatform.Models.CumleKaydi", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Baglam")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)");
+
+                    b.Property<string>("Ceviri")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Cumle")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("CumleAnahtari")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("DogruSayisi")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DogruSeri")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Kutu")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SonCalismaAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SonrakiTekrarAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("YanlisSayisi")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CumleAnahtari")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "SonrakiTekrarAt");
+
+                    b.ToTable("CumleKayitlari");
+                });
+
             modelBuilder.Entity("EnglishReadingPlatform.Models.Feedback", b =>
                 {
                     b.Property<int>("Id")
@@ -325,6 +387,49 @@ namespace EnglishReadingPlatform.Migrations
                     b.ToTable("GroupMembers");
                 });
 
+            modelBuilder.Entity("EnglishReadingPlatform.Models.GunlukEtkinlik", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CalismaXp")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CumleXp")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Gun")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("GuncellemeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("HedefXp")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("KelimeXp")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OkumaXp")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuizXp")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Gun")
+                        .IsUnique();
+
+                    b.ToTable("GunlukEtkinlikler");
+                });
+
             modelBuilder.Entity("EnglishReadingPlatform.Models.OcrRecord", b =>
                 {
                     b.Property<int>("Id")
@@ -354,6 +459,43 @@ namespace EnglishReadingPlatform.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("OcrRecords");
+                });
+
+            modelBuilder.Entity("EnglishReadingPlatform.Models.OgrenmeAyarlari", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("GuncellemeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("GunlukHedefXp")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IlkAcilisTamamlandi")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SaatDilimi")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Seviye")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("OgrenmeAyarlari");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Quiz", b =>
@@ -667,7 +809,13 @@ namespace EnglishReadingPlatform.Migrations
                     b.Property<int>("DogruSeri")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Kutu")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("SonCalismaAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SonrakiTekrarAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Translation")
@@ -687,6 +835,8 @@ namespace EnglishReadingPlatform.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("UserId", "SonrakiTekrarAt");
 
                     b.HasIndex("UserId", "Word")
                         .IsUnique();
@@ -714,6 +864,17 @@ namespace EnglishReadingPlatform.Migrations
                         .IsRequired();
 
                     b.Navigation("Book");
+                });
+
+            modelBuilder.Entity("EnglishReadingPlatform.Models.CumleKaydi", b =>
+                {
+                    b.HasOne("EnglishReadingPlatform.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("EnglishReadingPlatform.Models.Feedback", b =>
@@ -776,7 +937,29 @@ namespace EnglishReadingPlatform.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("EnglishReadingPlatform.Models.GunlukEtkinlik", b =>
+                {
+                    b.HasOne("EnglishReadingPlatform.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("EnglishReadingPlatform.Models.OcrRecord", b =>
+                {
+                    b.HasOne("EnglishReadingPlatform.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("EnglishReadingPlatform.Models.OgrenmeAyarlari", b =>
                 {
                     b.HasOne("EnglishReadingPlatform.Models.User", "User")
                         .WithMany()

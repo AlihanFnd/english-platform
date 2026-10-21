@@ -5,12 +5,15 @@ import { useColorScheme } from 'react-native';
 import { DARK, LIGHT, Palette } from '@/theme/palette';
 
 type Tema = 'light' | 'dark';
+type TemaTercihi = 'system' | 'light' | 'dark';
 
 interface TemaDegeri {
   tema: Tema;
   renk: Palette;
   koyuMu: boolean;
+  seciliMod: TemaTercihi;
   temaDegistir: () => void;
+  temaAyarla: (tercih: TemaTercihi) => void;
 }
 
 const DEPO_ANAHTARI = 'linguza_theme';
@@ -19,9 +22,6 @@ const TemaBaglami = createContext<TemaDegeri | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const sistem = useColorScheme();
-  // Kullanıcı henüz seçim yapmadıysa TELEFONUN tercihine uyulur. Web'de
-  // varsayılan "light"tı; mobilde sistemi yok saymak yabancı bir uygulama
-  // hissi veriyor, bu yüzden başlangıç sistemden geliyor.
   const [secim, setSecim] = useState<Tema | null>(null);
 
   useEffect(() => {
@@ -29,12 +29,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       .then((deger) => {
         if (deger === 'light' || deger === 'dark') setSecim(deger);
       })
-      .catch(() => {
-        /* Tercih okunamazsa sistem temasıyla devam edilir — akışı kesmeye değmez. */
-      });
+      .catch(() => {});
   }, []);
 
   const tema: Tema = secim ?? (sistem === 'dark' ? 'dark' : 'light');
+  const seciliMod: TemaTercihi = secim === null ? 'system' : secim;
+
+  const temaAyarla = useCallback((tercih: TemaTercihi) => {
+    if (tercih === 'system') {
+      setSecim(null);
+      AsyncStorage.removeItem(DEPO_ANAHTARI).catch(() => {});
+    } else {
+      setSecim(tercih);
+      AsyncStorage.setItem(DEPO_ANAHTARI, tercih).catch(() => {});
+    }
+  }, []);
 
   const temaDegistir = useCallback(() => {
     setSecim((oncekiSecim) => {
@@ -50,9 +59,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       tema,
       renk: tema === 'dark' ? DARK : LIGHT,
       koyuMu: tema === 'dark',
+      seciliMod,
       temaDegistir,
+      temaAyarla,
     }),
-    [tema, temaDegistir],
+    [tema, seciliMod, temaDegistir, temaAyarla],
   );
 
   return <TemaBaglami.Provider value={deger}>{children}</TemaBaglami.Provider>;

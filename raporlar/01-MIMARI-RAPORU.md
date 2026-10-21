@@ -1,6 +1,6 @@
 # 01 — Mimari Raporu
 
-> **Ölçüm tarihi:** 2026-09-06 · **Commit:** `7d6e232`
+> **Ölçüm tarihi:** 2026-09-13 · **Commit:** Faz 3 Kapanışı (`YH-15`)
 > Bu rapor ölçülerek yazıldı. Her sayının altında onu üreten komut var;
 > yeniden çalıştırınca aynı sonucu vermeli. Vermiyorsa rapor eskimiştir.
 
@@ -13,7 +13,7 @@
 3. [Backend katmanları](#3-backend-katmanları)
 4. [İstek hattı (pipeline) — sıra kritiktir](#4-istek-hattı-pipeline--sıra-kritiktir)
 5. [Veri modeli](#5-veri-modeli)
-6. [API yüzeyi — 53 uç](#6-api-yüzeyi--53-uç)
+6. [API yüzeyi — 64 uç](#6-api-yüzeyi--64-uç)
 7. [Kimlik, yetki ve oturum](#7-kimlik-yetki-ve-oturum)
 8. [Kaynak ve maliyet kontrolü](#8-kaynak-ve-maliyet-kontrolü)
 9. [Ana veri akışları](#9-ana-veri-akışları)
@@ -54,7 +54,7 @@ görür, bilmediği kelimeleri kişisel listesine ekler, bölüm sonunda quiz ç
                         │ EF Core 8 / Npgsql
                         ▼
               ┌───────────────────┐
-              │  PostgreSQL 15    │  17 tablo
+              │  PostgreSQL 15    │  20 tablo
               │      :5432        │
               └───────────────────┘
 ```
@@ -65,10 +65,10 @@ görür, bilmediği kelimeleri kişisel listesine ekler, bölüm sonunda quiz ç
 |---|---|---|
 | Backend C# dosyası | 72 (migration hariç **47**) | `find EnglishReadingPlatform -name '*.cs' -not -path '*/obj/*' -not -path '*/bin/*' \| wc -l` |
 | Backend satır | 8.026 (migration hariç) | `find … -not -path '*/Migrations/*' -exec wc -l {} +` |
-| HTTP ucu | 53 | `grep -rc '\[Http' EnglishReadingPlatform/Controllers/*.cs` |
-| Veritabanı tablosu | 17 (+ migration geçmişi) | `\dt` |
-| Migration | 12 | `ls EnglishReadingPlatform/Migrations/*.cs \| grep -vE 'Designer\|Snapshot'` |
-| Test | 315 | `dotnet test Linguza.sln` |
+| HTTP ucu | 64 | `grep -rn '\[Http' EnglishReadingPlatform/Controllers/*.cs` |
+| Veritabanı tablosu | 20 (+ migration geçmişi) | `\dt` |
+| Migration | 16 | `ls EnglishReadingPlatform/Migrations/*.cs \| grep -vE 'Designer\|Snapshot'` |
+| Test | **434** (407 .NET + 27 Mobile Jest) | `dotnet test Linguza.sln` · `cd mobile && npx jest` |
 | Güvenlik kapısı | **18** (16 yok — o kural açık) | `ls scripts/guard/[0-9][0-9]-*.sh` |
 
 ---

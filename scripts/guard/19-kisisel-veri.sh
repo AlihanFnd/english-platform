@@ -82,7 +82,7 @@ ihlal_bildir "kişisel veri dosyası repoda" "$n" "$cikti"
 
 # 8. Aydınlatma metnine bağlantı var mı? (istemci tarafı)
 n=0
-grep -rq "gizlilik" frontend/app --include="*.tsx" 2>/dev/null || n=1
+grep -rq "gizlilik" frontend/app mobile/src --include="*.tsx" 2>/dev/null || n=1
 ihlal_bildir "gizlilik sayfasına bağlantı" "$n" \
   "kayıt/gezinti ekranında aydınlatma metni bağlantısı yok"
 

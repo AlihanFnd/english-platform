@@ -225,6 +225,7 @@ builder.Services.AddSingleton<JwtService>();
 builder.Services.AddScoped<QuizGeneratorService>();
 builder.Services.AddScoped<PdfService>();
 builder.Services.AddScoped<TranslationService>();
+builder.Services.AddScoped<ISeriServisi, SeriServisi>();
 builder.Services.AddHttpClient();
 
 // ─── KURAL-07 İhlal 3: dış API çağrılarına zaman aşımı VE boyut sınırı ──

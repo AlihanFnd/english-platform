@@ -3,7 +3,6 @@
 import React, { useState, useRef } from 'react';
 import { FileUp, FileSpreadsheet, FileText, Check, X, Trash2, CheckSquare, Square, UploadCloud, Loader2, Sparkles } from 'lucide-react';
 import { api } from '../api';
-import { cumleDeposu } from '../lib/cumleDeposu';
 import { AyristirilmisOge, dosyayiAyristir, metniAyristir } from '../lib/dosyaAyristirici';
 
 interface TopluEkleModalProps {
@@ -212,7 +211,10 @@ export function TopluEkleModal({
           });
           setImportedCount(i + 1);
         }
-        successCount = cumleDeposu.topluCumleEkle(userId, toAdd);
+        const res = await api.topluCumleEkle(
+          toAdd.map((item) => ({ cumle: item.sentence, ceviri: item.translation, baglam: item.context })),
+        );
+        successCount = res.eklenen;
       }
 
       alert(`${successCount} adet ${target === 'kelime' ? 'kelime' : 'cümle'} başarıyla eklendi!`);

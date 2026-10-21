@@ -53,7 +53,7 @@ export function cspUret(nonce) {
     "font-src 'self' data:",
     // pdf.js worker'ı blob URL'den başlatılıyor.
     "worker-src 'self' blob:",
-    `connect-src 'self' ${api}`,
+    `connect-src 'self' ${api} http://localhost:5001 http://127.0.0.1:5001 http://192.168.1.37:5001 ws: wss:`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

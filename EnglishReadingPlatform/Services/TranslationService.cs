@@ -251,10 +251,10 @@ namespace EnglishReadingPlatform.Services
         public async Task<WordTranslationResult> TranslateWordAsync(string word, string? context = null, bool forceAI = false)
         {
             var clean = Regex.Replace(word, @"[^a-zA-Z0-9'\ -]", "").Trim().ToLower();
-            if (string.IsNullOrEmpty(clean)) return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = "default" };
+            if (string.IsNullOrEmpty(clean)) return new WordTranslationResult { Translation = word, GeneralMeaning = word, Type = "diğer" };
             
             var isKalip = clean.Contains(' ');
-            var defaultType = isKalip ? "kalıp" : GuessType(clean);
+            var defaultType = isKalip ? "kalıp" : TurDogrula(GuessType(clean));
             var cleanContext = context?.Trim().ToLower();
 
             if (!string.IsNullOrWhiteSpace(context))
@@ -369,7 +369,7 @@ namespace EnglishReadingPlatform.Services
                                 var result = JsonSerializer.Deserialize<WordTranslationResponse>(textResult, options);
                                 if (result != null && !string.IsNullOrWhiteSpace(result.ContextualMeaning))
                                 {
-                                    var typeResult = string.IsNullOrWhiteSpace(result.Type) ? defaultType : result.Type;
+                                    var typeResult = isKalip ? "kalıp" : TurDogrula(string.IsNullOrWhiteSpace(result.Type) ? defaultType : result.Type);
                                     
                                     var formattedText = $"Anlamı: {result.GeneralMeaning}\n" +
                                                         $"Cümledeki Anlamı: {result.ContextualMeaning}";
@@ -462,7 +462,7 @@ namespace EnglishReadingPlatform.Services
                     var (tr, rawType) = ParseWord(json);
                     if (!string.IsNullOrWhiteSpace(tr) && !tr.Trim().Equals(clean, StringComparison.OrdinalIgnoreCase))
                     {
-                        var typeResult = isKalip ? "kalıp" : MapType(rawType ?? defaultType);
+                        var typeResult = isKalip ? "kalıp" : TurDogrula(rawType ?? defaultType);
                         
                         string googleSynonyms = "";
                         var displayTranslation = tr;
@@ -655,16 +655,29 @@ namespace EnglishReadingPlatform.Services
             catch { return ("", null); }
         }
 
+        public static string TurDogrula(string? rawType)
+        {
+            if (string.IsNullOrWhiteSpace(rawType)) return "diğer";
+            var t = rawType.Trim().ToLowerInvariant();
+            var mapped = MapType(t);
+            if (IzinliDegerler.KelimeTurleri.Contains(mapped, StringComparer.OrdinalIgnoreCase))
+            {
+                return mapped.ToLowerInvariant();
+            }
+            return "diğer";
+        }
+
         private static string MapType(string en) => en.ToLower() switch
         {
             "verb" => "fiil", "noun" => "isim", "adjective" => "sıfat",
             "adverb" => "zarf", "preposition" => "edat", "conjunction" => "bağlaç",
-            "pronoun" => "zamir", "article" => "article", _ => en
+            "pronoun" => "zamir", "article" => "belirteç", "determiner" => "belirteç",
+            "interjection" => "ünlem", "phrase" => "kalıp", _ => en
         };
 
         private static string GuessType(string w)
         {
-            if (Regex.IsMatch(w, @"^(a|an|the)$", RegexOptions.IgnoreCase)) return "article";
+            if (Regex.IsMatch(w, @"^(a|an|the)$", RegexOptions.IgnoreCase)) return "belirteç";
             if (Regex.IsMatch(w, @"^(i|you|he|she|it|we|they|me|him|her|us|them|my|your|his|its|our|their)$", RegexOptions.IgnoreCase)) return "zamir";
             if (Regex.IsMatch(w, @"^(and|but|or|nor|for|yet|so|although|because|since|while|if|unless|until|when|where|which|that|who)$", RegexOptions.IgnoreCase)) return "bağlaç";
             if (Regex.IsMatch(w, @"^(in|on|at|by|for|with|about|against|between|into|through|during|before|after|above|below|to|from|up|down|of|off)$", RegexOptions.IgnoreCase)) return "edat";

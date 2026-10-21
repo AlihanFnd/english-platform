@@ -6,6 +6,22 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "set -a && . ./.env && set +a && export ASPNETCORE_ENVIRONMENT=Development && export ConnectionStrings__Default=\"Host=localhost;Database=englishreadingdb;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD\" && export Jwt__Key=\"$JWT_KEY\" && cd EnglishReadingPlatform && exec dotnet run --no-launch-profile --urls http://0.0.0.0:5001"
+      ],
+      "port": 5001,
+      "url": "http://localhost:5001"
+    },
+    {
+      "name": "mobil",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd mobile && exec npx expo start --port 8081"],
+      "port": 8081
     }
   ]
 }

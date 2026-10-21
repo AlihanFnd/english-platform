@@ -7,19 +7,29 @@ echo "[05] Girdi doğrulama"
 yorumsuz() { grep -vE ':[0-9]+:[[:space:]]*(//|\*|/\*)' || true; }
 
 # ── 1. Doğrulama özniteliği taşımayan istek DTO'su var mı? ──────────────
-# Her "public class XxxRequest" / "XxxIstegi" gövdesinin ilk 30 satırında
-# en az bir doğrulama özniteliği bulunmalı.
+# Her "public class/record XxxRequest" / "XxxIstegi" gövdesinde en az bir
+# doğrulama özniteliği bulunmalı.
+#
+# Contracts/ da taranır: Faz 3 istekleri oraya konumsal kayıt (record) olarak
+# yazıldı; eski tarama yalnızca Controllers/ ve yalnızca "class" aradığı için
+# hiçbirini görmedi. Kayıtta pencere ilk ");" satırında biter — sabit 30 satırlık
+# pencere bir SONRAKİ kaydın özniteliğini görüp eksikliği örtüyordu.
+# Yorum satırları sayılmaz: açıklamadaki "[StringLength]" ibaresi öznitelik değildir.
 eksik=""
-for dosya in EnglishReadingPlatform/Controllers/*.cs; do
+for dosya in EnglishReadingPlatform/Controllers/*.cs EnglishReadingPlatform/Contracts/*.cs; do
   [ -e "$dosya" ] || continue
   while IFS= read -r satir; do
     no="${satir%%:*}"
-    ad="$(printf '%s' "$satir" | sed -E 's/.*public class ([A-Za-z0-9_]+).*/\1/')"
-    if ! sed -n "${no},$((no+30))p" "$dosya" \
+    ad="$(printf '%s' "$satir" | sed -E 's/.*public (sealed )?(class|record) ([A-Za-z0-9_]+).*/\3/')"
+    case "$satir" in
+      *" record "*) govde="$(sed -n "${no},\$p" "$dosya" | awk '{ print } /\);/ { exit }')" ;;
+      *)            govde="$(sed -n "${no},$((no+30))p" "$dosya")" ;;
+    esac
+    if ! printf '%s\n' "$govde" | grep -vE '^[[:space:]]*(//|\*|/\*)' \
          | grep -qE '\[(Required|StringLength|Range|IzinliDeger|MaxLength|RegularExpression|EmailAddress)'; then
       eksik="${eksik}${dosya}:${no}: ${ad}"$'\n'
     fi
-  done < <(grep -nE "public class [A-Za-z0-9_]*(Request|Istegi)\b" "$dosya" 2>/dev/null)
+  done < <(grep -nE "public (sealed )?(class|record) [A-Za-z0-9_]*(Request|Istegi)\b" "$dosya" 2>/dev/null)
 done
 n=$(printf '%s' "$eksik" | grep -c . || true)
 ihlal_bildir "doğrulamasız istek DTO'su" "$n" "$eksik"
@@ -32,7 +42,7 @@ ihlal_bildir "hata biçimi { error } korunuyor" "$n" "ApiBehaviorOptions yapıla
 # ── 3. Sınırlar tek kaynaktan mı geliyor? ───────────────────────────────
 # [StringLength(200)] yerine [StringLength(AlanSinirlari.Baglam)] zorunlu.
 # Elle yazılan sayı, entity ile DTO'nun sessizce ayrışmasının kaynağıdır.
-cikti="$(depoda_ara 'StringLength\([0-9]+' 'EnglishReadingPlatform/Controllers/*.cs' | yorumsuz)"
+cikti="$(depoda_ara 'StringLength\([0-9]+' 'EnglishReadingPlatform/Controllers/*.cs' 'EnglishReadingPlatform/Contracts/*.cs' | yorumsuz)"
 n=$(printf '%s' "$cikti" | grep -c . || true)
 ihlal_bildir "elle yazılmış StringLength sayısı" "$n" "$cikti"
 

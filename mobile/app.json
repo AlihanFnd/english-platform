@@ -1,13 +1,19 @@
 {
   "expo": {
-    "name": "Linguza",
-    "slug": "linguza",
+    "name": "Readixo",
+    "slug": "readixo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "linguza",
+    "icon": "./assets/readixo.png",
+    "scheme": "readixo",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/00000000-0000-0000-0000-000000000000"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.linguza.mobile"
@@ -33,17 +39,27 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0b0f10",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 96
+          "image": "./assets/images/splash-icon.png"
         }
       ],
       [
-        "expo-image-picker",
+        "expo-notifications",
         {
-          "photosPermission": "Taradığın İngilizce sayfayı metne çevirebilmek için fotoğraflarına erişmemiz gerekiyor.",
-          "cameraPermission": "Bir sayfanın fotoğrafını çekip metne çevirebilmek için kameraya erişmemiz gerekiyor."
+          "color": "#006e2f"
         }
-      ]
+      ],
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false
+          }
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

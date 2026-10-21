@@ -32,7 +32,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Buton, EkranZemini, HataKutusu, Kart, Metin } from '@/components/ui';
 import { useRenk } from '@/context/ThemeContext';
 import { api } from '@/lib/api';
-import { cumleDeposu } from '@/lib/cumleDeposu';
 import { AyristirilmisOge, dosyadanAyristir, metniAyristir } from '@/lib/dosyaAyristirici';
 import { alpha } from '@/theme/palette';
 import { Bosluk, Olcek, Yaricap, YaziTipi } from '@/theme/tokens';
@@ -260,7 +259,10 @@ export function TopluEkleModal({
           });
           setAktarilanAdet(i + 1);
         }
-        basarili = await cumleDeposu.topluCumleEkle(userId, eklenecekler);
+        const sonuc = await api.topluCumleEkle(
+          eklenecekler.map((e) => ({ cumle: e.sentence, ceviri: e.translation, baglam: e.context })),
+        );
+        basarili = sonuc.eklenen;
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -338,6 +340,8 @@ export function TopluEkleModal({
                 disabled={aktariliyor}
                 hitSlop={10}
                 style={{ padding: 4 }}
+                accessibilityLabel="Kapat"
+                accessibilityRole="button"
               >
                 <X size={22} color={palet.onSurfaceVariant} />
               </Pressable>
@@ -581,6 +585,8 @@ export function TopluEkleModal({
                 ) : ogeler.some((o) => !o.translation.trim()) ? (
                   <Pressable
                     onPress={() => otomatikCevir()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Eksik çevirileri tamamla"
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -617,7 +623,13 @@ export function TopluEkleModal({
                         dolgu={Bosluk.sm}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: Bosluk.sm }}
                       >
-                        <Pressable onPress={() => ogeSecToggle(item.id)} hitSlop={8}>
+                        <Pressable
+                          onPress={() => ogeSecToggle(item.id)}
+                          hitSlop={8}
+                          accessibilityLabel={item.selected ? "Seçimi kaldır" : "Öğeyi seç"}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: item.selected }}
+                        >
                           {item.selected ? (
                             <CheckSquare size={20} color={palet.primary} />
                           ) : (
@@ -657,7 +669,13 @@ export function TopluEkleModal({
                           />
                         </View>
 
-                        <Pressable onPress={() => ogeSil(item.id)} hitSlop={8} style={{ padding: 4 }}>
+                        <Pressable
+                          onPress={() => ogeSil(item.id)}
+                          hitSlop={8}
+                          style={{ padding: 4 }}
+                          accessibilityLabel="Öğeyi sil"
+                          accessibilityRole="button"
+                        >
                           <Trash2 size={16} color={palet.error} />
                         </Pressable>
                       </Kart>

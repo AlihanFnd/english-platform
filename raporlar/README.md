@@ -21,6 +21,7 @@ Bu klasör, Linguza'nın **olduğu gibi (as-built)** mimari kaydıdır. Yeni bir
 | [01-MIMARI-RAPORU.md](01-MIMARI-RAPORU.md) | Sistem geneli: katmanlar, istek hattı, veri modeli, 53 uç, akışlar, güvenlik kapıları, dağıtım | ~990 |
 | [02-MOBIL-RAPORU.md](02-MOBIL-RAPORU.md) | Expo/RN istemcisi: gezinme, api katmanı, tema sistemi, 9 bileşen, ekran ekran, webden ayrıldığı yerler | ~490 |
 | [03-WEB-ISTEMCILERI-RAPORU.md](03-WEB-ISTEMCILERI-RAPORU.md) | `frontend` + `admin-panel`: CSP nonce zinciri, api katmanı, ekranlar, varlık yönetimi | ~390 |
+| [04-MOBIL-EKSIK-ANALIZI.md](04-MOBIL-EKSIK-ANALIZI.md) | Mobil: dil öğrenme uygulaması ve mağaza kuralları gözüyle eksikler; acil güvenlik bulgusu; faz 3 eşlemesi | ~300 |
 
 ### Kapsam dengesi
 

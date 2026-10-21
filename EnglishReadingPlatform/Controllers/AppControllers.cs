@@ -486,9 +486,15 @@ namespace EnglishReadingPlatform.Controllers
                 {
                     p.BookId,
                     BookTitle = p.Book.Title,
+                    CoverColor = p.Book.CoverColor,
+                    Level = p.Book.Level,
+                    Category = p.Book.Category,
                     p.ProgressPercent,
                     p.CurrentChapter,
-                    p.LastRead
+                    p.LastRead,
+                    HasPages = p.Book.Pages.Any(),
+                    TotalChapters = p.Book.Chapters.Count,
+                    TotalPages = p.Book.Pages.Count
                 })
                 .ToListAsync();
 

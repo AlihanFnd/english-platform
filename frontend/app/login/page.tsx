@@ -58,14 +58,12 @@ export default function LoginPage() {
 
       <div className="w-full max-w-md space-y-8 z-10">
         <div className="flex flex-col items-center">
-          <div className="p-3 rounded-2xl bg-violet-600/20 text-violet-400 border border-violet-500/20 mb-4 animate-bounce">
-            <BookOpen className="h-10 w-10" />
-          </div>
+          <img src="/readixo.png" alt="Readixo Logo" className="w-16 h-16 rounded-2xl shadow-xl border border-white/10 mb-4" />
           <h2 className="text-3xl font-extrabold text-white tracking-tight">
             {isLogin ? 'Hesabınıza Giriş Yapın' : 'Yeni Hesap Oluşturun'}
           </h2>
           <p className="mt-2 text-sm text-slate-400">
-            {isLogin ? 'Linguza okuma ve çeviri dünyasına katılın' : 'Kaydolun ve hemen öğrenmeye başlayın'}
+            {isLogin ? 'Readixo okuma ve çeviri dünyasına katılın' : 'Kaydolun ve hemen öğrenmeye başlayın'}
           </p>
         </div>
 

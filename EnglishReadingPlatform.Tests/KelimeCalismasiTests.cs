@@ -153,7 +153,7 @@ public class KelimeCalismasiTests
         await KelimeEkleAsync(client, Enumerable.Range(1, 25).Select(i => $"kel{i}").ToArray());
 
         var kartlar = await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
-            "/api/books/words/calisma?adet=20");
+            "/api/books/words/calisma?adet=20&mod=serbest");
 
         kartlar.Should().NotBeNull();
         kartlar!.Should().HaveCount(20);
@@ -288,5 +288,284 @@ public class KelimeCalismasiTests
         (await client.PostAsJsonAsync("/api/books/words/calisma-sonucu",
             new { kelimeId = 1, bildim = true }))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  YH-06: LEITNER ARALIKLI TEKRAR TESTLERİ
+    // ══════════════════════════════════════════════════════════════
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Bilince_kutu_ARTAR_tekrar_zamani_ILERI_gider()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        await KelimeEkleAsync(client, "leitner1");
+
+        var kart = (await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=10"))!.Single(x => x.Word == "leitner1");
+
+        var baslangic = DateTime.UtcNow;
+        (await client.PostAsJsonAsync("/api/books/words/calisma-sonucu",
+            new { kelimeId = kart.Id, bildim = true })).EnsureSuccessStatusCode();
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu.Should().Be(1, "1. kez bilince kutu 1 olur");
+            item.SonrakiTekrarAt.Should().NotBeNull();
+            item.SonrakiTekrarAt!.Value.Should().BeAfter(baslangic.AddHours(23));
+        }
+
+        (await client.PostAsJsonAsync("/api/books/words/calisma-sonucu",
+            new { kelimeId = kart.Id, bildim = true })).EnsureSuccessStatusCode();
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu.Should().Be(2, "2. kez bilince kutu 2 olur");
+            item.SonrakiTekrarAt!.Value.Should().BeAfter(baslangic.AddDays(1).AddHours(23));
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Bilemeyince_kutu_BIRE_duser()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        await KelimeEkleAsync(client, "leitner2");
+
+        var kart = (await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=10"))!.Single(x => x.Word == "leitner2");
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu = 5;
+            item.SonrakiTekrarAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        var simdi = DateTime.UtcNow;
+        (await client.PostAsJsonAsync("/api/books/words/calisma-sonucu",
+            new { kelimeId = kart.Id, bildim = false })).EnsureSuccessStatusCode();
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu.Should().Be(1, "bilemeyince kutu 1'e düşer");
+            item.SonrakiTekrarAt.Should().NotBeNull();
+            item.SonrakiTekrarAt!.Value.Should().BeAfter(simdi.AddMinutes(8));
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Kutu_TAVANI_asilamaz()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        await KelimeEkleAsync(client, "leitner3");
+
+        var kart = (await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=10"))!.Single(x => x.Word == "leitner3");
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu = 7;
+            await db.SaveChangesAsync();
+        }
+
+        (await client.PostAsJsonAsync("/api/books/words/calisma-sonucu",
+            new { kelimeId = kart.Id, bildim = true })).EnsureSuccessStatusCode();
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu.Should().Be(7, "kutu tavanı 7'dir");
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Tekrar_modu_VAKTI_GELMEYENI_getirmez()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        await KelimeEkleAsync(client, "gelecekKelime");
+
+        var kart = (await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=10"))!.Single(x => x.Word.Equals("gelecekKelime", StringComparison.OrdinalIgnoreCase));
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu = 2;
+            item.SonCalismaAt = DateTime.UtcNow;
+            item.SonrakiTekrarAt = DateTime.UtcNow.AddDays(1); // Yarın vadeli
+            await db.SaveChangesAsync();
+        }
+
+        var liste = await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=10&mod=tekrar");
+
+        liste.Should().NotContain(x => x.Id == kart.Id, "vakti gelmeyen kelime tekrar modunda gelmez");
+    }
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Tekrar_modu_once_VADESI_EN_ESKIYI_getirir()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        await KelimeEkleAsync(client, "eski1", "eski2");
+
+        int id1, id2;
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var k1 = await db.WordListItems.SingleAsync(w => w.Word == "eski1");
+            var k2 = await db.WordListItems.SingleAsync(w => w.Word == "eski2");
+            id1 = k1.Id; id2 = k2.Id;
+
+            k1.Kutu = 1;
+            k1.SonCalismaAt = DateTime.UtcNow.AddDays(-5);
+            k1.SonrakiTekrarAt = DateTime.UtcNow.AddHours(-10); // Daha eski vadesi var
+
+            k2.Kutu = 1;
+            k2.SonCalismaAt = DateTime.UtcNow.AddDays(-2);
+            k2.SonrakiTekrarAt = DateTime.UtcNow.AddHours(-2);
+
+            await db.SaveChangesAsync();
+        }
+
+        var liste = await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=10&mod=tekrar");
+
+        var idx1 = liste!.FindIndex(x => x.Id == id1);
+        var idx2 = liste.FindIndex(x => x.Id == id2);
+
+        idx1.Should().BeGreaterThanOrEqualTo(0);
+        idx2.Should().BeGreaterThanOrEqualTo(0);
+        idx1.Should().BeLessThan(idx2, "vadesi daha eski olan önce gelir");
+    }
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Gunluk_yeni_kelime_SINIRI()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        var kelimeler = Enumerable.Range(1, 15).Select(i => $"sinirKelime{i}").ToArray();
+        await KelimeEkleAsync(client, kelimeler);
+
+        var liste = await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=20&mod=tekrar");
+
+        var yeniKelimeSayisi = liste!.Count(x => kelimeler.Contains(x.Word));
+        yeniKelimeSayisi.Should().BeLessOrEqualTo(10, "günde en fazla 10 yeni hiç çalışılmamış kelime getirilir");
+    }
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Istemci_kutu_ve_zaman_YAZAMAZ()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        await KelimeEkleAsync(client, "hileliKutu");
+
+        var kart = (await client.GetFromJsonAsync<List<CalismaKartiYaniti>>(
+            "/api/books/words/calisma?adet=10"))!.Single(x => x.Word.Equals("hileliKutu", StringComparison.OrdinalIgnoreCase));
+
+        var yanit = await client.PostAsJsonAsync("/api/books/words/calisma-sonucu",
+            new { kelimeId = kart.Id, bildim = true, kutu = 7, sonrakiTekrarAt = DateTime.UtcNow.AddYears(10) });
+        yanit.EnsureSuccessStatusCode();
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var item = await db.WordListItems.FindAsync(kart.Id);
+            item!.Kutu.Should().Be(1, "kutu sunucuda hesaplanır, istemciden kabul edilmez");
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Ozet_bugun_tekrar_sayisi_DOGRU()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        await KelimeEkleAsync(client, "ozet1", "ozet2", "ozet3", "ozet4", "ozet5");
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var items = await db.WordListItems.Where(w => w.Word.StartsWith("ozet")).ToListAsync();
+            for (int i = 0; i < items.Count; i++)
+            {
+                items[i].Kutu = 1;
+                items[i].SonCalismaAt = DateTime.UtcNow.AddDays(-2);
+                if (i < 3)
+                {
+                    items[i].SonrakiTekrarAt = DateTime.UtcNow.AddHours(-1); // 3 bugün vadeli
+                }
+                else
+                {
+                    items[i].SonrakiTekrarAt = DateTime.UtcNow.AddDays(1); // 2 yarın vadeli
+                }
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var ozet = await client.GetFromJsonAsync<KelimeOzetiYaniti>("/api/books/words/ozet");
+        ozet.Should().NotBeNull();
+        ozet!.BugunTekrar.Should().Be(3, "bugün vadeli 3 kelime var");
+        ozet.YarinTekrar.Should().Be(2, "yarın vadeli 2 kelime var");
+        ozet.KutuDagilimi[1].Should().Be(5, "5 kelime de 1. kutuda");
+    }
+
+    /// <summary>
+    /// Kelime listesi "öğrenildi" rozetini SUNUCUDAN almalı. Yanıtta bayrak yoktu;
+    /// istemciler <c>(kayit as any).dogruSeri &gt;= 3</c> ile hesaplıyordu — alan hiç
+    /// gelmediği için rozet HİÇBİR kelimede görünmüyordu. Eşik özetle aynı olmalı:
+    /// LeitnerHesaplayici.OgrenildiEsigiKutu.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "KelimeCalismasi")]
+    public async Task Kelime_listesi_OGRENILDI_bayragini_ozetle_AYNI_esikle_dondurur()
+    {
+        var client = await OgrenciIstemcisiAsync(_fabrika);
+        var ek = Guid.NewGuid().ToString("N")[..6];
+        string esikAlti = $"esikalti{ek}", esikte = $"esikte{ek}";
+        await KelimeEkleAsync(client, esikAlti, esikte);
+
+        using (var scope = _fabrika.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            foreach (var (kelime, kutu) in new[]
+                     {
+                         (esikAlti, LeitnerHesaplayici.OgrenildiEsigiKutu - 1),
+                         (esikte, LeitnerHesaplayici.OgrenildiEsigiKutu),
+                     })
+            {
+                var satir = await db.WordListItems.SingleAsync(w => w.Word == kelime);
+                satir.Kutu = kutu;
+                satir.SonCalismaAt = DateTime.UtcNow.AddDays(-1);
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var liste = (await client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/books/words"))!;
+        bool Bayrak(string kelime) => liste
+            .Single(x => x.GetProperty("word").GetString() == kelime)
+            .GetProperty("ogrenildi").GetBoolean();
+
+        Bayrak(esikAlti).Should().BeFalse("eşiğin bir altındaki kutu öğrenilmiş sayılmaz");
+        Bayrak(esikte).Should().BeTrue("eşikteki kutu öğrenilmiştir — rozet görünmeli");
+
+        var ozet = (await client.GetFromJsonAsync<KelimeOzetiYaniti>("/api/books/words/ozet"))!;
+        ozet.OgrenildiEsigi.Should().Be(LeitnerHesaplayici.OgrenildiEsigiKutu);
+        ozet.Ogrenildi.Should().Be(1, "listede rozetli görünen kelime sayısıyla aynı olmalı");
     }
 }

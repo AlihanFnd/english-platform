@@ -82,4 +82,35 @@ cikti="$(depoda_ara 'HashPassword\("[^"]+"\)' '*.cs' | grep -v 'sifre\|password'
 n=$(printf '%s' "$cikti" | grep -c . || true)
 ihlal_bildir "koda gömülü tohum şifresi" "$n" "$cikti"
 
+# ─── YH-01: İSTEMCİ koduna gömülü giriş bilgisi ───────────────────────
+# Yukarıdaki maddeler SUNUCU sırlarını arıyor. 2026-09-13'te mobil istemcide
+# gerçek bir hesabın e-postası ve şifresi bulundu ("geliştirmede otomatik giriş");
+# madde 1 onu göremedi çünkü yalnızca SirDogrulayici'daki 5 değeri arıyordu.
+# İstemcideki bir sabit uygulamayla birlikte dağıtılır ve depo açıksa kaynaktan
+# zaten okunur. __DEV__ ile korunmuş olması bunu değiştirmez.
+#
+# Desenler BSD grep uyumlu: \s yerine [[:space:]].
+ISTEMCI_KAPSAMI=('mobile/src/*.ts' 'mobile/src/*.tsx' 'frontend/app/*.ts' 'frontend/app/*.tsx'
+                 'admin-panel/app/*.ts' 'admin-panel/app/*.tsx')
+TIRNAK="[\"'\`]"
+
+# 10. Dize sabitleriyle giriş çağrısı: login('…', '…')
+cikti="$(depoda_ara "(login|girisYap|signIn)\([[:space:]]*${TIRNAK}[^\"'\`]+${TIRNAK}[[:space:]]*,[[:space:]]*${TIRNAK}" \
+         "${ISTEMCI_KAPSAMI[@]}" || true)"
+n=$(printf '%s' "$cikti" | grep -c . || true)
+ihlal_bildir "istemcide dize sabitli giriş çağrısı" "$n" "$cikti"
+
+# 11. İstemcide e-posta biçimli dize sabiti.
+#     placeholder="isim@ornek.com" meşru (kullanıcıya örnek biçim); yorum satırı da.
+cikti="$(depoda_ara "${TIRNAK}[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}${TIRNAK}" "${ISTEMCI_KAPSAMI[@]}" \
+         | grep -v -E 'placeholder[[:space:]]*=|:[0-9]+:[[:space:]]*(//|\*)' || true)"
+n=$(printf '%s' "$cikti" | grep -c . || true)
+ihlal_bildir "istemcide e-posta sabiti" "$n" "$cikti"
+
+# 12. Pakete GÖMÜLEN ortam değişkeni sır adı taşıyor mu?
+#     EXPO_PUBLIC_* / NEXT_PUBLIC_* derleme anında pakete düz metin yazılır.
+cikti="$(depoda_ara '(EXPO|NEXT)_PUBLIC_[A-Z_]*(PASS|SIFRE|SECRET|TOKEN|AUTO_LOGIN)' "${ISTEMCI_KAPSAMI[@]}" || true)"
+n=$(printf '%s' "$cikti" | grep -c . || true)
+ihlal_bildir "pakete gömülen değişkende sır adı" "$n" "$cikti"
+
 guard_bitir

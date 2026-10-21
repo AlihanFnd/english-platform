@@ -1,9 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using EnglishReadingPlatform.Contracts;
 using EnglishReadingPlatform.Controllers;
 using EnglishReadingPlatform.Models;
 using EnglishReadingPlatform.Validation;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
 namespace EnglishReadingPlatform.Tests;
@@ -61,6 +63,18 @@ public class AlanSinirlariTests
         // ── Çeviri: 'Text' TranslationCache.QueryText'e ANAHTAR olarak yazılıyor ──
         new(typeof(TranslateController.KelimeCeviriIstegi), "Text", typeof(TranslationCache), "QueryText"),
 
+        // ── Cümle listesi (YH-05) — Contracts/ altındaki konumsal kayıtlar ──
+        new(typeof(CumleIstegi),     "Cumle",  typeof(CumleKaydi), "Cumle"),
+        new(typeof(CumleIstegi),     "Ceviri", typeof(CumleKaydi), "Ceviri"),
+        new(typeof(CumleIstegi),     "Baglam", typeof(CumleKaydi), "Baglam"),
+        new(typeof(TopluCumleOgesi), "Cumle",  typeof(CumleKaydi), "Cumle"),
+        new(typeof(TopluCumleOgesi), "Ceviri", typeof(CumleKaydi), "Ceviri"),
+        new(typeof(TopluCumleOgesi), "Baglam", typeof(CumleKaydi), "Baglam"),
+
+        // ── Öğrenme ayarları (YH-04 / YH-10) ──────────────────
+        new(typeof(GuncelleAyarlarRequest), "SaatDilimi", typeof(OgrenmeAyarlari), "SaatDilimi"),
+        new(typeof(GuncelleAyarlarRequest), "Seviye",     typeof(OgrenmeAyarlari), "Seviye"),
+
         // ── Kolonu 'text' olanlar: taşma yok, yalnızca sınır BİLDİRİLMİŞ olmalı ──
         new(typeof(AuthController.LoginRequest),    "Password", null, null),
         new(typeof(AuthController.RegisterRequest), "Password", null, null),
@@ -84,6 +98,19 @@ public class AlanSinirlariTests
         "AddWordRequest.Context",   // 400 girdi sınırı, 200'e kırpılarak yazılır
     };
 
+    /// <summary>
+    /// Toplu içe aktarmada girdi sınırı kolondan BİLİNÇLİ olarak büyük: kolonu aşan
+    /// öğe yazılmaz, 'atlanan' sayılır ve isteğin geri kalanı işlenir. Öğe düzeyindeki
+    /// bir 400, tek bir uzun cümleyle bütün parçayı reddediyor ve cümle göçü hiç bitmiyordu.
+    /// Atlama kaldırılırsa kolon taşar ve CumlelerTests.Toplu_eklemede_* kırmızı olur.
+    /// </summary>
+    private static readonly HashSet<string> AtlananAlanlar = new()
+    {
+        "TopluCumleOgesi.Cumle",
+        "TopluCumleOgesi.Ceviri",
+        "TopluCumleOgesi.Baglam",
+    };
+
     /// <summary>Doğrulama özniteliği taşıması BEKLENMEYEN alanlar (bool, sayısal vb. ayrı sınanır).</summary>
     private static readonly HashSet<string> UzunlukBeklenmeyen = new()
     {
@@ -98,8 +125,66 @@ public class AlanSinirlariTests
     {
         var ozellik = tip.GetProperty(alan);
         ozellik.Should().NotBeNull($"{tip.Name}.{alan} bulunamadı — eşleme tablosu kodla ayrışmış");
-        return ozellik!.GetCustomAttribute<StringLengthAttribute>()?.MaximumLength
-            ?? ozellik!.GetCustomAttribute<MaxLengthAttribute>()?.Length;
+        return Oznitelik<StringLengthAttribute>(ozellik!)?.MaximumLength
+            ?? Oznitelik<MaxLengthAttribute>(ozellik!)?.Length;
+    }
+
+    /// <summary>
+    /// Özniteliği özellikten, yoksa kurucudaki aynı adlı parametreden okur.
+    ///
+    /// MVC konumsal kayıtlarda (record) doğrulamayı PARAMETREDEN okur ve özniteliği
+    /// özelliğe kopyalamaz. Yalnızca özelliğe bakan bir tarama, Contracts/ altındaki
+    /// sınırlı kayıtları "sınırsız", sınırsız olanları ise hiç görmez.
+    /// </summary>
+    private static T? Oznitelik<T>(PropertyInfo ozellik) where T : Attribute
+        => ozellik.GetCustomAttribute<T>()
+           ?? ozellik.DeclaringType!.GetConstructors()
+               .SelectMany(k => k.GetParameters())
+               .FirstOrDefault(p => p.Name == ozellik.Name && p.ParameterType == ozellik.PropertyType)
+               ?.GetCustomAttribute<T>();
+
+    /// <summary>
+    /// İstemci girdisi taşıyan bütün tipler.
+    ///
+    /// ESKİ TARAMANIN KÖR NOKTASI: yalnızca Controllers ad alanında adı Request/Istegi
+    /// ile biten tiplere bakıyordu. Faz 3 istekleri Contracts/ altına yazıldı ve
+    /// GuncelleAyarlarRequest sınırsız kaldığı hâlde kapı yeşil kaldı. Toplu isteklerin
+    /// ÖĞE tipleri (TopluCumleOgesi) de adı uymadığı için hiç taranmıyordu.
+    ///
+    /// Artık üç kaynak birleşir: [FromBody]/[FromForm] parametreleri (adı ne olursa
+    /// olsun asıl saldırı yüzeyi), iki ad alanında adı Request/Istegi ile bitenler ve
+    /// bunların içindeki alt nesne / öğe tipleri.
+    /// </summary>
+    private static List<Type> IstekTipleri()
+    {
+        var montaj = typeof(AuthController).Assembly;
+        var bulunan = new HashSet<Type>();
+
+        void Ekle(Type tip)
+        {
+            if (tip.IsArray) { Ekle(tip.GetElementType()!); return; }
+            if (tip.IsGenericType)
+                foreach (var arguman in tip.GetGenericArguments()) Ekle(arguman);
+            if (tip.Assembly != montaj || !tip.IsClass || tip.IsAbstract || !bulunan.Add(tip)) return;
+            foreach (var ozellik in tip.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                Ekle(ozellik.PropertyType);
+        }
+
+        foreach (var tip in montaj.GetTypes().Where(t =>
+                     t.Namespace is "EnglishReadingPlatform.Controllers" or "EnglishReadingPlatform.Contracts"
+                     && (t.Name.EndsWith("Request") || t.Name.EndsWith("Istegi"))))
+            Ekle(tip);
+
+        foreach (var kontrolcu in montaj.GetTypes()
+                     .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract))
+        foreach (var eylem in kontrolcu.GetMethods(
+                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+        foreach (var parametre in eylem.GetParameters())
+            if (parametre.GetCustomAttribute<FromBodyAttribute>() is not null
+                || parametre.GetCustomAttribute<FromFormAttribute>() is not null)
+                Ekle(parametre.ParameterType);
+
+        return bulunan.ToList();
     }
 
     [Fact]
@@ -126,6 +211,7 @@ public class AlanSinirlariTests
         {
             if (entity is null || entityAlan is null) continue;
             if (KirpilanAlanlar.Contains($"{dto.Name}.{dtoAlan}")) continue;
+            if (AtlananAlanlar.Contains($"{dto.Name}.{dtoAlan}")) continue;
 
             var dtoSinir = Sinir(dto, dtoAlan);
             var entitySinir = Sinir(entity, entityAlan);
@@ -149,14 +235,12 @@ public class AlanSinirlariTests
     [Trait("Category", "GirdiDogrulama")]
     public void Tum_istek_DTO_string_alanlari_sinir_bildirmeli()
     {
-        var montaj = typeof(AuthController).Assembly;
-        var dtolar = montaj.GetTypes()
-            .Where(t => t.IsClass && !t.IsAbstract
-                        && (t.Name.EndsWith("Request") || t.Name.EndsWith("Istegi"))
-                        && t.Namespace == "EnglishReadingPlatform.Controllers")
-            .ToList();
+        var dtolar = IstekTipleri();
 
         dtolar.Should().NotBeEmpty("istek DTO'ları bulunamadı — tarama deseni bozulmuş");
+        dtolar.Should().Contain(
+            new[] { typeof(GuncelleAyarlarRequest), typeof(TopluCumleOgesi), typeof(CumleIstegi) },
+            "Contracts/ altındaki istekler ve toplu isteklerin öğe tipleri de taranmalı — kör nokta geri açılmış");
 
         var eksikler = new List<string>();
         foreach (var dto in dtolar)
@@ -167,9 +251,9 @@ public class AlanSinirlariTests
 
             if (p.PropertyType == typeof(string))
             {
-                var uzunluk = p.GetCustomAttribute<StringLengthAttribute>() is not null
-                              || p.GetCustomAttribute<MaxLengthAttribute>() is not null;
-                var whitelist = p.GetCustomAttribute<IzinliDegerAttribute>() is not null;
+                var uzunluk = Oznitelik<StringLengthAttribute>(p) is not null
+                              || Oznitelik<MaxLengthAttribute>(p) is not null;
+                var whitelist = Oznitelik<IzinliDegerAttribute>(p) is not null;
 
                 // Whitelist ZATEN üst sınır demektir (izinli değerlerin en uzunu).
                 if (!uzunluk && !whitelist)
@@ -183,9 +267,9 @@ public class AlanSinirlariTests
             // sınırsız kalmıştı ve kapı bunu göremiyordu.
             if (MetinOgesiTipi(p.PropertyType) is null) continue;
 
-            var sayiSiniri = p.GetCustomAttribute<MaxLengthAttribute>() is not null;
-            var ogeSiniri = p.GetCustomAttribute<OgeUzunluguAttribute>() is not null
-                            || p.GetCustomAttribute<OgeIzinliDegerAttribute>() is not null;
+            var sayiSiniri = Oznitelik<MaxLengthAttribute>(p) is not null;
+            var ogeSiniri = Oznitelik<OgeUzunluguAttribute>(p) is not null
+                            || Oznitelik<OgeIzinliDegerAttribute>(p) is not null;
 
             if (!sayiSiniri)
                 eksikler.Add($"{ad}  (koleksiyon — eleman SAYISI sınırı [MaxLength] yok)");
@@ -238,19 +322,22 @@ public class AlanSinirlariTests
     public void Tum_IzinliDeger_kullanimlari_gercek_bir_kumeye_baglanmali()
     {
         var montaj = typeof(AuthController).Assembly;
+
+        // Kurucu parametreleri de taranır: konumsal kayıtlarda öznitelik orada durur.
         var kullanimlar = montaj.GetTypes()
-            .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            .Select(p => (Ozellik: p, Oznitelik: p.GetCustomAttribute<IzinliDegerAttribute>()))
+            .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Select(p => (Ad: $"{t.Name}.{p.Name}", Oznitelik: p.GetCustomAttribute<IzinliDegerAttribute>()))
+                .Concat(t.GetConstructors().SelectMany(k => k.GetParameters())
+                    .Select(p => (Ad: $"{t.Name}({p.Name})", Oznitelik: p.GetCustomAttribute<IzinliDegerAttribute>()))))
             .Where(x => x.Oznitelik is not null)
             .ToList();
 
         kullanimlar.Should().NotBeEmpty("hiç whitelist kullanılmıyorsa kural uygulanmamış demektir");
 
-        foreach (var (ozellik, oznitelik) in kullanimlar)
+        foreach (var (ad, oznitelik) in kullanimlar)
         {
             var kume = () => oznitelik!.Kume;
-            kume.Should().NotThrow(
-                $"{ozellik.DeclaringType!.Name}.{ozellik.Name} → IzinliDegerler.{oznitelik!.KumeAdi} çözülemedi");
+            kume.Should().NotThrow($"{ad} → IzinliDegerler.{oznitelik!.KumeAdi} çözülemedi");
             oznitelik!.Kume.Should().NotBeEmpty();
         }
     }

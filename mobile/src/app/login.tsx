@@ -1,8 +1,12 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import * as WebBrowser from 'expo-web-browser';
+import { yasalBaglantiAdresi } from '@/lib/yapilandirma';
 import { BookOpen, GraduationCap, Lock, Mail, User as UserIcon } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Buton, HataKutusu, Kart, Metin } from '@/components/ui';
 import { useKimlik } from '@/context/AuthContext';
 import { useRenk } from '@/context/ThemeContext';
+import { ApiHatasi, api } from '@/lib/api';
 import { alpha } from '@/theme/palette';
 import { Bosluk, Olcek, Yaricap, YaziTipi, golge } from '@/theme/tokens';
 
@@ -24,16 +29,17 @@ export default function GirisEkrani() {
 
   const [girisModu, setGirisModu] = useState(true);
   const [kullaniciAdi, setKullaniciAdi] = useState('');
-  const [eposta, setEposta] = useState(__DEV__ ? 'alihanfnd35@gmail.com' : '');
-  const [sifre, setSifre] = useState(__DEV__ ? '12345678' : '');
+  const [eposta, setEposta] = useState('');
+  const [sifre, setSifre] = useState('');
   const [hata, setHata] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
 
-  useEffect(() => {
-    if (__DEV__ && process.env.EXPO_PUBLIC_AUTO_LOGIN === 'true') {
-      gonder();
-    }
-  }, []);
+  // Şifremi Unuttum State
+  const [unuttumModalAcik, setUnuttumModalAcik] = useState(false);
+  const [unuttumEposta, setUnuttumEposta] = useState('');
+  const [unuttumHata, setUnuttumHata] = useState('');
+  const [unuttumMesaj, setUnuttumMesaj] = useState('');
+  const [unuttumYukleniyor, setUnuttumYukleniyor] = useState(false);
 
   const gonder = async () => {
     setHata('');
@@ -44,11 +50,52 @@ export default function GirisEkrani() {
       } else {
         await kayitOl(kullaniciAdi.trim(), eposta.trim(), sifre);
       }
-      // Başarılıysa yönlendirmeyi useKorumaliYonlendirme yapar.
     } catch (e) {
       setHata((e as Error).message || 'Bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setGonderiliyor(false);
+    }
+  };
+
+  const sifremiUnuttumGonder = async () => {
+    setUnuttumHata('');
+    setUnuttumMesaj('');
+    if (!unuttumEposta.trim()) {
+      setUnuttumHata('Lütfen e-posta adresinizi girin.');
+      return;
+    }
+
+    setUnuttumYukleniyor(true);
+    try {
+      const yanit = await api.forgotPassword(unuttumEposta.trim());
+      setUnuttumMesaj(
+        yanit.message || 'Eğer bu e-posta kayıtlıysa, şifre sıfırlama bağlantısı gönderildi.',
+      );
+    } catch (e) {
+      const err = e as ApiHatasi;
+      if (err.durum === 503) {
+        setUnuttumHata('Şifre sıfırlama şu an kullanılamıyor. Lütfen daha sonra tekrar deneyin.');
+      } else {
+        setUnuttumHata(err.message || 'Şifre sıfırlama isteği iletilemedi.');
+      }
+    } finally {
+      setUnuttumYukleniyor(false);
+    }
+  };
+
+  const baglantiAc = async (urlKey: string, baslik: string) => {
+    const url = yasalBaglantiAdresi(urlKey);
+    if (url && url.trim()) {
+      try {
+        await WebBrowser.openBrowserAsync(url.trim());
+      } catch {
+        Alert.alert('Hata', `${baslik} açılamadı.`);
+      }
+    } else {
+      Alert.alert(
+        'Hazırlanıyor',
+        `${baslik} henüz web üzerinde yayımlanma aşamasındadır. Yakında erişilebilir olacaktır.`,
+      );
     }
   };
 
@@ -111,7 +158,7 @@ export default function GirisEkrani() {
                 <BookOpen size={34} color={palet.primary} />
               </View>
               <Metin tur="devasa" ortala>
-                Linguza
+                Readixo
               </Metin>
               <Metin tur="kucuk" ikincil ortala>
                 {girisModu
@@ -145,6 +192,8 @@ export default function GirisEkrani() {
                           setGirisModu(secenek.id);
                           setHata('');
                         }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${secenek.ad} sekmesini seç`}
                         style={{
                           flex: 1,
                           paddingVertical: Bosluk.sm + 2,
@@ -208,9 +257,26 @@ export default function GirisEkrani() {
                 </View>
 
                 <View style={{ gap: Bosluk.xs }}>
-                  <Metin tur="etiket" ikincil>
-                    Şifre
-                  </Metin>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Metin tur="etiket" ikincil>
+                      Şifre
+                    </Metin>
+                    {girisModu && (
+                      <Pressable
+                        onPress={() => {
+                          setUnuttumEposta(eposta);
+                          setUnuttumHata('');
+                          setUnuttumMesaj('');
+                          setUnuttumModalAcik(true);
+                        }}
+                        hitSlop={6}
+                      >
+                        <Metin tur="minik" renk={palet.primary}>
+                          Şifremi unuttum
+                        </Metin>
+                      </Pressable>
+                    )}
+                  </View>
                   <View style={alanKabi}>
                     <Lock size={18} color={palet.onSurfaceVariant} />
                     <TextInput
@@ -228,16 +294,37 @@ export default function GirisEkrani() {
                   </View>
                 </View>
 
-                {/* KURAL-17: rol seçimi KALDIRILDI. Herkes öğrenci olarak
-                    kaydolur; öğretmen yetkisini yalnızca bir yönetici verir.
-                    Seçilebilir kalsaydı öğretmene bağlı her kontrol (ör.
-                    paylaşılan analizi yeniden üretme) göstermelik olurdu. */}
+                {/* YH-08: Kayıt ekranı hukuki onay metni */}
                 {!girisModu && (
-                  <View style={{ flexDirection: 'row', gap: Bosluk.sm, alignItems: 'flex-start' }}>
-                    <GraduationCap size={16} color={palet.onSurfaceVariant} />
-                    <Metin tur="kucuk" ikincil style={{ flex: 1 }}>
-                      Öğretmen hesabı mı gerekiyor? Önce öğrenci olarak kaydol,
-                      sonra yöneticiden hesabını öğretmene yükseltmesini iste.
+                  <View style={{ gap: Bosluk.sm }}>
+                    <View style={{ flexDirection: 'row', gap: Bosluk.sm, alignItems: 'flex-start' }}>
+                      <GraduationCap size={16} color={palet.onSurfaceVariant} />
+                      <Metin tur="minik" ikincil style={{ flex: 1 }}>
+                        Öğretmen hesabı mı gerekiyor? Önce öğrenci olarak kaydol,
+                        sonra yöneticiden hesabını öğretmene yükseltmesini iste.
+                      </Metin>
+                    </View>
+
+                    <Metin tur="minik" ikincil ortala style={{ lineHeight: 18 }}>
+                      Kaydolarak{' '}
+                      <Metin
+                        tur="minik"
+                        kalin
+                        renk={palet.primary}
+                        onPress={() => baglantiAc('EXPO_PUBLIC_KOSULLAR_URL', 'Kullanım Koşulları')}
+                      >
+                        Kullanım Koşulları
+                      </Metin>
+                      &rsquo;nı ve{' '}
+                      <Metin
+                        tur="minik"
+                        kalin
+                        renk={palet.primary}
+                        onPress={() => baglantiAc('EXPO_PUBLIC_GIZLILIK_URL', 'Gizlilik Politikası')}
+                      >
+                        Gizlilik Politikası
+                      </Metin>
+                      &rsquo;nı kabul etmiş olursun.
                     </Metin>
                   </View>
                 )}
@@ -266,6 +353,76 @@ export default function GirisEkrani() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* Şifremi Unuttum Modalı */}
+      <Modal
+        visible={unuttumModalAcik}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setUnuttumModalAcik(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View
+            style={{
+              backgroundColor: palet.surface,
+              borderTopLeftRadius: Yaricap.xl,
+              borderTopRightRadius: Yaricap.xl,
+              padding: Bosluk.lg,
+              gap: Bosluk.md,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Metin tur="altBaslik">Şifremi Unuttum</Metin>
+              <Pressable onPress={() => setUnuttumModalAcik(false)}>
+                <Metin tur="kucuk" renk={palet.primary}>
+                  Kapat
+                </Metin>
+              </Pressable>
+            </View>
+
+            <Metin tur="kucuk" ikincil>
+              Hesabınıza bağlı e-posta adresinizi girin. Şifre sıfırlama bağlantısını e-postanıza göndereceğiz.
+            </Metin>
+
+            {unuttumHata ? <HataKutusu mesaj={unuttumHata} /> : null}
+
+            {unuttumMesaj ? (
+              <View style={{ padding: Bosluk.md, borderRadius: Yaricap.md, backgroundColor: alpha(palet.primary, 0.1) }}>
+                <Metin tur="kucuk" kalin renk={palet.primary}>
+                  {unuttumMesaj}
+                </Metin>
+              </View>
+            ) : null}
+
+            <View style={{ gap: Bosluk.xs }}>
+              <Metin tur="etiket" ikincil>
+                E-posta Adresi
+              </Metin>
+              <View style={alanKabi}>
+                <Mail size={18} color={palet.onSurfaceVariant} />
+                <TextInput
+                  value={unuttumEposta}
+                  onChangeText={setUnuttumEposta}
+                  placeholder="isim@ornek.com"
+                  placeholderTextColor={alpha(palet.onSurfaceVariant, 0.6)}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  style={alanStili}
+                />
+              </View>
+            </View>
+
+            <Buton
+              baslik="Sıfırlama Bağlantısı Gönder"
+              tur="birincil"
+              tamGenislik
+              onPress={sifremiUnuttumGonder}
+              yukleniyor={unuttumYukleniyor}
+              disabled={!unuttumEposta.trim() || unuttumYukleniyor}
+            />
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }

@@ -49,11 +49,9 @@ export default function AdminLoginPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-xl">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center mb-3 text-xl">
-            🛡️
-          </div>
-          <h1 className="text-xl font-bold text-white">Yonetici Girisi</h1>
-          <p className="text-gray-500 text-xs mt-1">Ingilizce Okuma Platformu Admin</p>
+          <img src="/readixo.png" alt="Readixo Logo" className="w-14 h-14 rounded-2xl shadow-lg border border-gray-800 mb-3" />
+          <h1 className="text-xl font-bold text-white">Readixo Yönetici Girişi</h1>
+          <p className="text-gray-500 text-xs mt-1">Readixo Admin Portal</p>
         </div>
 
         {error && (

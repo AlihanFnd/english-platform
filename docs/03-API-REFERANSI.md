@@ -1082,16 +1082,69 @@ Tek `SaveChangesAsync()` içinde, yani atomiktir ✅ (commit `08ec85d`).
 
 ---
 
-## Var olmayan ama beklenebilecek uçlar
+## Phase 3 Eklentileri (`YH-04`, `YH-05`, `YH-06`, `YH-13`)
+
+### `GET /api/seri` — günlük seri ve XP özet bilgisi
+Haftalık takvim, mevcut seri günü, dünün durumu, bugün kazanılan XP kırılımları ve puan tablosu.
+
+**200 OK**
+```json
+{
+  "mevcutSeri": 5,
+  "hedefXp": 20,
+  "bugunToplamXp": 35,
+  "bugunTamamlandi": true,
+  "dunTamamlandi": true,
+  "son7Gun": [
+    { "gun": "2026-09-13", "toplamXp": 35, "hedefXp": 20, "tamamlandi": true }
+  ]
+}
+```
+
+### `PUT /api/seri/ayarlar` — günlük hedef XP, CEFR seviyesi ve saat dilimi güncelleme
+```json
+{
+  "gunlukHedefXp": 30,
+  "saatDilimi": "Europe/Istanbul",
+  "seviye": "B1"
+}
+```
+
+### `GET /api/cumleler` — kayıtlı cümlelerim ve tekrar listesi
+```json
+[
+  { "id": 1, "cumle": "Practice makes perfect.", "ceviri": "Pratik mükemmelleştirir.", "kutu": 2, "sonrakiTekrarAt": "2026-09-14T00:00:00Z" }
+]
+```
+
+### `POST /api/cumleler` — yeni cümle ekleme
+```json
+{
+  "cumle": "Practice makes perfect.",
+  "ceviri": "Pratik mükemmelleştirir.",
+  "baglam": "The Adventures of Tom Sawyer"
+}
+```
+
+### `POST /api/cumleler/calisma-sonucu` — aralıklı tekrar sonucu bildirimi
+```json
+{ "cumleId": 1, "bildi": true }
+```
+
+### `DELETE /api/cumleler/{id}` — cümle kaydı silme
+
+### `GET /books/{id}/sayfalar?bas=1&son=50` — çevrimdışı okuma için toplu sayfa indirme (`YH-13`)
+Verilen sayfa aralığındaki tüm `BookPage` içeriklerini ve `SentencesJson` verisini tek HTTP isteğinde döndürür.
+
+---
+
+## Var olmayan ama beklenebilecek uçlar (Faz 3 Sonu)
 
 Bunlar **yoktur** — yeni özellik planlarken bilinmesi gerekir:
 
-- Şifre sıfırlama / e-posta doğrulama
-- Şifre değiştirme
-- Kullanıcının kendi profilini güncellemesi
+- Şifre sıfırlama / e-posta doğrulama (e-posta servisi kapalı ise 503 döner)
 - Gruptan ayrılma / üye çıkarma / grup silme
 - Kitap atamasını kaldırma
-- OCR kaydı silme
-- Kelime listesini toplu içe/dışa aktarma
-- Sağlık kontrolü (`/health`) — Docker healthcheck backend için tanımlı değil
+- Kelime listesini toplu dışa aktarma (kullanıcı bazlı tam veri dışa aktarma `/api/verim/disa-aktar` mevcuttur)
 - Swagger / OpenAPI — `AddSwaggerGen` çağrılmıyor
+

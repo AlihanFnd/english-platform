@@ -87,7 +87,7 @@ public static class KisiselVeriEnvanteri
             "Kaldığı yerden devam.", null, DisaAktarilir: true),
         new("WordListItems", "Word/Context/Translation/AddedAt", VeriSinifi.Davranis,
             "Kişisel kelime listesi — hangi kelimeleri bilmediği.", null, DisaAktarilir: true),
-        new("WordListItems", "DogruSayisi/YanlisSayisi/DogruSeri/SonCalismaAt", VeriSinifi.Davranis,
+        new("WordListItems", "DogruSayisi/YanlisSayisi/DogruSeri/SonCalismaAt/Kutu/SonrakiTekrarAt", VeriSinifi.Davranis,
             "Kelime çalışma istatistikleri — öğrenme profili.", null, DisaAktarilir: true),
         new("QuizResults", "*", VeriSinifi.Davranis,
             "İlerleme takibi ve grup raporu.", null, DisaAktarilir: true),
@@ -100,6 +100,27 @@ public static class KisiselVeriEnvanteri
             "Jetonun ömrü ve tüketilip tüketilmediği — kurtarma akışının " +
             "denetim izi. Sır sınıfında: bir jetonun NE ZAMAN istendiği de " +
             "hesabın varlığını doğrular.", 7, DisaAktarilir: false),
+
+        new("GunlukEtkinlikler", "Gun/OkumaXp/KelimeXp/CalismaXp/QuizXp/CumleXp/HedefXp/GuncellemeAt",
+            VeriSinifi.Davranis,
+            "Günlük seri ve hedef — hangi gün ne kadar çalıştığının GÜNLÜK TOPLAMI (saat, kitap, kelime yok).",
+            null, DisaAktarilir: true),
+        new("OgrenmeAyarlari", "GunlukHedefXp/SaatDilimi/Seviye/IlkAcilisTamamlandi/GuncellemeAt",
+            VeriSinifi.Davranis,
+            "Günlük hedef tercihi, İngilizce seviyesi, ilk açılış durumu ve günün sınırını belirleyen saat dilimi (yaklaşık bölge bilgisi).",
+            null, DisaAktarilir: true),
+        new("CumleKayitlari", "Cumle/CumleAnahtari/Ceviri/Baglam/AddedAt",
+            VeriSinifi.Davranis,
+            "Kullanıcının öğrenmek için kaydettiği cümleler — okuduğu metinden alıntı içerir.",
+            null, DisaAktarilir: true),
+        new("CumleKayitlari", "DogruSayisi/YanlisSayisi/DogruSeri/SonCalismaAt/Kutu/SonrakiTekrarAt",
+            VeriSinifi.Davranis,
+            "Cümle çalışma istatistikleri.",
+            null, DisaAktarilir: true),
+        new("GroupMembers", "Role/JoinedAt",
+            VeriSinifi.Kimlik,
+            "Grup üyeliği ve rolü (admin/member).",
+            null, DisaAktarilir: true),
     };
 
     /// <summary>

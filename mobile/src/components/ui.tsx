@@ -13,7 +13,14 @@ import {
   ViewProps,
   ViewStyle,
 } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { useRenk } from '@/context/ThemeContext';
 import { alpha } from '@/theme/palette';
@@ -39,6 +46,7 @@ export function Metin({
   kalin,
   ortala,
   style,
+  children,
   ...rest
 }: MetinProps) {
   const palet = useRenk();
@@ -54,10 +62,16 @@ export function Metin({
     etiket: {
       fontSize: Olcek.minik,
       fontFamily: YaziTipi.govdeKalin,
-      textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
   };
+
+  const islenenCocuk = React.useMemo(() => {
+    if (tur === 'etiket' && typeof children === 'string') {
+      return children.toLocaleUpperCase('tr-TR');
+    }
+    return children;
+  }, [children, tur]);
 
   return (
     <Text
@@ -69,7 +83,9 @@ export function Metin({
         ortala && { textAlign: 'center' },
         style,
       ]}
-    />
+    >
+      {islenenCocuk}
+    </Text>
   );
 }
 
@@ -156,6 +172,8 @@ export function Buton({
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={rest.accessibilityLabel ?? baslik}
       {...rest}
       disabled={pasif}
       style={({ pressed }) => [
@@ -285,6 +303,46 @@ export function Yukleniyor({ mesaj }: { mesaj?: string }) {
         </Metin>
       ) : null}
     </Animated.View>
+  );
+}
+
+export function KartIskeleti({ adet = 3 }: { adet?: number }) {
+  const palet = useRenk();
+  const HareketiAzalt = useReducedMotion();
+  const opaklik = useSharedValue(0.3);
+
+  React.useEffect(() => {
+    if (!HareketiAzalt) {
+      opaklik.value = withRepeat(
+        withTiming(0.7, { duration: 600 }),
+        -1,
+        true,
+      );
+    } else {
+      opaklik.value = 0.5;
+    }
+  }, [HareketiAzalt, opaklik]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opaklik.value,
+  }));
+
+  return (
+    <View style={{ gap: Bosluk.md, padding: Bosluk.md }}>
+      {Array.from({ length: adet }).map((_, i) => (
+        <Animated.View
+          key={i}
+          style={[
+            animatedStyle,
+            {
+              height: 72,
+              borderRadius: Yaricap.lg,
+              backgroundColor: alpha(palet.onSurfaceVariant, 0.14),
+            },
+          ]}
+        />
+      ))}
+    </View>
   );
 }
 

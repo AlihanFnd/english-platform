@@ -93,6 +93,12 @@ namespace EnglishReadingPlatform.Models
 
         /// <summary>En son ne zaman çalışıldı. null = hiç çalışılmadı.</summary>
         public DateTime? SonCalismaAt { get; set; }
+
+        /// <summary>Leitner kutusu (0-7). YH-06: 0 = hiç çalışılmadı, 4 = öğrenildi eşiği.</summary>
+        public int Kutu { get; set; }
+
+        /// <summary>Bir sonraki tekrar zamanı (UTC). null = hiç çalışılmadı.</summary>
+        public DateTime? SonrakiTekrarAt { get; set; }
     }
 
     // ─── Quiz ─────────────────────────────────────────────────
@@ -245,5 +251,66 @@ namespace EnglishReadingPlatform.Models
         public DateTime GecerlilikSonu { get; set; }
         public DateTime? KullanildiAt { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>YH-04: bir kullanıcının BİR günündeki puanları. Gün kullanıcının saat dilimindedir.</summary>
+    public class GunlukEtkinlik
+    {
+        [Key] public int Id { get; set; }
+        public int UserId { get; set; }
+        [ForeignKey("UserId")] public User User { get; set; } = null!;
+
+        /// <summary>Kullanıcının YEREL takvim günü.</summary>
+        public DateOnly Gun { get; set; }
+
+        public int OkumaXp { get; set; }
+        public int KelimeXp { get; set; }
+        public int CalismaXp { get; set; }
+        public int QuizXp { get; set; }
+        public int CumleXp { get; set; }
+
+        /// <summary>O günün ilk puanı yazıldığında geçerli olan hedef — sonradan hedef değişse de geçmiş değişmez.</summary>
+        public int HedefXp { get; set; }
+
+        public DateTime GuncellemeAt { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>YH-04 &amp; YH-10: öğrenme tercihleri ve ilk açılış durumu. Satır yoksa varsayılanlar geçerlidir — GET satır AÇMAZ.</summary>
+    public class OgrenmeAyarlari
+    {
+        [Key] public int Id { get; set; }
+        public int UserId { get; set; }
+        [ForeignKey("UserId")] public User User { get; set; } = null!;
+        public int GunlukHedefXp { get; set; } = 20;
+        [MaxLength(AlanSinirlari.SaatDilimi)] public string SaatDilimi { get; set; } = "Europe/Istanbul";
+        [MaxLength(AlanSinirlari.KullaniciSeviye)] public string? Seviye { get; set; }
+        public bool IlkAcilisTamamlandi { get; set; } = false;
+        public DateTime GuncellemeAt { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>YH-05: kullanıcının kaydettiği cümleler.</summary>
+    public class CumleKaydi
+    {
+        [Key] public int Id { get; set; }
+        public int UserId { get; set; }
+        [ForeignKey("UserId")] public User User { get; set; } = null!;
+
+        [Required, MaxLength(AlanSinirlari.Cumle)] public string Cumle { get; set; } = "";
+        /// <summary>Tekillik anahtarı: küçük harf + boşluk sadeleştirilmiş. Kullanıcı görmez.</summary>
+        [Required, MaxLength(AlanSinirlari.Cumle)] public string CumleAnahtari { get; set; } = "";
+        [MaxLength(AlanSinirlari.CumleCevirisi)] public string Ceviri { get; set; } = "";
+        [MaxLength(AlanSinirlari.CumleBaglami)] public string Baglam { get; set; } = "";
+        public DateTime AddedAt { get; set; } = DateTime.UtcNow;
+
+        public int DogruSayisi { get; set; }
+        public int YanlisSayisi { get; set; }
+        public int DogruSeri { get; set; }
+        public DateTime? SonCalismaAt { get; set; }
+
+        /// <summary>Leitner kutusu (0-7). YH-06: 0 = hiç çalışılmadı, 4 = öğrenildi eşiği.</summary>
+        public int Kutu { get; set; }
+
+        /// <summary>Bir sonraki tekrar zamanı (UTC). null = hiç çalışılmadı.</summary>
+        public DateTime? SonrakiTekrarAt { get; set; }
     }
 }

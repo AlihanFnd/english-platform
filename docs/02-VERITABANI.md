@@ -365,6 +365,63 @@ Migration `20260714062208_AddFeedbackModel`. Yalnızca admin okuyabilir (`AdminO
 
 ---
 
+### `GunlukEtkinlikler` — günlük seri ve XP kırılımları (`YH-04`)
+
+| Kolon | Tip | Açıklama |
+|---|---|---|
+| `Id` | int | PK |
+| `UserId` | int | FK → Users (CASCADE) |
+| `Gun` | date | Takvim günü (kullanıcının yerel saat diliminde `YYYY-MM-DD`) |
+| `OkumaXp` | int | Okuma aktivitelerinden kazanılan XP |
+| `KelimeXp` | int | Kelime ekleme / çalışma seansından kazanılan XP |
+| `CalismaXp` | int | Aralıklı kelime tekrarından kazanılan XP |
+| `QuizXp` | int | Quiz çözümlerinden kazanılan XP |
+| `CumleXp` | int | Cümle kurma & çalışma seansından kazanılan XP |
+| `HedefXp` | int | O gün geçerli olan günlük hedef XP sınırı |
+| `GuncellemeAt` | timestamptz | |
+
+**İndeksler:** `(UserId, Gun)` — **UNIQUE**.
+
+---
+
+### `OgrenmeAyarlari` — kullanıcı öğrenme ve hedef ayarları (`YH-04`, `YH-10`)
+
+| Kolon | Tip | Açıklama |
+|---|---|---|
+| `Id` | int | PK |
+| `UserId` | int | FK → Users (CASCADE) |
+| `GunlukHedefXp` | int | Günlük hedef XP (varsayılan: 20 XP) |
+| `SaatDilimi` | varchar(64) | IANA saat dilimi (varsayılan: `"UTC"`) |
+| `Seviye` | varchar(10) | CEFR seviye tercihi (varsayılan: `"A1"`) |
+| `IlkAcilisTamamlandi` | boolean | Onboarding akışının tamamlanıp tamamlanmadığı |
+| `GuncellemeAt` | timestamptz | |
+
+**İndeksler:** `(UserId)` — **UNIQUE**.
+
+---
+
+### `CumleKayitlari` — kaydedilen cümleler ve aralıklı tekrar (`YH-03`, `YH-05`, `YH-06`)
+
+| Kolon | Tip | Açıklama |
+|---|---|---|
+| `Id` | int | PK |
+| `UserId` | int | FK → Users (CASCADE) |
+| `Cumle` | varchar(500) | İngilizce cümle |
+| `CumleAnahtari` | varchar(500) | Normalize edilmiş tekillik anahtarı |
+| `Ceviri` | varchar(1000) | Türkçe çevirisi |
+| `Baglam` | varchar(400) | Cümlenin geçtiği bağlam veya kaynak |
+| `DogruSayisi` | int | Doğru tahmin sayısı |
+| `YanlisSayisi` | int | Yanlış tahmin sayısı |
+| `DogruSeri` | int | Üst üste doğru sayısı |
+| `Kutu` | int | Leitner kutusu (0..5) |
+| `SonrakiTekrarAt` | timestamptz? | Sonraki aralıklı tekrar tarihi |
+| `SonCalismaAt` | timestamptz? | Son çalışma tarihi |
+| `AddedAt` | timestamptz | Kayıt tarihi |
+
+**İndeksler:** `(UserId, CumleAnahtari)` — **UNIQUE**.
+
+---
+
 ## 3. Migration geçmişi
 
 | Sıra | Dosya | Ne yaptı |
@@ -380,6 +437,11 @@ Migration `20260714062208_AddFeedbackModel`. Yalnızca admin okuyabilir (`AdminO
 | 9 | `20260829183257_SifreSifirlamaJetonu` | KURAL-09: `SifreSifirlamaJetonlari` |
 | 10 | `20260901141323_KURAL12_VeriButunluguKisitlari` | KURAL-12: 7 unique index, saklama indeksleri, `Groups.AdminUserId` → `RESTRICT` |
 | 11 | `20260904082257_KelimeCalismaIlerlemesi` | `WordListItems`'a çalışma ilerlemesi: `DogruSayisi`, `YanlisSayisi`, `DogruSeri`, `SonCalismaAt` |
+| 12 | `20260905221734_OcrScannedAtIndeksi` | `OcrRecords.ScannedAt` indeksi |
+| 13 | `20260913083144_AddDailyStreakAndGoal` | `GunlukEtkinlikler` ve `OgrenmeAyarlari` tabloları (`YH-04`) |
+| 14 | `20260913100841_AddCumleKayitlari` | `CumleKayitlari` tablosu (`YH-03`, `YH-05`) |
+| 15 | `20260913142210_AddTekrarZamanlamasiAndOnboarding` | Aralıklı tekrar zamanlaması (`SonrakiTekrarAt`) + Seviye/Onboarding kolonları (`YH-06`, `YH-10`) |
+| 16 | `20260913164420_NormalizeSentencesCleanIndex` | Kelime normalizasyonu & `WordListItems` unique index temizliği (`YH-11`) |
 
 Yeni migration eklemek:
 

@@ -15,6 +15,12 @@ public static class MetinUzantilari
     {
         if (string.IsNullOrEmpty(metin)) return "";
         var temiz = metin.Trim();
-        return temiz.Length <= enCok ? temiz : temiz[..enCok];
+        if (temiz.Length <= enCok) return temiz;
+
+        // Sınır bir vekil çiftinin (emoji vb.) ortasına denk gelirse yarım vekil kalır.
+        // Yarım vekil geçerli UTF-8'e çevrilemez, Npgsql yazarken hata fırlatır:
+        // emojili bir cümleyi bağlam olarak seçen kullanıcı 500 alıyordu.
+        var kesim = enCok > 0 && char.IsHighSurrogate(temiz[enCok - 1]) ? enCok - 1 : enCok;
+        return temiz[..kesim];
     }
 }

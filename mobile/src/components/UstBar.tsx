@@ -5,6 +5,7 @@ import {
   Send,
   Sun,
   CheckCircle2,
+  User as UserIcon,
   X,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
@@ -16,8 +17,13 @@ import { Buton, HataKutusu, Metin } from '@/components/ui';
 import { useKimlik } from '@/context/AuthContext';
 import { useTema } from '@/context/ThemeContext';
 import { api } from '@/lib/api';
+import { rolEtiketi } from '@/lib/rol';
 import { alpha } from '@/theme/palette';
 import { Bosluk, Olcek, Yaricap, YaziTipi } from '@/theme/tokens';
+
+import { useRouter } from 'expo-router';
+import { SeriAlevi } from '@/components/seri/SeriAlevi';
+import { useSeri } from '@/context/SeriContext';
 
 function basHarf(ad?: string) {
   return (ad?.[0] ?? 'K').toUpperCase();
@@ -30,6 +36,8 @@ function basHarf(ad?: string) {
 export function UstBar({ baslik, altBaslik }: { baslik: string; altBaslik?: string }) {
   const { renk, koyuMu, temaDegistir } = useTema();
   const { kullanici, cikisYap } = useKimlik();
+  const { ozet } = useSeri();
+  const router = useRouter();
   const kenar = useSafeAreaInsets();
 
   const [profilAcik, setProfilAcik] = useState(false);
@@ -50,7 +58,7 @@ export function UstBar({ baslik, altBaslik }: { baslik: string; altBaslik?: stri
       >
         <View style={{ flex: 1 }}>
           <Metin tur="etiket" renk={alpha(renk.primary, 0.9)}>
-            Linguza
+            Readixo
           </Metin>
           <Metin tur="devasa" numberOfLines={1}>
             {baslik}
@@ -63,6 +71,16 @@ export function UstBar({ baslik, altBaslik }: { baslik: string; altBaslik?: stri
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: Bosluk.sm }}>
+          {ozet && (
+            <SeriAlevi
+              mevcutSeri={ozet.mevcutSeri}
+              bugunAktif={ozet.bugunAktif}
+              seriRiskte={ozet.seriRiskte}
+              boyut="kucuk"
+              onPress={() => router.push('/seri')}
+            />
+          )}
+
           <Pressable
             onPress={temaDegistir}
             hitSlop={8}
@@ -82,8 +100,9 @@ export function UstBar({ baslik, altBaslik }: { baslik: string; altBaslik?: stri
           </Pressable>
 
           <Pressable
-            onPress={() => setProfilAcik(true)}
+            onPress={() => router.push('/profil')}
             hitSlop={8}
+            accessibilityRole="button"
             accessibilityLabel="Profil ve ayarlar"
             style={{
               width: 40,
@@ -110,11 +129,14 @@ export function UstBar({ baslik, altBaslik }: { baslik: string; altBaslik?: stri
       >
         <Pressable
           onPress={() => setProfilAcik(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Menüyü kapat"
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}
         >
           <Animated.View entering={FadeInDown.duration(220)}>
             <Pressable
               onPress={(olay) => olay.stopPropagation()}
+              accessibilityLabel="Menü içeriği"
               style={{
                 backgroundColor: renk.surfaceContainerLow,
                 borderTopLeftRadius: Yaricap.xl,
@@ -148,11 +170,22 @@ export function UstBar({ baslik, altBaslik }: { baslik: string; altBaslik?: stri
                   <Metin tur="kucuk" ikincil numberOfLines={1}>
                     {kullanici?.email ?? ''}
                   </Metin>
-                  <Metin tur="minik" ikincil style={{ textTransform: 'capitalize' }}>
-                    {kullanici?.role ?? 'student'}
+                  <Metin tur="minik" ikincil>
+                    {rolEtiketi(kullanici?.role)}
                   </Metin>
                 </View>
               </View>
+
+              <Buton
+                baslik="Hesap Yönetimi & KVKK"
+                tur="ikincil"
+                tamGenislik
+                ikon={<UserIcon size={16} color={renk.primary} />}
+                onPress={() => {
+                  setProfilAcik(false);
+                  router.push('/hesabim');
+                }}
+              />
 
               <Buton
                 baslik={koyuMu ? 'Aydınlık Tema' : 'Karanlık Tema'}

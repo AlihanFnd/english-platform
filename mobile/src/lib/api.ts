@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
+import { ORTAM, apiTabaniCoz } from '@/lib/yapilandirma';
+
 /**
  * Linguza API istemcisi — web'deki `frontend/app/api.ts` dosyasının mobil eşi.
  *
@@ -31,20 +33,14 @@ const ZAMAN_ASIMI_MS = 20000;
  *   3. `http://localhost:5001` — yalnızca öykünücü/simülatör için son çare.
  */
 function tabanAdres(): string {
-  const acikAdres = process.env.EXPO_PUBLIC_API_URL;
-  if (acikAdres && acikAdres.trim()) return acikAdres.trim().replace(/\/+$/, '');
-
   const gelistirmeSunucusu =
     Constants.expoConfig?.hostUri ??
     // Eski Expo Go sürümlerinde alan adı farklı; ikisine de bakıyoruz.
     (Constants as unknown as { expoGoConfig?: { debuggerHost?: string } }).expoGoConfig?.debuggerHost;
 
-  if (gelistirmeSunucusu) {
-    const anaBilgisayar = gelistirmeSunucusu.split(':')[0];
-    if (anaBilgisayar) return `http://${anaBilgisayar}:5001`;
-  }
-
-  return 'http://localhost:5001';
+  // Öncelik sırası ve gerekçesi yapilandirma.ts → apiTabaniCoz içinde. Ortam
+  // değişkeni ORTAM üzerinden okunur: EXPO_PUBLIC_* yalnızca STATİK yazımla pakete gömülür.
+  return apiTabaniCoz(ORTAM.EXPO_PUBLIC_API_URL, gelistirmeSunucusu);
 }
 
 export const API_TABANI = tabanAdres();
@@ -182,9 +178,15 @@ export interface User {
 export interface ReadingProgress {
   bookId: number;
   bookTitle: string;
+  coverColor?: string;
+  level?: string;
+  category?: string;
   progressPercent: number;
   currentChapter: number;
   lastRead: string;
+  hasPages?: boolean;
+  totalChapters?: number;
+  totalPages?: number;
 }
 
 export interface Book {
@@ -200,6 +202,15 @@ export interface Book {
   pagesCount?: number;
   progress?: number;
   currentChapter?: number;
+}
+
+export interface EnvanterKalemi {
+  tablo: string;
+  alan: string;
+  sinif: string;
+  sebep: string;
+  saklama: string;
+  disaAktarilir: boolean;
 }
 
 export interface Chapter {
@@ -254,6 +265,10 @@ export interface WordItem {
   translation: string;
   context: string;
   addedAt: string;
+  /** Leitner kutusu (0–7). */
+  kutu: number;
+  /** Sunucu hesaplar — eşik özetteki ogrenildiEsigi ile aynı. İstemci kendi eşiğini yazmaz. */
+  ogrenildi: boolean;
 }
 
 /** Çalışma seansındaki tek bir kart. */
@@ -264,6 +279,8 @@ export interface CalismaKarti {
   context: string;
   /** Üst üste kaç kez doğru bilindi. */
   dogruSeri: number;
+  kutu: number;
+  sonrakiTekrarAt?: string | null;
   ogrenildi: boolean;
 }
 
@@ -273,6 +290,9 @@ export interface KelimeOzeti {
   ogrenildi: number;
   calisiliyor: number;
   hicCalisilmadi: number;
+  bugunTekrar: number;
+  yarinTekrar: number;
+  kutuDagilimi: number[];
   ogrenildiEsigi: number;
 }
 
@@ -296,11 +316,79 @@ export interface OcrRecord {
   scannedAt: string;
 }
 
-/** KURAL-05 — seviye/kategori/dil listeleri tek kaynaktan (sunucudan) gelir. */
+export interface KirilimOzeti {
+  okuma: number;
+  kelime: number;
+  calisma: number;
+  quiz: number;
+  cumle: number;
+}
+
+export interface BugunOzeti {
+  gun: string;
+  xp: number;
+  hedefXp: number;
+  hedefTamamlandi: boolean;
+  kirilim: KirilimOzeti;
+}
+
+export interface SonGunOzeti {
+  gun: string;
+  xp: number;
+  hedefTamamlandi: boolean;
+}
+
+export interface PuanTablosuKalemi {
+  tur: string;
+  xp: number;
+  gunlukTavan: number;
+}
+
+export interface SeriOzeti {
+  mevcutSeri: number;
+  enUzunSeri: number;
+  bugunAktif: boolean;
+  seriRiskte: boolean;
+  bugun: BugunOzeti;
+  sonGunler: SonGunOzeti[];
+  gunlukHedefXp: number;
+  saatDilimi: string;
+  hedefSecenekleri: number[];
+  puanTablosu: PuanTablosuKalemi[];
+  seviye?: string | null;
+  ilkAcilisTamamlandi?: boolean;
+}
+
 export interface Taxonomy {
   levels: string[];
   categories: string[];
   languages: string[];
+}
+
+export interface CumleItem {
+  id: number;
+  cumle: string;
+  ceviri: string;
+  baglam: string;
+  addedAt: string;
+  dogruSayisi: number;
+  yanlisSayisi: number;
+  dogruSeri: number;
+  kutu: number;
+  sonrakiTekrarAt?: string | null;
+  sonCalismaAt?: string | null;
+  ogrenildi: boolean;
+}
+
+export interface CumleOzeti {
+  toplam: number;
+  ogrenildi: number;
+  calisiliyor: number;
+  hicCalisilmadi: number;
+  bugunTekrar: number;
+  yarinTekrar: number;
+  kutuDagilimi: number[];
+  ogrenildiEsigi: number;
 }
 
 export interface KelimeCevirisi {
@@ -329,25 +417,50 @@ export interface AnalizCumlesi {
   words: AnalizKelimesi[];
 }
 
+import { isEkle } from './yazmaKuyrugu';
+
+let meAktifKullaniciId: number | null = null;
+
+export function setAktifKullaniciId(id: number | null) {
+  meAktifKullaniciId = id;
+}
+
+export function getAktifKullaniciId(): number | null {
+  return meAktifKullaniciId;
+}
+
 export const api = {
   /* Kimlik */
-  login: (email: string, password: string) =>
-    istek<{ token: string; user: User }>('/auth/login', 'POST', { email, password }),
+  login: async (email: string, password: string) => {
+    const res = await istek<{ token: string; user: User }>('/auth/login', 'POST', { email, password });
+    if (res?.user?.id) setAktifKullaniciId(res.user.id);
+    return res;
+  },
 
   /**
    * KURAL-17: rol GÖNDERİLMEZ. Kayıt her zaman "student" üretir; öğretmenliği
    * yalnızca bir yönetici verir (PUT /api/admin/users/{id}/role).
    */
-  register: (username: string, email: string, password: string) =>
-    istek<{ token: string; user: User }>('/auth/register', 'POST', {
+  register: async (username: string, email: string, password: string) => {
+    const res = await istek<{ token: string; user: User }>('/auth/register', 'POST', {
       username,
       email,
       password,
-    }),
+    });
+    if (res?.user?.id) setAktifKullaniciId(res.user.id);
+    return res;
+  },
 
-  me: () => istek<{ user: User }>('/auth/me'),
+  me: async () => {
+    const res = await istek<{ user: User }>('/auth/me');
+    if (res?.user?.id) setAktifKullaniciId(res.user.id);
+    return res;
+  },
 
-  logout: () => istek<{ message: string }>('/auth/logout', 'POST'),
+  logout: () => {
+    setAktifKullaniciId(null);
+    return istek<{ message: string }>('/auth/logout', 'POST');
+  },
 
   /* Kitaplar */
   getBooks: () => istek<Book[]>('/books'),
@@ -357,12 +470,26 @@ export const api = {
       book: Book & { chapters: Array<{ id: number; chapterNumber: number; title: string }> };
     }>(`/books/${id}`),
 
+  getPagesBulk: (id: number, bas: number = 1, son: number = 50) =>
+    istek<Array<{ pageNumber: number; content: string; sentencesJson: string | null; analizBekliyor: boolean }>>(
+      `/books/${id}/sayfalar?bas=${bas}&son=${son}`,
+    ),
+
   /**
    * KURAL-17: okuma ucu artık SALT OKUNUR — ilerleme yazmaz, LLM çağırmaz.
    * Sözleşme değişikliği bu katmanda soğurulur; ekran kodu aynı kalır.
    */
-  saveProgress: (bookId: number, konum: number) =>
-    istek<{ success: boolean }>(`/books/${bookId}/progress`, 'POST', { bookId, konum }),
+  saveProgress: async (bookId: number, konum: number) => {
+    try {
+      return await istek<{ success: boolean }>(`/books/${bookId}/progress`, 'POST', { bookId, konum });
+    } catch (err) {
+      if (err instanceof ApiHatasi && err.durum === 0 && meAktifKullaniciId) {
+        await isEkle(meAktifKullaniciId, 'ilerleme', { bookId, konum });
+        return { success: true };
+      }
+      throw err;
+    }
+  },
 
   /** `chapter` verilmezse sunucu KALDIĞI YERDEN devam ettirir. */
   readChapter: async (id: number, chapter?: number) => {
@@ -416,19 +543,38 @@ export const api = {
     istek<{ success: boolean; sentencesJson: string }>(
       `/books/${id}/reanalyze?page=${page}`, 'POST'),
 
-  addWord: (word: string, translation: string, context: string) =>
-    istek<{ success: boolean }>('/books/addword', 'POST', { word, translation, context }),
+  addWord: async (word: string, translation: string, context: string) => {
+    try {
+      return await istek<{ success: boolean }>('/books/addword', 'POST', { word, translation, context });
+    } catch (err) {
+      if (err instanceof ApiHatasi && err.durum === 0 && meAktifKullaniciId) {
+        await isEkle(meAktifKullaniciId, 'kelime_ekle', { word, translation, context });
+        return { success: true };
+      }
+      throw err;
+    }
+  },
 
   getWords: () => istek<WordItem[]>('/books/words'),
 
   deleteWord: (id: number) => istek<{ success: boolean }>(`/books/words/${id}`, 'DELETE'),
 
-  getCalismaSeansi: (adet: number) => istek<CalismaKarti[]>(`/books/words/calisma?adet=${adet}`),
+  getCalismaSeansi: (adet: number = 10, mod?: 'tekrar' | 'serbest') =>
+    istek<CalismaKarti[]>(`/books/words/calisma?adet=${adet}${mod ? `&mod=${mod}` : ''}`),
 
   getKelimeOzeti: () => istek<KelimeOzeti>('/books/words/ozet'),
 
-  kaydetCalismaSonucu: (kelimeId: number, bildim: boolean) =>
-    istek<{ success: boolean }>('/books/words/calisma-sonucu', 'POST', { kelimeId, bildim }),
+  kaydetCalismaSonucu: async (kelimeId: number, bildim: boolean) => {
+    try {
+      return await istek<{ success: boolean }>('/books/words/calisma-sonucu', 'POST', { kelimeId, bildim });
+    } catch (err) {
+      if (err instanceof ApiHatasi && err.durum === 0 && meAktifKullaniciId) {
+        await isEkle(meAktifKullaniciId, 'calisma_sonucu', { kelimeId, bildim, tur: 'kelime' });
+        return { success: true };
+      }
+      throw err;
+    }
+  },
 
   updateWord: (id: number, word: string, translation: string, context: string) =>
     istek<{ success: boolean }>(`/books/words/${id}`, 'PUT', { word, translation, context }),
@@ -514,6 +660,83 @@ export const api = {
   submitFeedback: (message: string) =>
     istek<{ success: boolean }>('/feedback', 'POST', { message }),
 
+  /* Günlük seri ve hedef (YH-04) */
+  getSeri: () => istek<SeriOzeti>('/seri'),
+
+  seriAyarlariniGuncelle: (ayarlar: {
+    gunlukHedefXp?: number;
+    saatDilimi?: string;
+    seviye?: string;
+    ilkAcilisTamamlandi?: boolean;
+  }) => istek<SeriOzeti>('/seri/ayarlar', 'PUT', ayarlar),
+
   /** KURAL-05: seviye/kategori listeleri istemcide kopyalanmaz. */
   getTaxonomy: () => istek<Taxonomy>('/books/taxonomy'),
+
+  /* Cümlelerim (YH-05) */
+  getSentences: () => istek<CumleItem[]>('/cumleler'),
+
+  getCumleOzeti: () => istek<CumleOzeti>('/cumleler/ozet'),
+
+  addSentence: async (cumle: string, ceviri?: string, baglam?: string) => {
+    try {
+      return await istek<CumleItem>('/cumleler', 'POST', { cumle, ceviri, baglam });
+    } catch (err) {
+      if (err instanceof ApiHatasi && err.durum === 0 && meAktifKullaniciId) {
+        await isEkle(meAktifKullaniciId, 'cumle_ekle', { cumle, ceviri, baglam });
+        return {
+          id: Date.now(),
+          cumle,
+          ceviri: ceviri || '',
+          baglam: baglam || '',
+          addedAt: new Date().toISOString(),
+          dogruSayisi: 0,
+          yanlisSayisi: 0,
+          dogruSeri: 0,
+          kutu: 1,
+          ogrenildi: false,
+        };
+      }
+      throw err;
+    }
+  },
+
+  updateSentence: (id: number, cumle: string, ceviri?: string, baglam?: string) =>
+    istek<CumleItem>(`/cumleler/${id}`, 'PUT', { cumle, ceviri, baglam }),
+
+  deleteSentence: (id: number) => istek<{ success: boolean }>(`/cumleler/${id}`, 'DELETE'),
+
+  topluCumleEkle: (cumleler: Array<{ cumle: string; ceviri?: string; baglam?: string }>) =>
+    istek<{ eklenen: number; atlanan: number }>('/cumleler/toplu', 'POST', { cumleler }),
+
+  getCalismaCumleleri: (adet: number = 10, mod?: 'tekrar' | 'serbest') =>
+    istek<CumleItem[]>(`/cumleler/calisma?adet=${adet}${mod ? `&mod=${mod}` : ''}`),
+
+  kaydetCumleCalismaSonucu: async (cumleId: number, bildim: boolean) => {
+    try {
+      return await istek<{ success: boolean }>('/cumleler/calisma-sonucu', 'POST', { cumleId, bildim });
+    } catch (err) {
+      if (err instanceof ApiHatasi && err.durum === 0 && meAktifKullaniciId) {
+        await isEkle(meAktifKullaniciId, 'calisma_sonucu', { cumleId, bildim, tur: 'cumle' });
+        return { success: true };
+      }
+      throw err;
+    }
+  },
+
+  /* Veri Sahibi Hakları ve Şifre Yönetimi (YH-08) */
+  veriEnvanteri: () =>
+    istek<{ kalemler: EnvanterKalemi[] }>('/verim/envanter'),
+
+  verimiDisaAktar: () =>
+    istek<Record<string, unknown>>('/verim/disa-aktar'),
+
+  hesabimiSil: (sifre: string) =>
+    istek<{ success: boolean; message: string }>('/verim/hesabimi-sil', 'POST', { sifre }),
+
+  changePassword: (mevcutSifre: string, yeniSifre: string) =>
+    istek<{ message: string }>('/auth/change-password', 'POST', { mevcutSifre, yeniSifre }),
+
+  forgotPassword: (eposta: string) =>
+    istek<{ message: string }>('/auth/forgot-password', 'POST', { eposta }),
 };

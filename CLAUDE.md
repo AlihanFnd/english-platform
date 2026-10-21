@@ -19,7 +19,9 @@ istemcisi, Expo Go mobil istemcisi, PostgreSQL.
 | Mobil istemci (Expo Go) | [mobile/DURUM.md](mobile/DURUM.md) |
 | **Açık güvenlik bulguları** | [docs/07-GUVENLIK.md](docs/07-GUVENLIK.md) |
 | **Güvenlik çalışması faz 1 (kapandı)** | [guvenlik-kurallari/00-BASLA-BURADAN.md](guvenlik-kurallari/00-BASLA-BURADAN.md) |
-| **Güvenlik çalışması faz 2 (sıradaki)** | [guvenlik-kurallari-faz2/00-BASLA-BURADAN.md](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) |
+| **Güvenlik çalışması faz 2** | [guvenlik-kurallari-faz2/00-BASLA-BURADAN.md](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) |
+| **Faz 3 — yayına hazırlık (sıradaki)** | [yayina-hazirlik-faz3/00-BASLA-BURADAN.md](yayina-hazirlik-faz3/00-BASLA-BURADAN.md) |
+| Mobil eksik analizi (faz 3'ün kaynağı) | [raporlar/04-MOBIL-EKSIK-ANALIZI.md](raporlar/04-MOBIL-EKSIK-ANALIZI.md) |
 | Kurulum, bilinen hatalar, teknik borç | [docs/08-GELISTIRME-REHBERI.md](docs/08-GELISTIRME-REHBERI.md) |
 
 ## Hızlı başlangıç
@@ -44,6 +46,13 @@ cd mobile && npx expo start
 |---|---|---|
 | **Faz 1** — KURAL-01…12 | [`guvenlik-kurallari/`](guvenlik-kurallari/00-BASLA-BURADAN.md) | ✅ 12/12 kapandı (`2bd12bc`) |
 | **Faz 2** — KURAL-13…19 | [`guvenlik-kurallari-faz2/`](guvenlik-kurallari-faz2/00-BASLA-BURADAN.md) | 🟨 6/7 (16 hariç hepsi kapandı) |
+| **Faz 3** — YH-01…15 yayına hazırlık | [`yayina-hazirlik-faz3/`](yayina-hazirlik-faz3/00-BASLA-BURADAN.md) | ✅ 15/15 kapandı (2026-09-13) |
+
+> **Faz 3 neden var:** güvenli olmak yayına hazır olmak değil. Mobil analiz
+> (raporlar/04) günlük döngünün (seri, hedef, tekrar, hatırlatma) ve mağaza
+> zorunluluklarının (uygulama içi hesap silme, gizlilik bağlantısı) eksik
+> olduğunu, ayrıca istemci koduna gerçek bir giriş bilgisinin gömüldüğünü
+> gösterdi. **Konuşma/telaffuz kaydı kapsam dışıdır** (kullanıcı kararı).
 
 Her oturum **önce** ilgili fazın `00-BASLA-BURADAN.md`, **sonra** sıradaki
 `KURAL-NN.md` okunarak yürütülür. Disiplin, pazarlıksız maddeler ve teslim
@@ -78,6 +87,10 @@ formatı 00 dosyasındadır. İlerleme tablosu da oradadır — bitirdiğin kura
   çerez `SameSite=Lax`, üst düzey gezinmede gönderilir.
 - **Kayıt rol kabul etmez** — her hesap `student` doğar, öğretmenliği yalnızca
   yönetici verir (`PUT /api/admin/users/{id}/role`).
+- **Oyunlaştırma değerleri (XP, seri, sayaç, "öğrenildi") istemciden alınmaz** —
+  sunucuda hesaplanır (faz 3). **İstemci koduna giriş bilgisi yazılmaz**, geliştirme
+  kolaylığı için bile; `EXPO_PUBLIC_*`/`NEXT_PUBLIC_*` pakete gömülür, sır taşımaz
+  (YH-01, `scripts/guard/02-sirlar.sh` madde 10–12).
 - **Dağıtımdan önce `bash scripts/dagitim/on-kontrol.sh`, sonra
   `bash scripts/dagitim/canli-dogrula.sh <adres>`** (KURAL-15). Zorunlu ortam
   değişkenleri `Configuration/OrtamSozlesmesi.cs` içinde; üretimde biri eksikse

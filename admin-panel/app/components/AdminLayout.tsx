@@ -26,8 +26,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Mobile Top Header */}
       <header className="md:hidden bg-gray-900/80 backdrop-blur-md border-b border-gray-800 fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 z-30">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-linear-to-tr from-indigo-500 to-violet-500 rounded-lg flex items-center justify-center text-sm shadow-md">🛡️</div>
-          <span className="font-bold text-white text-sm tracking-wide">ADMIN PORTAL</span>
+          <img src="/readixo.png" alt="Readixo Logo" className="w-8 h-8 rounded-lg shadow-sm" />
+          <span className="font-bold text-white text-sm tracking-wide">READIXO ADMIN</span>
         </div>
         <button 
           onClick={() => setMenuOpen(!menuOpen)}
@@ -55,9 +55,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       }`}>
         <div className="p-6 border-b border-gray-800/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-linear-to-tr from-indigo-500 to-violet-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-lg">🛡️</div>
+            <img src="/readixo.png" alt="Readixo Logo" className="w-10 h-10 rounded-xl shadow-lg border border-gray-800" />
             <div>
-              <p className="font-bold text-white text-sm tracking-wide">ADMIN PORTAL</p>
+              <p className="font-bold text-white text-sm tracking-wide">READIXO ADMIN</p>
               <p className="text-[10px] text-gray-400 font-semibold tracking-widest uppercase mt-0.5">Control Center</p>
             </div>
           </div>

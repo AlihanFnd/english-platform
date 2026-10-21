@@ -70,3 +70,23 @@ jobs:
         working-directory: ${{ matrix.uygulama }}
       - run: npm run build
         working-directory: ${{ matrix.uygulama }}
+
+  mobil:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx expo lint
+      - run: npm audit --audit-level=high
+      - run: npx jest --ci
+      - run: node ../scripts/mobil/erisilebilirlik-denetimi.mjs
+      - run: node ../scripts/mobil/tip-sozlesmesi.mjs

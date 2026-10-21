@@ -2,8 +2,7 @@
 
 import React from 'react';
 import { BarChart3, X, GraduationCap, CheckCircle2, Flame, Target } from 'lucide-react';
-import { KelimeOzeti, WordItem } from '../api';
-import { CumleOzeti, SentenceItem } from '../lib/cumleDeposu';
+import { KelimeOzeti, WordItem, CumleOzeti, CumleItem } from '../api';
 
 interface IlerlemeRaporuModalProps {
   isOpen: boolean;
@@ -11,7 +10,7 @@ interface IlerlemeRaporuModalProps {
   type: 'kelime' | 'cumle';
   words: WordItem[];
   wordSummary: KelimeOzeti | null;
-  sentences: SentenceItem[];
+  sentences: CumleItem[];
   sentenceSummary: CumleOzeti | null;
 }
 
@@ -110,6 +109,32 @@ export function IlerlemeRaporuModal({
               <span className="text-base font-black text-on-surface">{notEncountered}</span>
             </div>
           </div>
+
+          {/* Leitner Box Distribution Bar Chart */}
+          {((isWord ? wordSummary?.kutuDagilimi : sentenceSummary?.kutuDagilimi)) && (
+            <div className="p-4 rounded-2xl bg-surface border border-outline-variant space-y-3">
+              <p className="text-xs font-bold text-on-surface-variant">Leitner Hafıza Kutuları (0 - 7)</p>
+              <div className="flex items-end justify-between h-20 pt-2 gap-1">
+                {(isWord ? wordSummary?.kutuDagilimi : sentenceSummary?.kutuDagilimi)?.map((count, index) => {
+                  const distribution = isWord ? wordSummary?.kutuDagilimi! : sentenceSummary?.kutuDagilimi!;
+                  const max = Math.max(...distribution, 1);
+                  const heightPct = Math.round((count / max) * 100);
+                  return (
+                    <div key={index} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-[10px] font-bold text-on-surface-variant">{count}</span>
+                      <div className="w-3.5 h-10 bg-surface-container rounded-sm flex items-end overflow-hidden">
+                        <div
+                          className={`w-full transition-all duration-300 rounded-sm ${index >= 4 ? 'bg-green-500' : 'bg-primary'}`}
+                          style={{ height: `${Math.max(heightPct, count > 0 ? 15 : 4)}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-on-surface-variant">K{index}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <button
             type="button"

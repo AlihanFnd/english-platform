@@ -35,6 +35,10 @@ interface Cozum {
  * telaffuzunu ve "Kelimelerime Ekle" düğmesini taşıyan kutu. Mobilde ekranın
  * altına yerleşiyor; tek elle ulaşılabilir yer orası.
  */
+import { useSeri } from '@/context/SeriContext';
+
+import { kokBul } from '@/lib/kok';
+
 export function KelimePaneli({
   secim,
   kapat,
@@ -47,11 +51,15 @@ export function KelimePaneli({
   const palet = useRenk();
   const kenar = useSafeAreaInsets();
   const { seslendir, konusuyorMu } = useTelaffuz();
+  const { puanOlayi } = useSeri();
 
   const [cozum, setCozum] = useState<Cozum | null>(null);
   const [ceviriliyor, setCeviriliyor] = useState(false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const [eklenenler, setEklenenler] = useState<Record<string, boolean>>({});
+  const [secilenForm, setSecilenForm] = useState<'kok' | 'orijinal'>('kok');
+
+  const kok = secim ? kokBul(secim.kelime) : null;
 
   /** Hızlı hızlı kelimeye basınca ESKİ yanıt yenisini ezmesin. */
   const istekSirasi = useRef(0);
@@ -62,6 +70,7 @@ export function KelimePaneli({
       return;
     }
 
+    setSecilenForm('kok');
     const benimSiram = ++istekSirasi.current;
     setCozum(null);
     setCeviriliyor(true);
@@ -88,35 +97,39 @@ export function KelimePaneli({
 
   const kaydet = useCallback(async () => {
     if (!secim || !cozum) return;
-    const anahtar = secim.kelime.toLowerCase();
+    const kaydedilecek = kok && secilenForm === 'kok' ? kok : secim.kelime;
+    const anahtar = kaydedilecek.toLowerCase();
     if (eklenenler[anahtar]) return;
     setKaydediliyor(true);
     try {
       const metin = cozum.generalMeaning
         ? `${cozum.generalMeaning}${cozum.synonyms ? '\n\nEş Anlamlılar:\n' + cozum.synonyms : ''}`
         : cozum.translation;
-      await api.addWord(secim.kelime, metin, secim.cumle);
+      await api.addWord(kaydedilecek, metin, secim.cumle);
       setEklenenler((oncekiler) => ({ ...oncekiler, [anahtar]: true }));
+      puanOlayi();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch {
       // Kayıt düşerse kullanıcı yeniden deneyebilir
     } finally {
       setKaydediliyor(false);
     }
-  }, [secim, cozum, eklenenler]);
+  }, [secim, cozum, kok, secilenForm, eklenenler, puanOlayi]);
 
   useEffect(() => {
     if (otoEkle && cozum && secim) {
-      const anahtar = secim.kelime.toLowerCase();
+      const kaydedilecek = kok && secilenForm === 'kok' ? kok : secim.kelime;
+      const anahtar = kaydedilecek.toLowerCase();
       if (!eklenenler[anahtar] && !kaydediliyor) {
         kaydet();
       }
     }
-  }, [otoEkle, cozum, secim, eklenenler, kaydediliyor, kaydet]);
+  }, [otoEkle, cozum, secim, kok, secilenForm, eklenenler, kaydediliyor, kaydet]);
 
   if (!secim) return null;
 
-  const anahtar = secim.kelime.toLowerCase();
+  const kaydedilecek = kok && secilenForm === 'kok' ? kok : secim.kelime;
+  const anahtar = kaydedilecek.toLowerCase();
   const eklendi = eklenenler[anahtar];
 
   return (
@@ -135,16 +148,23 @@ export function KelimePaneli({
           borderColor: alpha(palet.primary, 0.3),
           padding: Bosluk.lg,
           gap: Bosluk.md,
-          maxHeight: 320,
+          maxHeight: kok ? 360 : 320,
         },
         golge(palet.glassShadow, 3),
       ]}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: Bosluk.md }}>
         <View style={{ flex: 1, gap: 4 }}>
-          <Metin tur="etiket" renk={palet.primary}>
-            {cozum?.type || secim.tur || 'kelime'}
-          </Metin>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Metin tur="etiket" renk={palet.primary}>
+              {cozum?.type || secim.tur || 'kelime'}
+            </Metin>
+            {kok ? (
+              <Metin tur="minik" ikincil style={{ fontStyle: 'italic' }}>
+                · kök: {kok}
+              </Metin>
+            ) : null}
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: Bosluk.sm }}>
             <Metin tur="baslik" style={{ flexShrink: 1 }}>
               {secim.kelime}
@@ -172,7 +192,7 @@ export function KelimePaneli({
         </Pressable>
       </View>
 
-      <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ maxHeight: 120 }} showsVerticalScrollIndicator={false}>
         {ceviriliyor ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: Bosluk.sm }}>
             <ActivityIndicator size="small" color={palet.primary} />
@@ -198,6 +218,41 @@ export function KelimePaneli({
           </View>
         )}
       </ScrollView>
+
+      {/* Kök Seçimi (Varsa Kök önerisi) */}
+      {kok ? (
+        <View style={{ flexDirection: 'row', gap: Bosluk.xs, backgroundColor: palet.surfaceContainer, padding: 3, borderRadius: Yaricap.md }}>
+          <Pressable
+            onPress={() => setSecilenForm('kok')}
+            style={{
+              flex: 1,
+              paddingVertical: 6,
+              alignItems: 'center',
+              borderRadius: Yaricap.sm,
+              backgroundColor: secilenForm === 'kok' ? palet.primary : 'transparent',
+            }}
+          >
+            <Metin tur="minik" kalin renk={secilenForm === 'kok' ? palet.onPrimary : palet.onSurfaceVariant}>
+              {kok} (kök - önerilen)
+            </Metin>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setSecilenForm('orijinal')}
+            style={{
+              flex: 1,
+              paddingVertical: 6,
+              alignItems: 'center',
+              borderRadius: Yaricap.sm,
+              backgroundColor: secilenForm === 'orijinal' ? palet.primary : 'transparent',
+            }}
+          >
+            <Metin tur="minik" kalin renk={secilenForm === 'orijinal' ? palet.onPrimary : palet.onSurfaceVariant}>
+              {secim.kelime} (orijinal)
+            </Metin>
+          </Pressable>
+        </View>
+      ) : null}
 
       <Pressable
         onPress={kaydet}
@@ -225,7 +280,7 @@ export function KelimePaneli({
           <>
             <BookMarked size={16} color={palet.onPrimary} />
             <Metin tur="kucuk" kalin renk={palet.onPrimary}>
-              {kaydediliyor ? 'Ekleniyor…' : 'Kelimelerime Ekle'}
+              {kaydediliyor ? 'Ekleniyor…' : `"${kaydedilecek}" Kelimelerime Ekle`}
             </Metin>
           </>
         )}

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { api, WordItem, CalismaKarti, KelimeOzeti } from '../api';
-import { cumleDeposu, SentenceItem, CumleOzeti } from '../lib/cumleDeposu';
+import { api, WordItem, CalismaKarti, KelimeOzeti, CumleItem, CumleOzeti } from '../api';
+import { cumleGocuCalistir } from '../lib/cumleGocu';
 import { useTelaffuz, KELIME_HIZI } from '../hooks/useTelaffuz';
 import { useAuth } from '../context/AuthContext';
 import { TopluEkleModal } from '../components/TopluEkleModal';
@@ -66,7 +66,7 @@ export default function WordsPage() {
   const [words, setWords] = useState<WordItem[]>([]);
   const [ozet, setOzet] = useState<KelimeOzeti | null>(null);
 
-  const [sentences, setSentences] = useState<SentenceItem[]>([]);
+  const [sentences, setSentences] = useState<CumleItem[]>([]);
   const [sentenceSummary, setSentenceSummary] = useState<CumleOzeti | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -114,6 +114,7 @@ export default function WordsPage() {
       translation: string;
       context?: string;
       dogruSeri: number;
+      kutu?: number;
       ogrenildi: boolean;
     }>
   >([]);
@@ -125,12 +126,17 @@ export default function WordsPage() {
   const loadData = async () => {
     try {
       setError('');
-      const [wData, oData] = await Promise.all([api.getWords(), api.getKelimeOzeti()]);
+      if (user?.id) {
+        await cumleGocuCalistir(user.id);
+      }
+      const [wData, oData, sData, sOzet] = await Promise.all([
+        api.getWords(),
+        api.getKelimeOzeti(),
+        api.getSentences(),
+        api.getCumleOzeti(),
+      ]);
       setWords(wData);
       setOzet(oData);
-
-      const sData = cumleDeposu.getCumleler(user?.id);
-      const sOzet = cumleDeposu.cumleOzeti(user?.id);
       setSentences(sData);
       setSentenceSummary(sOzet);
     } catch (err: any) {
@@ -144,7 +150,7 @@ export default function WordsPage() {
     try {
       const [oData, sOzet] = await Promise.all([
         api.getKelimeOzeti(),
-        cumleDeposu.cumleOzeti(user?.id),
+        api.getCumleOzeti(),
       ]);
       setOzet(oData);
       setSentenceSummary(sOzet);
@@ -275,7 +281,7 @@ export default function WordsPage() {
     if (!fastSentence.trim() || !fastSentenceTranslation.trim()) return;
     setIsSentenceAdding(true);
     try {
-      cumleDeposu.cumleEkle(user?.id, fastSentence.trim(), fastSentenceTranslation.trim(), '');
+      await api.addSentence(fastSentence.trim(), fastSentenceTranslation.trim(), '');
       setFastSentence('');
       setFastSentenceTranslation('');
       cumleElleDegisti.current = false;
@@ -310,11 +316,11 @@ export default function WordsPage() {
     setEditTranslation(item.translation);
   };
 
-  const startEditSentence = (item: SentenceItem, e: React.MouseEvent) => {
+  const startEditSentence = (item: CumleItem, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingId(item.id);
-    setEditWordText(item.sentence);
-    setEditTranslation(item.translation);
+    setEditWordText(item.cumle);
+    setEditTranslation(item.ceviri);
   };
 
   const handleUpdateWord = async (id: number, e: React.MouseEvent) => {
@@ -332,12 +338,12 @@ export default function WordsPage() {
     }
   };
 
-  const handleUpdateSentence = async (id: string, e: React.MouseEvent) => {
+  const handleUpdateSentence = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!editWordText.trim() || !editTranslation.trim()) return;
     setUpdatingId(id);
     try {
-      cumleDeposu.cumleGuncelle(user?.id, id, editWordText.trim(), editTranslation.trim(), '');
+      await api.updateSentence(id, editWordText.trim(), editTranslation.trim(), '');
       setEditingId(null);
       await loadData();
     } catch (err: any) {
@@ -359,11 +365,11 @@ export default function WordsPage() {
     }
   };
 
-  const handleDeleteSentence = async (id: string, e: React.MouseEvent) => {
+  const handleDeleteSentence = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Bu cümleyi silmek istediğinize emin misiniz?')) return;
     try {
-      cumleDeposu.cumleSil(user?.id, id);
+      await api.deleteSentence(id);
       setSentences((prev) => prev.filter((s) => s.id !== id));
       loadOzet();
     } catch (err: any) {
@@ -382,10 +388,10 @@ export default function WordsPage() {
     } catch {}
   };
 
-  const handleMarkSentenceKnown = async (item: SentenceItem, e: React.MouseEvent) => {
+  const handleMarkSentenceKnown = async (item: CumleItem, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      cumleDeposu.cumleCalismaKaydet(user?.id, item.id, true);
+      await api.kaydetCumleCalismaSonucu(item.id, true);
       setSentences((prev) =>
         prev.map((s) => (s.id === item.id ? { ...s, dogruSeri: s.dogruSeri + 1 } : s)),
       );
@@ -396,14 +402,14 @@ export default function WordsPage() {
   /* Pratik Başlatma */
   const activeListLength = activeTab === 'kelime' ? words.length : sentences.length;
 
-  const startStudySession = async (mode: 'test' | 'flashcard', count: number) => {
+  const startStudySession = async (mode: 'test' | 'flashcard', count: number, calismaModu: 'tekrar' | 'serbest' = 'tekrar') => {
     setModeChoiceModalOpen(false);
     if (activeListLength === 0) return;
     setSeansYukleniyor(true);
 
     try {
       if (activeTab === 'kelime') {
-        const kartlar = await api.getCalismaSeansi(count);
+        const kartlar = await api.getCalismaSeansi(count, calismaModu);
         setStudyItems(
           kartlar.map((k) => ({
             id: k.id,
@@ -411,26 +417,21 @@ export default function WordsPage() {
             translation: k.translation,
             context: k.context,
             dogruSeri: k.dogruSeri,
+            kutu: k.kutu,
             ogrenildi: k.ogrenildi,
           })),
         );
       } else {
-        const sirali = [...sentences]
-          .sort((a, b) => {
-            const aPuani = a.sonCalismaAt ? (a.dogruSeri >= 2 ? 2 : 1) : 0;
-            const bPuani = b.sonCalismaAt ? (b.dogruSeri >= 2 ? 2 : 1) : 0;
-            return aPuani - bPuani;
-          })
-          .slice(0, count);
-
+        const cKartlar = await api.getCalismaCumleleri(count, calismaModu);
         setStudyItems(
-          sirali.map((c) => ({
+          cKartlar.map((c) => ({
             id: c.id,
-            original: c.sentence,
-            translation: c.translation,
-            context: c.context,
+            original: c.cumle,
+            translation: c.ceviri,
+            context: c.baglam,
             dogruSeri: c.dogruSeri,
-            ogrenildi: c.dogruSeri >= 2,
+            kutu: c.kutu,
+            ogrenildi: c.ogrenildi,
           })),
         );
       }
@@ -457,7 +458,7 @@ export default function WordsPage() {
     const pool =
       activeTab === 'kelime'
         ? words.map((w) => w.word).filter((w) => w.toLowerCase() !== correct.toLowerCase())
-        : sentences.map((s) => s.sentence).filter((s) => s.toLowerCase() !== correct.toLowerCase());
+        : sentences.map((s) => s.cumle).filter((s) => s.toLowerCase() !== correct.toLowerCase());
 
     const combinedPool = [
       ...pool,
@@ -472,8 +473,7 @@ export default function WordsPage() {
     if (activeTab === 'kelime') {
       api.kaydetCalismaSonucu(Number(id), known).then(loadOzet).catch(() => {});
     } else {
-      cumleDeposu.cumleCalismaKaydet(user?.id, String(id), known);
-      loadOzet();
+      api.kaydetCumleCalismaSonucu(Number(id), known).then(loadOzet).catch(() => {});
     }
   };
 
@@ -721,6 +721,11 @@ export default function WordsPage() {
                       <div className="space-y-1">
                         <span className="text-[10px] font-bold text-primary uppercase">Türkçe Karşılığı</span>
                         <h2 className="text-xl font-bold text-on-surface">{currentItem.translation}</h2>
+                        {typeof currentItem.kutu === 'number' && (
+                          <span className="inline-block mt-2 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-primary/10 text-primary">
+                            {currentItem.kutu}. kutu · {currentItem.kutu === 0 ? 'Henüz çalışılmadı' : `${[0, 1, 2, 4, 7, 15, 30, 60][Math.min(currentItem.kutu, 7)]} gün sonra tekrar`}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -799,7 +804,7 @@ export default function WordsPage() {
                   {words.map((item) => {
                     const isFlipped = flippedCards.has(item.id);
                     const isEditing = editingId === item.id;
-                    const isLearned = (item as any).dogruSeri >= 3;
+                    const isLearned = item.ogrenildi;
 
                     return (
                       <div
@@ -999,20 +1004,20 @@ export default function WordsPage() {
                           </div>
                         ) : isFlipped ? (
                           <div className="my-auto text-center">
-                            <p className="text-sm font-bold text-primary">{item.translation}</p>
+                            <p className="text-sm font-bold text-primary">{item.ceviri}</p>
                           </div>
                         ) : (
                           <div className="my-auto space-y-1">
                             <div className="flex items-start justify-between gap-2">
                               <p className="text-xs font-semibold text-on-surface leading-relaxed">
-                                {item.sentence}
+                                {item.cumle}
                               </p>
                               {telaffuzVar && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    seslendir(item.sentence);
+                                    seslendir(item.cumle);
                                   }}
                                   className="p-1 text-on-surface-variant hover:text-primary rounded cursor-pointer shrink-0"
                                 >

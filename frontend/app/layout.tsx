@@ -27,7 +27,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Linguza - İngilizce Çeviri ve Okuma Platformu",
+  title: "Readixo - İngilizce Çeviri ve Okuma Platformu",
   description: "AI destekli okuma, anlık kelime çevirisi ve sınıf yönetim platformu",
 };
 

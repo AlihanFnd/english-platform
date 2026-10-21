@@ -25,6 +25,11 @@ namespace EnglishReadingPlatform.Data
         public DbSet<TranslationCache> TranslationCaches => Set<TranslationCache>();
         // KURAL-09: şifre sıfırlama jetonları
         public DbSet<SifreSifirlamaJetonu> SifreSifirlamaJetonlari => Set<SifreSifirlamaJetonu>();
+        // YH-04: Günlük seri ve öğrenme ayarları
+        public DbSet<GunlukEtkinlik> GunlukEtkinlikler => Set<GunlukEtkinlik>();
+        public DbSet<OgrenmeAyarlari> OgrenmeAyarlari => Set<OgrenmeAyarlari>();
+        // YH-05: Cümle kayitlari
+        public DbSet<CumleKaydi> CumleKayitlari => Set<CumleKaydi>();
 
         /// <summary>
         /// KURAL-05: tohum verisinin zaman damgası SABİT olmalıdır.
@@ -50,6 +55,14 @@ namespace EnglishReadingPlatform.Data
             modelBuilder.Entity<Group>().HasIndex(g => g.InviteCode).IsUnique();
             // KURAL-09: aynı hash iki kez yazılamaz
             modelBuilder.Entity<SifreSifirlamaJetonu>().HasIndex(j => j.JetonHash).IsUnique();
+            // YH-04: Günlük seri ve öğrenme ayarları tekillikleri
+            modelBuilder.Entity<GunlukEtkinlik>().HasIndex(e => new { e.UserId, e.Gun }).IsUnique();
+            modelBuilder.Entity<OgrenmeAyarlari>().HasIndex(a => a.UserId).IsUnique();
+            // YH-05: Cümle kaydi tekilliği
+            modelBuilder.Entity<CumleKaydi>().HasIndex(c => new { c.UserId, c.CumleAnahtari }).IsUnique();
+            // YH-06: Aralıklı tekrar indeksi (vadesi gelenleri hızlı bulmak için)
+            modelBuilder.Entity<WordListItem>().HasIndex(w => new { w.UserId, w.SonrakiTekrarAt });
+            modelBuilder.Entity<CumleKaydi>().HasIndex(c => new { c.UserId, c.SonrakiTekrarAt });
 
             // ── KURAL-12: mantıksal tekillik VERİTABANINDA zorlanır ─────────────
             //
@@ -127,6 +140,12 @@ namespace EnglishReadingPlatform.Data
                 .HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<SifreSifirlamaJetonu>().HasOne(j => j.User).WithMany()
                 .HasForeignKey(j => j.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<GunlukEtkinlik>().HasOne(g => g.User).WithMany()
+                .HasForeignKey(g => g.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<OgrenmeAyarlari>().HasOne(a => a.User).WithMany()
+                .HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<CumleKaydi>().HasOne(c => c.User).WithMany()
+                .HasForeignKey(c => c.UserId).OnDelete(DeleteBehavior.Cascade);
 
             // KURAL-02: Yönetici tohumu buradan kaldırıldı.
             // Şifre koda gömülüydü ve BCrypt her tuzda farklı hash ürettiği için

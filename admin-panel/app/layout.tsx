@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Admin Panel | İngilizce Okuma Platformu",
+  title: "Readixo Admin Portal",
   description: "Yönetici paneli — sadece yetkili personel erişebilir",
   robots: "noindex, nofollow", // Arama motorları indeklemesin
 };

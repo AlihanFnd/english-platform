@@ -86,6 +86,52 @@ public class GirdiDogrulamaTests
             .Should().Be(AlanSinirlari.Baglam, "bağlam kolon sınırına kırpılarak yazılmalı");
     }
 
+    /// <summary>
+    /// Kırpma bir emojiyi (UTF-16 vekil çifti) ortasından bölerse yarım vekil kalır.
+    /// Okuyucuda emojili bir cümle seçmek olağandır; sonuç ne 500 ne de bozuk karakterli
+    /// bir kayıt olmalı. Veritabanından okuyarak doğrulanır.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "GirdiDogrulama")]
+    public async Task Kirpma_emojiyi_ortasindan_bolmez_500_DEGIL()
+    {
+        var client = await OgrenciClientAsync();
+        var kelime = "emoji_" + Guid.NewGuid().ToString("N")[..6];
+        var baglam = UzunMetin(AlanSinirlari.Baglam - 1) + "😀 tail";   // vekil çifti tam sınırın üstünde
+
+        var ekle = await client.PostAsJsonAsync("/api/books/addword", new
+        {
+            word = kelime,
+            translation = "test",
+            context = baglam
+        });
+        ekle.StatusCode.Should().Be(HttpStatusCode.OK, await ekle.Content.ReadAsStringAsync());
+
+        var liste = await client.GetFromJsonAsync<JsonElement>("/api/books/words");
+        var kayit = liste.EnumerateArray()
+            .First(w => w.GetProperty("word").GetString() == kelime);
+
+        kayit.GetProperty("context").GetString()
+            .Should().Be(UzunMetin(AlanSinirlari.Baglam - 1), "emoji bütünüyle düşmeli, yarısı yazılmamalı");
+    }
+
+    /// <summary>
+    /// Bir istemci metni saf dilimlemeyle keserse gövdede YARIM vekil (\ud83d) gider.
+    /// Bu istemci hatasıdır; sunucunun cevabı yine 400 olmalı, 500 değil.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "GirdiDogrulama")]
+    public async Task Govdede_yarim_vekil_400_doner_500_DEGIL()
+    {
+        var client = await OgrenciClientAsync();
+        var govde = "{\"cumle\":\"Half an emoji \\ud83d\",\"ceviri\":\"\",\"baglam\":\"\"}";
+
+        var yanit = await client.PostAsync("/api/cumleler",
+            new StringContent(govde, System.Text.Encoding.UTF8, "application/json"));
+
+        yanit.StatusCode.Should().Be(HttpStatusCode.BadRequest, await yanit.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     [Trait("Category", "GirdiDogrulama")]
     public async Task Uzun_kelime_400_doner()

@@ -109,6 +109,21 @@ public class VerimController : ControllerBase
             .Select(f => new { f.Message, f.CreatedAt })
             .ToListAsync();
 
+        var seriGunleri = await _db.GunlukEtkinlikler
+            .Where(e => e.UserId == id)
+            .Select(e => new { e.Gun, e.OkumaXp, e.KelimeXp, e.CalismaXp, e.QuizXp, e.CumleXp, e.HedefXp, e.GuncellemeAt })
+            .ToListAsync();
+
+        var ogrenmeAyarlari = await _db.OgrenmeAyarlari
+            .Where(a => a.UserId == id)
+            .Select(a => new { a.GunlukHedefXp, a.SaatDilimi, a.Seviye, a.IlkAcilisTamamlandi, a.GuncellemeAt })
+            .FirstOrDefaultAsync();
+
+        var cumleler = await _db.CumleKayitlari
+            .Where(c => c.UserId == id)
+            .Select(c => new { c.Cumle, c.Ceviri, c.Baglam, c.AddedAt })
+            .ToListAsync();
+
         _logger.LogInformation("Veri dışa aktarıldı. KullaniciId={Id}", id);
 
         return Ok(new
@@ -118,14 +133,17 @@ public class VerimController : ControllerBase
             // dosyadır. Neyin İÇİNDE OLMADIĞINI söylemek, "eksik" sanılıp
             // destek talebi açılmasını da önler.
             not = "Şifre hash'i ve hesap kurtarma jetonları güvenlik gereği " +
-                  "bu dosyaya DÂHİL EDİLMEZ.",
+                  "dışa aktarılmaz.",
             kullanici,
             kelimeler,
+            cumleler,
             ilerleme,
             quizSonuclari,
             ocrKayitlari,
             aktivite,
             geriBildirimler,
+            seriGunleri,
+            ogrenmeAyarlari,
         });
     }
 
@@ -174,6 +192,12 @@ public class VerimController : ControllerBase
                         "silmeden önce bu grupları devredin veya silin.",
                 gruplar = sahipOldugu,
             });
+
+        var seriGunleri = await _db.GunlukEtkinlikler.Where(g => g.UserId == id).ToListAsync();
+        _db.GunlukEtkinlikler.RemoveRange(seriGunleri);
+
+        var ayarlar = await _db.OgrenmeAyarlari.Where(a => a.UserId == id).ToListAsync();
+        _db.OgrenmeAyarlari.RemoveRange(ayarlar);
 
         _db.Users.Remove(kullanici);   // cascade: KURAL-12'de açıkça tanımlı
         await _db.SaveChangesAsync();

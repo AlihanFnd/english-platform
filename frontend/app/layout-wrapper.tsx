@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { api } from './api';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import Link from 'next/link';
@@ -70,20 +71,38 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     return <>{children}</>;
   }
 
+  React.useEffect(() => {
+    if (!loading && !user && !isAuthPage) {
+      router.replace('/login');
+    }
+  }, [loading, user, isAuthPage, router]);
+
   // If unauthenticated on a protected route, do NOT mount children (prevents 401 API calls while redirecting)
   if (!user) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background text-on-background">
         <div className="flex flex-col items-center gap-4">
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-primary font-medium animate-pulse text-sm">Yönlendiriliyor...</p>
+          <p className="text-primary font-medium animate-pulse text-sm">Giriş sayfasına yönlendiriliyor...</p>
+          <Link href="/login" className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold shadow-md hover:opacity-90">
+            Giriş Yap
+          </Link>
         </div>
       </div>
     );
   }
 
+  const [seriOzeti, setSeriOzeti] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    if (user && !loading) {
+      api.getSeri().then(setSeriOzeti).catch(() => {});
+    }
+  }, [user, loading, pathname]);
+
   const navItems = [
     { name: 'Panel', href: '/', icon: LayoutDashboard },
+    { name: 'Serim & Hedefim', href: '/seri', icon: Flame },
     { name: 'Kitaplık', href: '/books', icon: BookOpen },
     { name: 'Kelime Listem', href: '/words', icon: BookMarked },
     { name: 'Metin Tara (OCR)', href: '/ocr', icon: FileSearch },
@@ -104,9 +123,12 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
       {/* Sidebar - Desktop (Deep Navy #1E293B) */}
       <aside className="hidden md:flex flex-col w-[280px] bg-[#1E293B] text-white/70 py-6 px-4 z-50 shadow-2xl border-r border-outline-variant relative">
-        <div className="px-4 mb-10">
-          <h1 className="font-display-lg text-[28px] text-primary tracking-tight leading-tight font-extrabold">Linguza</h1>
-          <p className="text-white/60 font-label-sm mt-1">Seçkin Rütbe • Seviye 4</p>
+        <div className="px-4 mb-10 flex items-center gap-3">
+          <img src="/readixo.png" alt="Readixo" className="w-10 h-10 rounded-xl shadow-md border border-white/10" />
+          <div>
+            <h1 className="font-display-lg text-[24px] text-primary tracking-tight leading-tight font-extrabold">Readixo</h1>
+            <p className="text-white/60 font-label-sm">Okuma & Çeviri</p>
+          </div>
         </div>
 
         <nav className="flex-grow space-y-1 overflow-y-auto pr-1">
@@ -163,7 +185,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         </div>
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-4 text-on-surface-variant">
-            <span className="cursor-pointer" title="Seri"><Flame className="h-5 w-5 text-orange-500 fill-orange-500" /></span>
+            <Link href="/seri" className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-500 font-bold text-xs hover:bg-orange-500/20 transition-all cursor-pointer" title="Serim ve Hedefim">
+              <Flame className="h-4 w-4 fill-orange-500" />
+              <span>{seriOzeti?.mevcutSeri || 0} Gün</span>
+            </Link>
             <span className="cursor-pointer" title="Rütbe"><Trophy className="h-5 w-5 text-yellow-500 fill-yellow-500" /></span>
             <span className="cursor-pointer" title="Hedef"><Target className="h-5 w-5 text-primary" /></span>
           </div>
@@ -218,9 +243,9 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             </div>
           )}
           
-          <Link href="/" className="flex items-center gap-1.5 text-white hover:text-primary transition-colors">
-            {pathname !== '/' && <Home className="h-4 w-4" />}
-            <span className="font-bold text-md tracking-tight">Linguza</span>
+          <Link href="/" className="flex items-center gap-2 text-white hover:text-primary transition-colors">
+            <img src="/readixo.png" alt="Readixo" className="w-7 h-7 rounded-lg" />
+            <span className="font-bold text-md tracking-tight">Readixo</span>
           </Link>
         </div>
         <div className="flex items-center gap-2">

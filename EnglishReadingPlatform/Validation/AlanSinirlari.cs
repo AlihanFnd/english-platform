@@ -18,6 +18,8 @@ public static class AlanSinirlari
     public const int SifreEnCok   = 128;   // BCrypt 72 bayt sonrasını yok sayar; DoS'a karşı üst sınır
     public const int SifirlamaJetonu = 128;   // KURAL-09: sıfırlama jetonu 64 hex; tavan bol tutuldu
     public const int JetonHash       = 64;    // KURAL-09: SHA-256 hex çıktısı tam 64 karakter
+    public const int SaatDilimi      = 64;    // YH-04: OgrenmeAyarlari.SaatDilimi (IANA id)
+    public const int KullaniciSeviye = 10;    // YH-10: OgrenmeAyarlari.Seviye ("A1-A2", "B1-B2", "C1-C2")
 
     // ── Kitap ────────────────────────────────────────────────
     public const int KitapBasligi  = 200;  // Book.Title
@@ -37,6 +39,16 @@ public static class AlanSinirlari
                                          // altı 'Baglam'a KIRPILARAK yazılır.
                                          // Okuyucuda uzun cümle seçmek normaldir;
                                          // kullanıcıya hata vermek özelliği kullanılamaz kılar.
+
+    // ── Cümle listesi (YH-05) ────────────────────────────────
+    public const int Cumle           = 500;   // CumleKaydi.Cumle & CumleAnahtari
+    public const int CumleCevirisi   = 1000;  // CumleKaydi.Ceviri
+    public const int CumleBaglami    = 400;   // CumleKaydi.Baglam
+    public const int TopluCumleEnCok = 200;   // POST /api/cumleler/toplu azami öğe sayısı
+    public const int TopluCumleAlanGirdi = 5_000; // Toplu öğe alanı GİRDİ sınırı: üstü isteği reddeder,
+                                                  // altı ama kolonu aşan öğe ATLANIR ve sayılır.
+                                                  // Eski yerel depoda sınır yoktu; tek uzun cümle
+                                                  // bütün parçayı 400'e düşürüp göçü kilitliyordu.
 
     // ── Grup ─────────────────────────────────────────────────
     public const int GrupAdi      = 200;  // Group.Name
@@ -125,4 +137,10 @@ public static class IzinliDegerler
     };
 
     public static readonly string[] QuizSiklari = { "A", "B", "C", "D" };
+    public static readonly int[] GunlukHedefXp = { 10, 20, 30, 50 };
+    public static readonly string[] KullaniciSeviyeleri = { "A1-A2", "B1-B2", "C1-C2" };
+    public static readonly string[] KelimeTurleri =
+    {
+        "isim", "fiil", "sıfat", "zarf", "edat", "bağlaç", "zamir", "ünlem", "belirteç", "kalıp", "diğer"
+    };
 }

@@ -2,28 +2,20 @@ namespace EnglishReadingPlatform.Contracts;
 
 /// <summary>
 /// Kelime çalışma seansının kuralları — TEK kaynak.
-///
-/// Eşik hem sunucuda (seans seçimi, özet sayımı) hem istemcide (rozet)
-/// kullanılıyor. İki yerde ayrı yazılırsa biri değişir, diğeri kalır ve
-/// kullanıcı "35 öğrenildi" yazan bir ekranla "34 öğrenildi" diyen bir
-/// listeyi yan yana görür. İstemci bu değeri özet ucundan okur.
 /// </summary>
 public static class KelimeCalismasi
 {
     /// <summary>
-    /// Bir kelimenin "öğrenildi" sayılması için gereken ÜST ÜSTE doğru sayısı.
-    /// 3, ezberle gerçek öğrenmeyi ayırt etmeye yetecek kadar; kullanıcıyı
-    /// bıktırmayacak kadar az.
+    /// Bir kelimenin "öğrenildi" sayılması için gereken Leitner kutusu (Kutu 4 = 7 gün aralık).
     /// </summary>
-    public const int OgrenildiEsigi = 3;
+    public const int OgrenildiEsigi = LeitnerHesaplayici.OgrenildiEsigiKutu;
 
     /// <summary>Bir seansta çalışılabilecek en az kelime.</summary>
     public const int EnAzSeansBoyu = 1;
 
     /// <summary>
     /// Bir seansta çalışılabilecek en fazla kelime.
-    /// Sınırsız bırakmak, tek istekle bütün listeyi belleğe çekmeye izin verir
-    /// (KURAL-07: kaynak tüketimi). 100 kart zaten tek oturumda bitmez.
+    /// Sınırsız bırakmak, tek istekle bütün listeyi belleğe çekmeye izin verir.
     /// </summary>
     public const int EnCokSeansBoyu = 100;
 
@@ -38,16 +30,24 @@ public record CalismaKartiYaniti(
     string Translation,
     string Context,
     int DogruSeri,
+    int Kutu,
+    DateTime? SonrakiTekrarAt,
     bool Ogrenildi);
 
 /// <summary>Kelime listesinin çalışma özeti.</summary>
 /// <param name="Toplam">Listedeki tüm kelimeler.</param>
-/// <param name="Ogrenildi">Üst üste eşik kadar doğru bilinenler.</param>
-/// <param name="Calisiliyor">Çalışılmış ama henüz öğrenilmemiş olanlar.</param>
-/// <param name="HicCalisilmadi">Hiç karşısına çıkmamış olanlar.</param>
+/// <param name="Ogrenildi">Kutu 4 ve üzeri olanlar.</param>
+/// <param name="Calisiliyor">Çalışılmış ama henüz Kutu 4'e ulaşmamış olanlar.</param>
+/// <param name="HicCalisilmadi">Hiç karşısına çıkmamış olanlar (Kutu 0 ve SonCalismaAt null).</param>
+/// <param name="BugunTekrar">SonrakiTekrarAt zamanı gelmiş olanlar.</param>
+/// <param name="YarinTekrar">Gelecek 24 saat içinde tekrar zamanı gelecek olanlar.</param>
+/// <param name="KutuDagilimi">Kutu 0-7 arası dağılım dizisi (uzunluk: 8).</param>
 public record KelimeOzetiYaniti(
     int Toplam,
     int Ogrenildi,
     int Calisiliyor,
     int HicCalisilmadi,
+    int BugunTekrar,
+    int YarinTekrar,
+    int[] KutuDagilimi,
     int OgrenildiEsigi);

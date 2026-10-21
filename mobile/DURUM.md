@@ -2,7 +2,7 @@
 
 > Bu dosya, mobil uygulamanın güncel durumunu, tamamlanan ekranları ve geliştirme notlarını belgeler.
 
-Son güncelleme: 2026-09-05
+Son güncelleme: 2026-09-13
 
 ---
 
@@ -66,6 +66,11 @@ mobile/
 | Quiz | ✅ | `10_quiz.png` — Book 38 Chapter 5 çoktan seçmeli test, şıklar, gönder butonu |
 | Gruplar | ✅ | `11_gruplar.png` — grup oluşturma, davet kodu modalı, boş durum |
 | **OCR (Metin Tara)** | ✅ | `12_ocr.png`, `13_ocr_analiz.png`, `14_ocr_gecmis.png` — Seçenek A: metin yapıştırma/girişi, `api.analyzeText`, interaktif cümle ve `KelimePaneli`, `api.saveOcrRecord`, geçmiş listesi ve KURAL-12 silme (`api.deleteOcrRecord`) |
+| **İlk Açılış & Seviye (YH-10)** | ✅ | `YH-10-01-hosgeldin-acik.png`, `YH-10-02-seviyen-acik.png`, `YH-10-03-hedef-acik.png`, `YH-10-04-hatirlatma-acik.png`, `YH-10-05-kitap-acik.png`, `YH-10-06-koyu.png`, `YH-10-07-gec-sonrasi-panel.png`, `YH-10-08-seviyeli-kitaplik.png` — 5 adımlı onboarding modalı (Hoş geldin, CEFR seviye seçimi, günlük hedef XP, bildirim izni, önerilen kitaplar), seviyeye göre sıralı kitaplık, geri alınamaz `IlkAcilisTamamlandi` bayrağı |
+| **Kelime Normalizasyonu (YH-11)** | ✅ | `YH-11-01-kelime-kok-acik.png`, `YH-11-02-kelime-kok-koyu.png`, `YH-11-03-normal-liste.png` — Sunucu tarafında baş/son noktalama ve tırnak temizliği, büyük/küçük harf tekilleştirme, `IngilizceKok` / `kok.ts` kural tabanlı kök tespiti (~200 düzensiz haritası + sonek kuralları), kelime kartında kök rozeti ve köke/orijinale kaydetme seçim ikilisi, tür whitelist kontrolü |
+| **Dinleme: Sayfayı Sesli Okuma (YH-12)** | ✅ | `YH-12-01-dinleme-acik.png`, `YH-12-02-dinleme-koyu.png` — Okuyucu başlığında 🎧 Dinle butonu, alt mini oynatıcı (Önceki, Oynat/Duraklat, Sonraki, 0.75×/1×/1.25× hız çipi, en-* ses seçimi, Kapat), aktif cümle sol şerit + zemin vurgulama, AppState arka plan duraklatma takibi |
+| **Çevrimdışı Okuma ve Yazma Kuyruğu (YH-13)** | ✅ | `YH-13-01-cevrimdisi-acik.png`, `YH-13-02-cevrimdisi-koyu.png` — Backend `GET /api/books/{id}/sayfalar?bas=1&son=50` salt okunur toplu uç, NetInfo ağ izleme & üst çevrimdışı bildirim bandı, `cevrimdisiDepo.ts` documentDirectory 50 MB LRU önbellek, `yazmaKuyrugu.ts` FIFO yazma kuyruğu (ilerleme birleştirme, 401 pause, 4xx drop, max 500 tavan), okuyucuda Çevrimdışı İndir ve çevrimdışı oku |
+| **Yayın Altyapısı (YH-14)** | ✅ | `YH-14-01-acik.png`, `YH-14-02-koyu.png` — EAS profilleri (`mobile/eas.json`), üretim yapılandırma kapısı (`scripts/mobil/uretim-yapilandirma.mjs`), tip sözleşmesi kapısı (`scripts/mobil/tip-sozlesmesi.mjs`), exact package version pinning (0 unpinned), yerel CI (`scripts/ci-yerel.sh`), Guard 18 tedarik kontrolü, 9 test paketi (27 birim testi), modüler ekran refaktörleri (`words.tsx`, `ocr.tsx`, `groups.tsx` ≤ 300 satır) |
 
 TypeScript denetimi: `npx tsc --noEmit` sıfır hatayla geçmektedir.
 

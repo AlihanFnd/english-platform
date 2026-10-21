@@ -298,7 +298,49 @@ body {
   text-decoration-color: rgba(148, 163, 184, 0.3);
 }
 
-/* Slate */
+/* Kelime Kutucukları (Word Chips) */
+.bk-word-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  margin: 0.1rem 0.15rem;
+  border-radius: 0.4rem;
+  font-weight: 600;
+  font-size: 0.95em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  border: 1px solid transparent;
+}
+.bk-word-chip.word-isim { background-color: rgba(59, 130, 246, 0.12); color: #2563eb; border-color: rgba(59, 130, 246, 0.25); }
+.bk-word-chip.word-fiil { background-color: rgba(16, 185, 129, 0.12); color: #059669; border-color: rgba(16, 185, 129, 0.25); }
+.bk-word-chip.word-sifat { background-color: rgba(245, 158, 11, 0.12); color: #d97706; border-color: rgba(245, 158, 11, 0.25); }
+.bk-word-chip.word-zarf { background-color: rgba(139, 92, 246, 0.12); color: #7c3aed; border-color: rgba(139, 92, 246, 0.25); }
+.bk-word-chip.word-edat { background-color: rgba(236, 72, 153, 0.12); color: #db2777; border-color: rgba(236, 72, 153, 0.25); }
+.bk-word-chip.word-baglac { background-color: rgba(249, 115, 22, 0.12); color: #ea580c; border-color: rgba(249, 115, 22, 0.25); }
+.bk-word-chip.word-zamir { background-color: rgba(6, 182, 212, 0.12); color: #0891b2; border-color: rgba(6, 182, 212, 0.25); }
+.bk-word-chip.word-default { background-color: rgba(148, 163, 184, 0.12); color: inherit; border-color: rgba(148, 163, 184, 0.2); }
+.bk-word-chip:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.95);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Sayfa Geçiş Animasyonu */
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bk-page-animate {
+  animation: pageFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-page-animate {
+    animation: none !important;
+  }
+}
 
 /* ═══════════════════════════════════════════════
    BOOK READER  (bk- prefix)

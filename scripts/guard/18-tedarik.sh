@@ -86,6 +86,40 @@ fi
 n=$(printf '%s' "$eksik" | grep -c . || true)
 ihlal_bildir "CI npm taraması iki istemciyi kapsıyor" "$n" "$eksik"
 
+# 5d. scripts/ci-yerel.sh iş akışındaki HER run adımını içeriyor mu?
+#     Faz 3 sırasında yerel betik yalnızca mobil adımlarla yeniden yazıldı; backend
+#     testleri, zafiyet taraması ve web derlemeleri sessizce düştü, mobil lint ve
+#     audit hiç eklenmedi. Yerel koşu yeşil, GitHub kırmızı olabiliyordu.
+#     Karşılaştırmada yalnızca çıktıyı etkileyen bayraklar (--logger) ve boru
+#     kuyrukları (2>&1, |) atılır; komutun kendisi BİREBİR aranır.
+cikti="$(python3 - <<'CIUYUM'
+import re, pathlib
+akis = pathlib.Path(".github/workflows/guvenlik.yml")
+yerel = pathlib.Path("scripts/ci-yerel.sh")
+if not akis.exists() or not yerel.exists():
+    print("iş akışı ya da scripts/ci-yerel.sh yok")
+    raise SystemExit
+satirlar = akis.read_text(encoding="utf-8").splitlines()
+yerel_metin = yerel.read_text(encoding="utf-8")
+eksik = []
+for i, satir in enumerate(satirlar):
+    m = re.match(r"^\s*-?\s*run:\s*(.*)$", satir)
+    if not m:
+        continue
+    komut = m.group(1).strip()
+    if komut in ("|", ">"):
+        sonraki = [s.strip() for s in satirlar[i + 1:] if s.strip()]
+        komut = sonraki[0] if sonraki else ""
+    komut = re.sub(r"\s+--logger\s+\"[^\"]*\"", "", komut)
+    komut = re.split(r"\s+2>&1|\s+\|", komut)[0].strip()
+    if komut and komut not in yerel_metin:
+        eksik.append(komut)
+print("\n".join(eksik))
+CIUYUM
+)"
+n=$(printf '%s' "$cikti" | grep -c . || true)
+ihlal_bildir "ci-yerel.sh CI adımlarını içeriyor" "$n" "$cikti"
+
 # 5c. package.json sürümleri SABİT mi?
 #     package-lock.json tek başına yetmez: 'npm ci' kilide uyar ama
 #     'npm install' aralığı yeniden çözer ve sürüm SESSİZCE kayar.
@@ -93,7 +127,7 @@ ihlal_bildir "CI npm taraması iki istemciyi kapsıyor" "$n" "$eksik"
 cikti="$(python3 - <<'PIN'
 import json, pathlib
 bulunan = []
-for uyg in ("frontend", "admin-panel"):
+for uyg in ("frontend", "admin-panel", "mobile"):
     yol = pathlib.Path(uyg) / "package.json"
     if not yol.exists():
         continue

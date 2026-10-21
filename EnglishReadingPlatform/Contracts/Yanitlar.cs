@@ -28,7 +28,11 @@ public record KullaniciYaniti(int Id, string Username, string Email, string Role
 public record UyeYaniti(int UserId, string Username, string Role);
 
 // ─── Kelime ───────────────────────────────────────────────────
-public record KelimeYaniti(int Id, string Word, string Translation, string Context, DateTime AddedAt);
+/// <param name="Ogrenildi">SUNUCU hesaplar (Kutu &gt;= LeitnerHesaplayici.OgrenildiEsigiKutu) —
+/// özetteki sayımla aynı eşik. İstemciler kendi eşiğini yazmaz: yanıtta alan yokken
+/// yazılan <c>(kayit as any).dogruSeri &gt;= 3</c> rozeti hiçbir kelimede göstermiyordu.</param>
+public record KelimeYaniti(int Id, string Word, string Translation, string Context, DateTime AddedAt,
+    int Kutu, bool Ogrenildi);
 
 // ─── OCR ──────────────────────────────────────────────────────
 /// <summary>

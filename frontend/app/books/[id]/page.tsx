@@ -26,7 +26,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   const [bookTitle, setBookTitle]   = useState('');
   const [loading, setLoading]       = useState(true);
   const { user } = useAuth();
-  // KURAL-17: paylaşılan analizi ezme yetkisi öğretmen/yönetimde.
   const yenidenAnalizEdebilir = user?.role === 'teacher' || user?.role === 'admin';
 
   const [analyzing, setAnalyzing]   = useState(false);
@@ -35,9 +34,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
 
   const [hasPages, setHasPages]         = useState(false);
   const [totalPages, setTotalPages]     = useState(0);
-  // Adreste konum YOKSA sunucu kaldığı yeri döndürür (undefined gönderilir).
-  // Eskiden burada '1' varsayılanı vardı; ilerleme kaydediliyor ama hiç
-  // okunmuyordu, yani kitap her açılışta baştan başlıyordu.
   const sayfaParam = searchParams.get('page');
   const currentPage = sayfaParam ? parseInt(sayfaParam) : undefined;
 
@@ -46,21 +42,11 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   const bolumParam = searchParams.get('chapter');
   const currentChapter = bolumParam ? parseInt(bolumParam) : undefined;
 
-  /** Kitap kaldığı yerden mı açıldı? Kullanıcıya bir kez bildirilir. */
   const [devamEdildi, setDevamEdildi] = useState(false);
-
-  /**
-   * SUNUCUNUN çözdüğü konum. Adres çubuğundaki değer boş olabilir
-   * (kaldığı yerden devam), bu yüzden gezinme ve gösterim bunu kullanır —
-   * adresi değil.
-   */
   const [aktifSayfa, setAktifSayfa] = useState(1);
   const [aktifBolum, setAktifBolum] = useState(1);
 
-  // Which sentence's translation is open
   const [openTr, setOpenTr] = useState<number | null>(null);
-
-  // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Word popup
@@ -68,7 +54,12 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   const [selCtx, setSelCtx]       = useState('');
   const [added, setAdded]         = useState<Record<string, boolean>>({});
   const [saving, setSaving]       = useState(false);
-  const [loadingAI, setLoadingAI] = useState(false);
+
+  // Cümle kurma modu (YH-03 / YH-15)
+  const [cumleKurmaModu, setCumleKurmaModu] = useState(false);
+  const [seciliKelimeler, setSeciliKelimeler] = useState<string[]>([]);
+  const [cumleKaydediliyor, setCumleKaydediliyor] = useState(false);
+  const [cumleMesaji, setCumleMesaji] = useState('');
 
   const normalizeSentences = (arr: any): AnalyzedSentence[] => {
     const raw = Array.isArray(arr) ? arr : [];
@@ -80,12 +71,8 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
       let isHead = s.isHeading !== undefined ? s.isHeading : (s.IsHeading !== undefined ? s.IsHeading : false);
       let align = s.alignment || s.Alignment || (isHead ? "center" : "left");
       let words = s.words || s.Words || [];
-      // KURAL-06: alan YOKSA 'true' varsayılır. Bu sayfa daha önce çevrilip
-      // SentencesJson'a yazıldıysa o kayıtta bu alan bulunmaz; eksikliği
-      // "başarısız" saymak tüm eski kitapları hatalı işaretlerdi.
       const basarili = (s.ceviriBasarili ?? s.CeviriBasarili) !== false;
 
-      // Eğer satır içinde başlık ile normal paragraf cümlesi birleşmişse (örn: "CHAPTER I THE BEGINNING It was a dark...")
       if (!isHead && orig.length > 20) {
         const match = orig.match(/^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\s+([0-9IVXLCDMivxlcdm]+|[A-Za-z]+)?\s*(-|:|–)?\s*([A-Z\s]{2,40}|[A-Za-z\s]{2,40})?(\.\s+|\s{2,}|\n)(.*)$/);
         if (match && match[6] && match[6].trim().length > 15) {
@@ -98,8 +85,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
               isHeading: true,
               alignment: "center",
               indentation: 0,
-              // Başlıklar zaten çoğu zaman çevrilmeden bırakılır; burada
-              // uyarı basmak sürekli yanlış alarm üretirdi.
               ceviriBasarili: true,
               words: headingPart.split(/\s+/).map((w: string) => ({ word: w, translation: w, type: "default" }))
             });
@@ -111,7 +96,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
         }
       }
 
-      // Ayrıca başlık tespiti kontrolü (Sadece açıkça CHAPTER vb. ile başlıyorsa):
       if (!isHead && orig.length > 0) {
         const startsWithHeadingWord = /^(CHAPTER|Chapter|PART|Part|UNIT|Unit|LESSON|Lesson|BOOK|Book)\b/i.test(orig);
         if (startsWithHeadingWord) {
@@ -145,7 +129,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     (async () => {
       setLoading(true); setError(''); setSentences([]); setOpenTr(null); setSelWord(null);
       try {
-
         const pd = await api.readPage(bookId, currentPage);
         if (pd.hasPages) {
           setHasPages(true); setBookTitle(pd.bookTitle); setTotalPages(pd.totalPages);
@@ -159,8 +142,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
           setChapter(null);
           setAktifSayfa(pd.pageNumber);
 
-          // Adres çubuğunu çözülen konumla eşitle. replace (push değil):
-          // geri tuşu kitaba dönmeli, "devam ettiğin sayfaya" değil.
           if (!sayfaParam) {
             setDevamEdildi(pd.pageNumber > 1);
             router.replace(`/books/${bookId}?page=${pd.pageNumber}`, { scroll: false });
@@ -182,6 +163,7 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
       finally { setLoading(false); setAnalyzing(false); }
     })();
   }, [bookId, currentPage, currentChapter]);
+
   useEffect(() => {
     if (isFullscreen) {
       document.body.classList.add('reader-fullscreen-active');
@@ -193,7 +175,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     };
   }, [isFullscreen]);
 
-  // KURAL-06: bu sayfada kaç satır çevrilemedi?
   const cevrilemeyen = sentences.filter(s => s.ceviriBasarili === false).length;
 
   const handleReanalyze = async () => {
@@ -201,12 +182,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     setAnalyzing(true);
     try {
       if (hasPages) {
-        // KURAL-17: paylaşılan analizi yeniden üretmek ayrı bir POST ucudur
-        // ve yalnızca öğretmen/yönetici çağırabilir. BookPage global —
-        // bu çağrı BÜTÜN kullanıcıların gördüğü çeviriyi değiştirir.
-        // 'aktifSayfa' sunucunun çözdüğü GERÇEK sayfa numarasıdır;
-        // adres çubuğundaki 'currentPage' tanımsız olabilir (kaldığı yerden
-        // devam senaryosu) ya da kitabın dışına taşmış olabilir.
         const pd = await api.reanalyzePage(bookId, aktifSayfa);
         if (pd.sentencesJson && pd.sentencesJson !== "[]") {
           setSentences(normalizeSentences(JSON.parse(pd.sentencesJson)));
@@ -237,6 +212,14 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   };
 
   const handleWordClick = async (w: any, originalSentence: string) => {
+    if (cumleKurmaModu) {
+      const temiz = w.word.trim().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+      if (temiz) {
+        setSeciliKelimeler(prev => [...prev, temiz]);
+      }
+      return;
+    }
+
     const isKalip = w.word.trim().includes(' ') || w.type === 'kalıp';
     setSelWord({ word: w.word, translation: "Çevriliyor...", type: isKalip ? "kalıp" : (w.type || "default") });
     setSelCtx(originalSentence);
@@ -254,7 +237,25 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     }
   };
 
+  const handleCumleKaydet = async () => {
+    if (seciliKelimeler.length === 0) return;
+    setCumleKaydediliyor(true);
+    setCumleMesaji('');
+    try {
+      const cumleMetni = seciliKelimeler.join(' ');
+      await api.addSentence(cumleMetni, '', bookTitle);
+      setCumleMesaji('Cümle başarıyla Cümlelerim listesine eklendi!');
+      setSeciliKelimeler([]);
+      setTimeout(() => setCumleMesaji(''), 3000);
+    } catch (e: any) {
+      setCumleMesaji(e.message || 'Cümle kaydedilemedi.');
+    } finally {
+      setCumleKaydediliyor(false);
+    }
+  };
+
   const handleSelection = () => {
+    if (cumleKurmaModu) return;
     setTimeout(() => {
       const selection = window.getSelection();
       const text = selection?.toString().trim();
@@ -273,38 +274,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     }, 150);
   };
 
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    const handleDocSelectionChange = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        const selection = window.getSelection();
-        const text = selection?.toString().trim();
-        if (text && text.length > 1 && text.length < 150 && selection?.rangeCount) {
-          const range = selection.getRangeAt(0);
-          const container = range.commonAncestorContainer;
-          const isInsideReader = container.nodeType === Node.ELEMENT_NODE 
-            ? (container as HTMLElement).closest('.bk-sentences') 
-            : container.parentElement?.closest('.bk-sentences');
-            
-          if (isInsideReader) {
-            const sentEl = container.nodeType === Node.ELEMENT_NODE 
-              ? (container as HTMLElement).closest('.bk-sent-en') 
-              : container.parentElement?.closest('.bk-sent-en');
-            const sentText = sentEl ? sentEl.textContent || text : text;
-            handleWordClick({ word: text, type: text.includes(' ') ? "kalıp" : "kelime" }, sentText);
-          }
-        }
-      }, 500); // 500ms debounce when long-pressing and dragging word by word
-    };
-
-    document.addEventListener('selectionchange', handleDocSelectionChange);
-    return () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener('selectionchange', handleDocSelectionChange);
-    };
-  }, []);
-
   const wordClass = (t: string) => {
     const map: Record<string, string> = {
       'isim': 'word-isim', 'fiil': 'word-fiil', 'sıfat': 'word-sifat',
@@ -313,7 +282,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
     return map[t?.toLowerCase()] || 'word-default';
   };
 
-  /* ── Loading ── */
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3 text-on-surface-variant">
       <div className="w-7 h-7 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -333,8 +301,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
   return (
     <div className={`bk-wrap ${isFullscreen ? 'bk-wrap--fullscreen' : ''}`}>
 
-      {/* Kaldığı yerden açıldığını SÖYLE. Sessizce ortadan bir sayfa açmak,
-          kullanıcıya "yanlış sayfayı açtım" hissi verir. */}
       {devamEdildi && (
         <div className="bk-devam" role="status">
           <BookOpen size={14} />
@@ -367,6 +333,22 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Cümle Kurma Modu Butonu */}
+          <button
+            onClick={() => {
+              setCumleKurmaModu(!cumleKurmaModu);
+              setSeciliKelimeler([]);
+            }}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1 cursor-pointer ${
+              cumleKurmaModu
+                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm'
+                : 'bg-surface-container text-on-surface-variant border-outline-variant hover:border-primary/40'
+            }`}
+            title="Cümle Kurma Modu"
+          >
+            <span>🧩 {cumleKurmaModu ? 'Mod Açık' : 'Cümle Kur'}</span>
+          </button>
+
           {!hasPages && chapter && (
             <Link href={`/books/${bookId}/quiz?chapterId=${chapter.id}`} className="bk-quiz">
               <HelpCircle size={13}/> Quiz
@@ -382,8 +364,8 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
         </div>
       </div>
 
-      {/* ── Page card ── */}
-      <div className="bk-page">
+      {/* ── Page card (Sayfa Animasyonu Dahil) ── */}
+      <div className="bk-page bk-page-animate">
         {analyzing ? (
           <div className="bk-loading">
             <div className="bk-spin"/> <span>Analiz yapılıyor...</span>
@@ -393,8 +375,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
         ) : (
           <div className="bk-sentences" onMouseUp={handleSelection} onTouchEnd={handleSelection}>
 
-            {/* KURAL-06: çeviri servisi patladığında özgün İngilizce metin
-                "çeviri" gibi görünüyordu. Artık açıkça söyleniyor. */}
             {cevrilemeyen > 0 && (
               <div className="bk-ceviri-uyari" role="status">
                 <AlertTriangle size={14} className="bk-ceviri-uyari__ikon" />
@@ -404,11 +384,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                     : `${cevrilemeyen} satır çevrilemedi — çeviri servisine ulaşılamadı.`}
                   {' '}Aşağıda o satırların İngilizcesi görünüyor.
                 </span>
-                {/* KURAL-17: sayfa modunda bu buton PAYLAŞILAN analizi ezer —
-                    yalnızca öğretmen/yönetici görür. Bölüm modunda kalıcı bir
-                    etkisi yok, herkese açık. Butonu gizlemek TEK BAŞINA yetmez;
-                    asıl kontrol backend'de ([Authorize(Policy=…)]) — burası
-                    yalnızca kullanıcıya 403 gösterilmemesi için. */}
                 {(!hasPages || yenidenAnalizEdebilir) && (
                   <button
                     className="bk-ceviri-uyari__btn"
@@ -432,7 +407,7 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                 }}
               >
 
-                {/* English sentence — words are clickable, row is clickable for translation */}
+                {/* English sentence — words are styled as kutucuk (chips) */}
                 <div
                   className={`bk-sent-en${openTr === i ? ' bk-sent-en--active' : ''}${s.isHeading ? ' bk-sent-en--heading' : ''}`}
                   onClick={() => setOpenTr(openTr === i ? null : i)}
@@ -441,7 +416,7 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                   }}
                 >
                   <span 
-                    className="bk-sent-words"
+                    className="bk-sent-words flex flex-wrap items-center gap-1"
                     style={{
                       textAlign: s.alignment === 'center' ? 'center' : s.alignment === 'right' ? 'right' : 'left'
                     }}
@@ -449,11 +424,11 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                     {s.words.map((w, wi) => (
                       <span
                         key={wi}
-                        className={`bk-word ${wordClass(w.type)}`}
+                        className={`bk-word-chip ${wordClass(w.type)}`}
                         onClick={e => { e.stopPropagation(); handleWordClick(w, s.original); }}
-                        title="Tıklayarak çeviriyi gör"
+                        title={cumleKurmaModu ? "Cümleye eklemek için tıkla" : "Tıklayarak çeviriyi gör"}
                       >
-                        {w.word}{wi < s.words.length - 1 ? ' ' : ''}
+                        {w.word}
                       </span>
                     ))}
                   </span>
@@ -466,7 +441,7 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
                   </button>
                 </div>
 
-                {/* Turkish translation — directly under the sentence, same block */}
+                {/* Turkish translation */}
                 {openTr === i && (
                   <div 
                     className={`bk-sent-tr${s.alignment === 'center' ? ' bk-sent-tr--center' : ''}${s.ceviriBasarili === false ? ' bk-sent-tr--hata' : ''}`}
@@ -521,8 +496,67 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
         )}
       </div>
 
+      {/* ── Cümle Kurma Paneli (Overlay) ── */}
+      {cumleKurmaModu && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-xl px-4 animate-in slide-in-from-bottom-5 duration-300">
+          <div className="glass-card rounded-2xl p-4 shadow-2xl border border-emerald-500/30 bg-surface/95 backdrop-blur-md space-y-3">
+            <div className="flex items-center justify-between border-b border-outline-variant/50 pb-2">
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                🧩 Cümle Kurma Paneli ({seciliKelimeler.length} kelime)
+              </span>
+              <button
+                onClick={() => { setCumleKurmaModu(false); setSeciliKelimeler([]); }}
+                className="text-on-surface-variant hover:text-on-surface text-xs font-bold cursor-pointer"
+              >
+                Kapat ✕
+              </button>
+            </div>
+
+            <div className="min-h-[44px] p-2.5 rounded-xl bg-surface-container/80 border border-outline-variant flex flex-wrap gap-1.5 items-center">
+              {seciliKelimeler.length === 0 ? (
+                <span className="text-xs text-on-surface-variant/60 italic">Cümleye eklemek için yukarıdaki kelime kutucuklarına sırayla tıklayın...</span>
+              ) : (
+                seciliKelimeler.map((k, idx) => (
+                  <span key={idx} className="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+                    {k}
+                  </span>
+                ))
+              )}
+            </div>
+
+            {cumleMesaji && (
+              <p className="text-xs font-bold text-emerald-400">{cumleMesaji}</p>
+            )}
+
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => setSeciliKelimeler(prev => prev.slice(0, -1))}
+                disabled={seciliKelimeler.length === 0}
+                className="px-3 py-1.5 rounded-xl bg-surface-container border border-outline-variant text-xs font-bold text-on-surface disabled:opacity-40 cursor-pointer"
+              >
+                ← Geri Al
+              </button>
+              <button
+                onClick={() => setSeciliKelimeler([])}
+                disabled={seciliKelimeler.length === 0}
+                className="px-3 py-1.5 rounded-xl bg-surface-container border border-outline-variant text-xs font-bold text-red-400 disabled:opacity-40 cursor-pointer"
+              >
+                Temizle
+              </button>
+              <button
+                onClick={handleCumleKaydet}
+                disabled={seciliKelimeler.length === 0 || cumleKaydediliyor}
+                className="px-4 py-1.5 rounded-xl bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 hover:bg-emerald-600 disabled:opacity-40 cursor-pointer transition-all"
+              >
+                {cumleKaydediliyor ? 'Kaydediliyor...' : 'Cümlelerime Kaydet 🚀'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Word popup ── */}
-      {selWord && (
+      {selWord && !cumleKurmaModu && (
         <div className="bk-word-panel">
           <div className="bk-wp-top">
             <div>
@@ -542,8 +576,6 @@ export default function BookReader({ params }: { params: Promise<{ id: string }>
             <button className="bk-wp-x" onClick={() => setSelWord(null)}><X size={15}/></button>
           </div>
           {selCtx && <p className="bk-wp-ctx">"{selCtx}"</p>}
-          
-
 
           <button
             className={`bk-wp-add${added[selWord.word.toLowerCase()] ? ' done' : ''}`}

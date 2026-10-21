@@ -169,7 +169,7 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="text-sm font-black text-on-surface leading-none">{capitalize(user?.username ?? '')}</p>
-              <p className="text-[10px] text-on-surface-variant font-medium">Linguza</p>
+              <p className="text-[10px] text-on-surface-variant font-medium">Readixo</p>
             </div>
           </div>
 

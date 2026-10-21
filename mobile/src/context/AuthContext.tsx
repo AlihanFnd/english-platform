@@ -1,7 +1,8 @@
 import { useRouter, useSegments } from 'expo-router';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { api, jetonSil, jetonYaz, jetonOku, oturumDustugundeDinle, User } from '@/lib/api';
+import { api, jetonOku, jetonYaz, oturumDustugundeDinle, User } from '@/lib/api';
+import { tumYerelVerileriTemizle } from '@/lib/yerelTemizlik';
 
 interface KimlikDegeri {
   kullanici: User | null;
@@ -23,19 +24,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       const jeton = await jetonOku();
+      // YH-01: "geliştirmede otomatik giriş" KALDIRILDI. Gerçek bir hesabın
+      // e-postası ve şifresi kaynağa gömülüydü ve depo herkese açık. Gerekçesi
+      // de yoktu: jeton SecureStore'da duruyor, oturum zaten hatırlanıyor.
       if (!jeton) {
-        if (__DEV__ && process.env.EXPO_PUBLIC_AUTO_LOGIN === 'true') {
-          try {
-            const veri = await api.login('alihanfnd35@gmail.com', '12345678');
-            await jetonYaz(veri.token);
-            if (!iptalEdildi) setKullanici(veri.user);
-          } catch {
-            if (!iptalEdildi) setKullanici(null);
-          } finally {
-            if (!iptalEdildi) setYukleniyor(false);
-          }
-          return;
-        }
         if (!iptalEdildi) setYukleniyor(false);
         return;
       }
@@ -81,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Sunucuya ulaşılamasa bile YEREL oturum kapanmalı; aksi hâlde
       // "çıkış yapamayan kullanıcı" ortaya çıkar.
     }
-    await jetonSil();
+    await tumYerelVerileriTemizle();
     setKullanici(null);
   }, []);
 

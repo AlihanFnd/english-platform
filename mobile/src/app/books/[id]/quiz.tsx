@@ -7,6 +7,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Buton, EkranZemini, HataKutusu, Kart, Metin, Rozet, Yukleniyor } from '@/components/ui';
+import { useSeri } from '@/context/SeriContext';
 import { useRenk } from '@/context/ThemeContext';
 import { Quiz, api } from '@/lib/api';
 import { alpha } from '@/theme/palette';
@@ -31,6 +32,7 @@ export default function QuizEkrani() {
   const router = useRouter();
   const { chapterId } = useLocalSearchParams<{ id: string; chapterId?: string }>();
   const bolumId = Number(chapterId ?? 0);
+  const { puanOlayi } = useSeri();
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -73,6 +75,7 @@ export default function QuizEkrani() {
     try {
       const veri = await api.submitQuiz(quiz.id, cevaplar);
       setSonuc(veri);
+      puanOlayi();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       setUyari((e as Error).message || 'Quiz gönderilirken hata oluştu.');
@@ -249,6 +252,8 @@ export default function QuizEkrani() {
                                 setCevaplar((oncekiler) => ({ ...oncekiler, [soru.id]: harf }));
                                 Haptics.selectionAsync().catch(() => {});
                               }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Şık ${harf}: ${secenek}`}
                               style={({ pressed }) => ({
                                 flexDirection: 'row',
                                 alignItems: 'center',

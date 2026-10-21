@@ -15,6 +15,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { KitapKapagi } from '@/components/KitapKapagi';
 import { UstBar } from '@/components/UstBar';
 import {
   BosDurum,
@@ -23,10 +24,12 @@ import {
   HataKutusu,
   IlerlemeCubugu,
   Kart,
+  KartIskeleti,
   Metin,
   Rozet,
   Yukleniyor,
 } from '@/components/ui';
+import { useSeri } from '@/context/SeriContext';
 import { useRenk } from '@/context/ThemeContext';
 import { Book, Taxonomy, api } from '@/lib/api';
 import { alpha } from '@/theme/palette';
@@ -67,6 +70,8 @@ export default function KitaplikEkrani() {
   const palet = useRenk();
   const router = useRouter();
   const sekmeYuksekligi = useBottomTabBarHeight();
+  const { ozet } = useSeri();
+  const kullaniciSeviyesi = ozet?.seviye;
 
   const [kitaplar, setKitaplar] = useState<Book[]>([]);
   const [arama, setArama] = useState('');
@@ -124,7 +129,7 @@ export default function KitaplikEkrani() {
 
   const suzulmus = useMemo(() => {
     const q = arama.toLowerCase();
-    return kitaplar.filter((k) => {
+    const filtreli = kitaplar.filter((k) => {
       const aramaUyar =
         (k.title || '').toLowerCase().includes(q) ||
         (k.author || '').toLowerCase().includes(q) ||
@@ -140,7 +145,19 @@ export default function KitaplikEkrani() {
 
       return aramaUyar && kategoriUyar && seviyeUyar;
     });
-  }, [kitaplar, arama, kategori, seviye]);
+
+    if (!kullaniciSeviyesi || seviye !== 'all') return filtreli;
+
+    // YH-10: Seviye aralığıyla kesişen kitaplar öne gelir
+    const ilkParca = kullaniciSeviyesi.split('-')[0];
+    return [...filtreli].sort((a, b) => {
+      const aUygun = (a.level || '').includes(ilkParca) || a.level === kullaniciSeviyesi;
+      const bUygun = (b.level || '').includes(ilkParca) || b.level === kullaniciSeviyesi;
+      if (aUygun && !bUygun) return -1;
+      if (!aUygun && bUygun) return 1;
+      return 0;
+    });
+  }, [kitaplar, arama, kategori, seviye, kullaniciSeviyesi]);
 
   function seviyeRengi(seviyeMetni?: string): string {
     const s = seviyeMetni || 'A1';
@@ -156,7 +173,7 @@ export default function KitaplikEkrani() {
       <UstBar baslik="Kitaplık" altBaslik={`${kitaplar.length} içerik`} />
 
       {yukleniyor ? (
-        <Yukleniyor mesaj="Kitaplık hazırlanıyor…" />
+        <KartIskeleti adet={4} />
       ) : (
         <ScrollView
           contentContainerStyle={{
@@ -206,7 +223,12 @@ export default function KitaplikEkrani() {
               }}
             />
             {arama ? (
-              <Pressable onPress={() => setArama('')} hitSlop={10}>
+              <Pressable
+                onPress={() => setArama('')}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Aramayı temizle"
+              >
                 <X size={16} color={palet.onSurfaceVariant} />
               </Pressable>
             ) : null}
@@ -230,6 +252,8 @@ export default function KitaplikEkrani() {
                 <Pressable
                   key={id}
                   onPress={() => setKategori(id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label} kategorisini seç (${adet} içerik)`}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -335,41 +359,13 @@ export default function KitaplikEkrani() {
                 >
                   <Kart style={{ gap: Bosluk.md }}>
                     <View style={{ flexDirection: 'row', gap: Bosluk.md }}>
-                      <LinearGradient
-                        colors={[
-                          kitap.coverColor || palet.primary,
-                          alpha(kitap.coverColor || palet.primary, 0.55),
-                        ]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={[
-                          {
-                            width: 72,
-                            height: 104,
-                            borderRadius: Yaricap.md,
-                            padding: Bosluk.sm,
-                            justifyContent: 'space-between',
-                          },
-                          golge(palet.glassShadow, 2),
-                        ]}
-                      >
-                        <Metin
-                          tur="minik"
-                          renk="#ffffff"
-                          numberOfLines={4}
-                          style={{ lineHeight: 12 }}
-                        >
-                          {kitap.title}
-                        </Metin>
-                        <Metin
-                          tur="minik"
-                          renk="rgba(255,255,255,0.85)"
-                          numberOfLines={1}
-                          style={{ fontSize: 8 }}
-                        >
-                          {kitap.author || 'Anonim'}
-                        </Metin>
-                      </LinearGradient>
+                      <KitapKapagi
+                        baslik={kitap.title}
+                        yazar={kitap.author}
+                        renk={kitap.coverColor}
+                        seviye={kitap.level}
+                        kategori={kitap.category}
+                      />
 
                       <View style={{ flex: 1, gap: 6 }}>
                         <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>

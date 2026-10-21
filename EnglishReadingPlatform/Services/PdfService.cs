@@ -344,7 +344,8 @@ namespace EnglishReadingPlatform.Services
                 {
                     var lines = pages[i].Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
                     var headerText = string.Join(" | ", lines.Take(3)).Trim();
-                    if (headerText.Length > 250) headerText = headerText.Substring(0, 250) + "...";
+                    // KirpEnCok: Substring emojiyi ortasından bölüp istem gövdesini geçersiz kılabiliyordu.
+                    if (headerText.Length > 250) headerText = headerText.KirpEnCok(250) + "...";
                     pageHeaders.Add($"[Page {i + 1}] {headerText}");
                 }
 

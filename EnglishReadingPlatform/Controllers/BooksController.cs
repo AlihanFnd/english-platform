@@ -22,17 +22,28 @@ namespace EnglishReadingPlatform.Controllers
         private readonly AppDbContext _db;
         private readonly QuizGeneratorService _quizGen;
         private readonly TranslationService _transService;
+        private readonly ISeriServisi _seriServisi;
 
-        public BooksController(AppDbContext db, QuizGeneratorService quizGen, TranslationService transService)
+        public BooksController(AppDbContext db, QuizGeneratorService quizGen, TranslationService transService, ISeriServisi seriServisi)
         {
             _db = db;
             _quizGen = quizGen;
             _transService = transService;
+            _seriServisi = seriServisi;
         }
 
         // KURAL-05: claim de bir GİRDİDİR. int.Parse(...!) bozuk bir claim'de
         // FormatException/NullReferenceException fırlatıp 500 üretirdi.
         private int CurrentUserId => this.KullaniciId();
+
+        /// <summary>
+        /// Sayfanın analizi henüz üretilmemiş mi? Boş metin ya da "[]". Okuma ucu,
+        /// boşluğu dolduran analiz ucu ve çevrimdışı toplu uç bu kuralı TEK yerden alır.
+        /// (Toplu uç yalnızca boş metne bakıyordu; "[]" taşıyan analizsiz sayfalar —
+        /// geliştirme verisinde 819 sayfanın 756'sı — çevrimdışına "hazır" diye iniyordu.)
+        /// </summary>
+        internal static bool AnalizBekliyorMu(string? sentencesJson)
+            => string.IsNullOrWhiteSpace(sentencesJson) || sentencesJson.Trim() == "[]";
 
         /// <summary>
         /// KURAL-12: okuma ilerlemesini TEK satır olacak şekilde yazar.
@@ -46,7 +57,7 @@ namespace EnglishReadingPlatform.Controllers
         /// benzersizlik ihlali alır, satırını izlemeden çıkarır ve kazananın
         /// açtığı satırı GÜNCELLEYEREK devam eder — kullanıcı hiçbir hata görmez.
         /// </summary>
-        private async Task IlerlemeyiYazAsync(int kitapId, int konum, float yuzde)
+        private async Task<(bool satirVardi, bool konumDegisti)> IlerlemeyiYazAsync(int kitapId, int konum, float yuzde)
         {
             var kullaniciId = CurrentUserId;
 
@@ -64,18 +75,21 @@ namespace EnglishReadingPlatform.Controllers
                     LastRead = DateTime.UtcNow
                 });
 
-                if (await _db.BenzersizKaydetAsync()) return;
+                if (await _db.BenzersizKaydetAsync()) return (false, true);
 
                 // Yarışı kaybettik: satırı bu arada başka bir istek açtı.
                 ilerleme = await _db.ReadingProgresses
                     .FirstOrDefaultAsync(p => p.UserId == kullaniciId && p.BookId == kitapId);
-                if (ilerleme is null) return;   // araya silme girdiyse sessizce geç
+                if (ilerleme is null) return (false, false);   // araya silme girdiyse sessizce geç
             }
 
+            var konumDegisti = ilerleme.CurrentChapter != konum;
             ilerleme.CurrentChapter = konum;
             ilerleme.ProgressPercent = yuzde;
             ilerleme.LastRead = DateTime.UtcNow;
             await _db.SaveChangesAsync();
+
+            return (true, konumDegisti);
         }
 
         // GET /api/books — Kitaplık
@@ -254,8 +268,7 @@ namespace EnglishReadingPlatform.Controllers
                     // bayrağı görünce POST {id}/analyze-page çağırır. Sessizce
                     // boş dizi döndürmek yerine SÖYLEMEK bilinçli: istemci
                     // "analiz yok" ile "analiz henüz üretilmedi"yi ayırt edebilmeli.
-                    AnalizBekliyor = string.IsNullOrWhiteSpace(currentPage.SentencesJson)
-                                     || currentPage.SentencesJson == "[]"
+                    AnalizBekliyor = AnalizBekliyorMu(currentPage.SentencesJson)
                 });
             }
             else
@@ -281,6 +294,52 @@ namespace EnglishReadingPlatform.Controllers
                     ChapterNumber = currentChapter.ChapterNumber
                 });
             }
+        }
+
+        // GET /api/books/{id}/sayfalar?bas=1&son=50 — YH-13 Çevrimdışı okuma için toplu sayfa ucu
+        // Salt okunurdur. İlerleme YAZMAZ, LLM çağırmaz / analiz ÜRETMET (KURAL-17).
+        [HttpGet("{id}/sayfalar")]
+        [EnableRateLimiting(HizSinirlari.Okuma)]
+        public async Task<IActionResult> GetPagesBulk(
+            [Range(1, int.MaxValue, ErrorMessage = "Geçersiz kayıt numarası.")] int id,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Başlangıç sayfası 1'den küçük olamaz.")] int bas = 1,
+            [FromQuery] [Range(1, int.MaxValue, ErrorMessage = "Bitiş sayfası 1'den küçük olamaz.")] int son = 50)
+        {
+            if (bas > son)
+            {
+                return BadRequest(new { error = "Başlangıç sayfası bitiş sayfasından büyük olamaz." });
+            }
+
+            if (son - bas + 1 > 50)
+            {
+                return BadRequest(new { error = "En fazla 50 sayfa birden istenebilir." });
+            }
+
+            var bookExists = await _db.Books.AnyAsync(b => b.Id == id);
+            if (!bookExists)
+            {
+                return NotFound(new { error = "Kitap bulunamadı." });
+            }
+
+            var sayfalar = await _db.BookPages
+                .Where(p => p.BookId == id && p.PageNumber >= bas && p.PageNumber <= son)
+                .OrderBy(p => p.PageNumber)
+                .Select(p => new { p.PageNumber, p.Content, p.SentencesJson })
+                .ToListAsync();
+
+            // En çok 50 satır: kural bellekte uygulanır ki okuma ucuyla TEK yerden gelsin.
+            // Bekleyen sayfanın analiz alanı gönderilmez; istemci onu çevrimdışına kaydetmez.
+            return Ok(sayfalar.Select(p =>
+            {
+                var bekliyor = AnalizBekliyorMu(p.SentencesJson);
+                return new
+                {
+                    pageNumber = p.PageNumber,
+                    content = p.Content,
+                    sentencesJson = bekliyor ? null : p.SentencesJson,
+                    analizBekliyor = bekliyor,
+                };
+            }));
         }
 
         public class IlerlemeIstegi
@@ -324,7 +383,11 @@ namespace EnglishReadingPlatform.Controllers
             // %400 ilerleme kaydı oluşmasın.
             var konum = Math.Clamp(req.Konum, 1, toplam);
 
-            await IlerlemeyiYazAsync(id, konum, (float)konum / toplam * 100);
+            var (satirVardi, konumDegisti) = await IlerlemeyiYazAsync(id, konum, (float)konum / toplam * 100);
+            if (satirVardi && konumDegisti)
+            {
+                await _seriServisi.PuanEkleAsync(CurrentUserId, "okuma");
+            }
 
             return Ok(new { success = true, konum, yuzde = (float)konum / toplam * 100 });
         }
@@ -360,7 +423,7 @@ namespace EnglishReadingPlatform.Controllers
             // Zaten analizliyse PARA HARCAMADAN döner. Bu kontrol bir
             // maliyet savunmasıdır: aksi hâlde uç, dolu bir sayfa için de
             // Groq'a gidip sonucu atardı.
-            if (!string.IsNullOrWhiteSpace(sayfa.SentencesJson) && sayfa.SentencesJson != "[]")
+            if (!AnalizBekliyorMu(sayfa.SentencesJson))
                 return Ok(new { success = true, sentencesJson = sayfa.SentencesJson, uretildi = false });
 
             var cumleler = await _transService.AnalyzeTextAsync(sayfa.Content);
@@ -446,12 +509,14 @@ namespace EnglishReadingPlatform.Controllers
                 return BadRequest(new { error = "Kelime ve çeviri zorunludur." });
             }
 
-            var userId = CurrentUserId;
+            // YH-11: Kelime listesine giden her kelime sunucuda normalleştirilir.
+            var kelime = KelimeNormallestirici.Normallestir(req.Word);
+            if (string.IsNullOrWhiteSpace(kelime))
+            {
+                return BadRequest(new { error = "Geçerli bir kelime değil." });
+            }
 
-            // KURAL-05: kolon sınırına yazılmadan önce SON savunma hattı.
-            // Kırpma, benzersizlik kontrolünden ÖNCE yapılır: veritabanına giden
-            // değer neyse tekillik de onun üzerinden ölçülmelidir.
-            var kelime = req.Word.KirpEnCok(AlanSinirlari.Kelime);
+            var userId = CurrentUserId;
 
             var existing = await _db.WordListItems
                 .AnyAsync(w => w.UserId == userId && w.Word == kelime);
@@ -470,7 +535,10 @@ namespace EnglishReadingPlatform.Controllers
                 // KURAL-12: (UserId, Word) artık veritabanında TEKİL. Yukarıdaki
                 // AnyAsync yarışta yanılabilir; çakışma sessizce yutulur çünkü
                 // bu ucun sözleşmesi IDEMPOTENT: "kelime listende olsun".
-                await _db.BenzersizKaydetAsync();
+                if (await _db.BenzersizKaydetAsync())
+                {
+                    await _seriServisi.PuanEkleAsync(userId, "kelime");
+                }
             }
 
             return Ok(new { success = true });
@@ -486,7 +554,8 @@ namespace EnglishReadingPlatform.Controllers
             var kelimeler = await _db.WordListItems
                 .Where(w => w.UserId == CurrentUserId)
                 .OrderByDescending(w => w.AddedAt)
-                .Select(w => new KelimeYaniti(w.Id, w.Word, w.Translation, w.Context, w.AddedAt))
+                .Select(w => new KelimeYaniti(w.Id, w.Word, w.Translation, w.Context, w.AddedAt,
+                    w.Kutu, w.Kutu >= LeitnerHesaplayici.OgrenildiEsigiKutu))
                 .ToListAsync();
             return Ok(kelimeler);
         }
@@ -501,6 +570,12 @@ namespace EnglishReadingPlatform.Controllers
                 return BadRequest(new { error = "Kelime ve çeviri alanları boş olamaz." });
             }
 
+            var kelime = KelimeNormallestirici.Normallestir(req.Word);
+            if (string.IsNullOrWhiteSpace(kelime))
+            {
+                return BadRequest(new { error = "Geçerli bir kelime değil." });
+            }
+
             var item = await _db.WordListItems
                 .FirstOrDefaultAsync(w => w.Id == id && w.UserId == CurrentUserId);
             if (item == null)
@@ -508,9 +583,7 @@ namespace EnglishReadingPlatform.Controllers
                 return NotFound(new { error = "Kelime bulunamadı." });
             }
 
-            // KURAL-05: AddWord ile aynı kolonlara yazan KARDEŞ YOL — aynı kırpma uygulanır.
-            // Tek yolu düzeltip bunu atlamak, açığın yarısını açık bırakırdı.
-            item.Word = req.Word.KirpEnCok(AlanSinirlari.Kelime);
+            item.Word = kelime;
             item.Translation = req.Translation.KirpEnCok(AlanSinirlari.Ceviri);
             if (req.Context != null)
             {
@@ -536,56 +609,119 @@ namespace EnglishReadingPlatform.Controllers
         // Aynı bant içinde sıra RASTGELEDİR — yani hiç çalışılmamış 200
         // kelimeden her seferinde farklı 20'si gelir, ama liste bitmeden
         // hiçbiri iki kez gelmez.
+        // GET /api/books/words/calisma?adet=20&mod=tekrar
+        //
+        // YH-06: Leitner aralıklı tekrar algoritması.
+        // mod=tekrar (varsayılan): Önce SonrakiTekrarAt <= now olanlar (eskiden yeniye).
+        // Yetersizse, günde en fazla 10 yeni (hiç çalışılmamış) kelime eklenir.
+        // mod=serbest: Vadeye bakmaksızın kutu sırasına göre serbest çalışma.
         [HttpGet("words/calisma")]
         public async Task<IActionResult> CalismaSeansi(
             [FromQuery]
             [Range(KelimeCalismasi.EnAzSeansBoyu, KelimeCalismasi.EnCokSeansBoyu,
                    ErrorMessage = "Seans boyu {1} ile {2} arasında olmalıdır.")]
-            int adet = KelimeCalismasi.VarsayilanSeansBoyu)
+            int adet = KelimeCalismasi.VarsayilanSeansBoyu,
+            [FromQuery] string mod = "tekrar")
         {
             var userId = CurrentUserId;
+            var now = DateTime.UtcNow;
+            const int esik = LeitnerHesaplayici.OgrenildiEsigiKutu;
 
-            // Sahiplik SORGUNUN İÇİNDE: başkasının kelimesi hiç okunmaz.
-            var kartlar = await _db.WordListItems
-                .Where(w => w.UserId == userId)
-                .OrderBy(w => w.SonCalismaAt == null ? 0
-                            : w.DogruSeri < KelimeCalismasi.OgrenildiEsigi ? 1 : 2)
-                .ThenBy(w => w.SonCalismaAt)
-                .ThenBy(w => EF.Functions.Random())
-                .Take(adet)
-                .Select(w => new CalismaKartiYaniti(
-                    w.Id, w.Word, w.Translation, w.Context,
-                    w.DogruSeri,
-                    w.DogruSeri >= KelimeCalismasi.OgrenildiEsigi))
-                .ToListAsync();
+            List<WordListItem> secilenler;
+
+            if (string.Equals(mod, "serbest", StringComparison.OrdinalIgnoreCase))
+            {
+                secilenler = await _db.WordListItems
+                    .Where(w => w.UserId == userId)
+                    .OrderBy(w => w.Kutu)
+                    .ThenBy(w => w.SonrakiTekrarAt ?? DateTime.MinValue)
+                    .ThenBy(w => w.Id)
+                    .Take(adet)
+                    .ToListAsync();
+            }
+            else
+            {
+                // mod=tekrar: önce vadesi gelenler
+                var vadesiGelenler = await _db.WordListItems
+                    .Where(w => w.UserId == userId && w.SonrakiTekrarAt != null && w.SonrakiTekrarAt <= now)
+                    .OrderBy(w => w.SonrakiTekrarAt)
+                    .ThenBy(w => w.Kutu)
+                    .Take(adet)
+                    .ToListAsync();
+
+                secilenler = new List<WordListItem>(vadesiGelenler);
+
+                if (secilenler.Count < adet)
+                {
+                    int kalanAdet = adet - secilenler.Count;
+                    int yeniSinir = Math.Min(kalanAdet, LeitnerHesaplayici.GunlukYeniSiniri);
+
+                    var vadesiGelenIdler = secilenler.Select(s => s.Id).ToList();
+
+                    var yeniKelimeler = await _db.WordListItems
+                        .Where(w => w.UserId == userId && (w.SonCalismaAt == null || w.Kutu == 0) && !vadesiGelenIdler.Contains(w.Id))
+                        .OrderBy(w => w.AddedAt)
+                        .ThenBy(w => w.Id)
+                        .Take(yeniSinir)
+                        .ToListAsync();
+
+                    secilenler.AddRange(yeniKelimeler);
+                }
+            }
+
+            var kartlar = secilenler.Select(w => new CalismaKartiYaniti(
+                w.Id, w.Word, w.Translation, w.Context,
+                w.DogruSeri,
+                w.Kutu,
+                w.SonrakiTekrarAt,
+                w.Kutu >= esik
+            )).ToList();
 
             return Ok(kartlar);
         }
 
         // GET /api/books/words/ozet
         //
-        // "Kaç kelime biliyorum?" sorusunun tek cevabı. Sayım SQL'de yapılır:
-        // 200 satırı belleğe çekip saymak, listeyi büyüten kullanıcıyı
-        // cezalandırırdı.
+        // YH-06: Leitner kutu dağılımı ve vadesi gelen tekrar sayıları.
         [HttpGet("words/ozet")]
         public async Task<IActionResult> KelimeOzeti()
         {
             var userId = CurrentUserId;
-            const int esik = KelimeCalismasi.OgrenildiEsigi;
+            var now = DateTime.UtcNow;
+            var yarin = now.AddDays(1);
+            const int esik = LeitnerHesaplayici.OgrenildiEsigiKutu;
 
-            var ozet = await _db.WordListItems
+            var tumu = await _db.WordListItems
                 .Where(w => w.UserId == userId)
-                .GroupBy(_ => 1)
-                .Select(g => new KelimeOzetiYaniti(
-                    g.Count(),
-                    g.Count(w => w.DogruSeri >= esik),
-                    g.Count(w => w.SonCalismaAt != null && w.DogruSeri < esik),
-                    g.Count(w => w.SonCalismaAt == null),
-                    esik))
-                .FirstOrDefaultAsync();
+                .Select(w => new { w.Kutu, w.SonCalismaAt, w.SonrakiTekrarAt })
+                .ToListAsync();
 
-            // Hiç kelimesi olmayan kullanıcıda GroupBy boş döner.
-            return Ok(ozet ?? new KelimeOzetiYaniti(0, 0, 0, 0, esik));
+            int toplam = tumu.Count;
+            int ogrenildi = tumu.Count(w => w.Kutu >= esik);
+            int calisiliyor = tumu.Count(w => w.SonCalismaAt != null && w.Kutu < esik);
+            int hicCalisilmadi = tumu.Count(w => w.SonCalismaAt == null);
+            int bugunTekrar = tumu.Count(w => w.SonrakiTekrarAt != null && w.SonrakiTekrarAt <= now);
+            int yarinTekrar = tumu.Count(w => w.SonrakiTekrarAt != null && w.SonrakiTekrarAt > now && w.SonrakiTekrarAt <= yarin);
+
+            int[] kutuDagilimi = new int[8];
+            foreach (var w in tumu)
+            {
+                int k = Math.Clamp(w.Kutu, 0, 7);
+                kutuDagilimi[k]++;
+            }
+
+            var ozet = new KelimeOzetiYaniti(
+                toplam,
+                ogrenildi,
+                calisiliyor,
+                hicCalisilmadi,
+                bugunTekrar,
+                yarinTekrar,
+                kutuDagilimi,
+                esik
+            );
+
+            return Ok(ozet);
         }
 
         public class CalismaSonucuIstegi
@@ -599,9 +735,7 @@ namespace EnglishReadingPlatform.Controllers
 
         // POST /api/books/words/calisma-sonucu
         //
-        // KÜTLE ATAMA YOK: istek yalnızca "hangi kelime" ve "bildim mi" taşır.
-        // Sayaçları sunucu hesaplar — istemci DogruSeri'yi doğrudan yazamaz,
-        // yoksa "öğrenildi" rozeti tek bir istekle satın alınabilirdi.
+        // YH-06: Leitner kutu ve sonraki tekrar zamanı güncellenir.
         [HttpPost("words/calisma-sonucu")]
         [EnableRateLimiting(HizSinirlari.Yazma)]
         public async Task<IActionResult> CalismaSonucu([FromBody] CalismaSonucuIstegi req)
@@ -610,26 +744,29 @@ namespace EnglishReadingPlatform.Controllers
 
             var userId = CurrentUserId;
 
-            // Sahiplik sorgunun İÇİNDE (IDOR): sıradaki kayıt numarası
-            // denenerek başkasının kelime ilerlemesi bozulamaz.
             var kelime = await _db.WordListItems
                 .FirstOrDefaultAsync(w => w.Id == req.KelimeId && w.UserId == userId);
 
             if (kelime is not null)
             {
+                var now = DateTime.UtcNow;
                 if (req.Bildim)
                 {
                     kelime.DogruSayisi++;
                     kelime.DogruSeri++;
+                    (kelime.Kutu, kelime.SonrakiTekrarAt) = LeitnerHesaplayici.Bildi(kelime.Kutu, now);
                 }
                 else
                 {
                     kelime.YanlisSayisi++;
-                    kelime.DogruSeri = 0;   // seri kırılır — ezber öğrenme sayılmaz
+                    kelime.DogruSeri = 0;
+                    (kelime.Kutu, kelime.SonrakiTekrarAt) = LeitnerHesaplayici.Bilemedi(kelime.Kutu, now);
                 }
 
-                kelime.SonCalismaAt = DateTime.UtcNow;
+                kelime.SonCalismaAt = now;
                 await _db.SaveChangesAsync();
+
+                await _seriServisi.PuanEkleAsync(userId, "calisma");
             }
 
             // Idempotent ve kasıtlı olarak AYRIM YAPMAZ: "kelime yok" ile
@@ -803,6 +940,8 @@ namespace EnglishReadingPlatform.Controllers
             };
             _db.QuizResults.Add(result);
             await _db.SaveChangesAsync();
+
+            await _seriServisi.PuanEkleAsync(CurrentUserId, "quiz");
 
             return Ok(new {
                 Score = correct,

@@ -21,7 +21,11 @@ export function useTelaffuz() {
   /** Şu an seslendirilen metin — buton durumunu göstermek için. */
   const [konusulan, setKonusulan] = useState<string | null>(null);
   const konusulanRef = useRef<string | null>(null);
-  konusulanRef.current = konusulan;
+  // Render sırasında ref yazmak React Compiler kuralına aykırı; en güncel değer
+  // commit sonrası yazılır. Dokunma işleyicileri render'dan sonra çalıştığı için yeterli.
+  useEffect(() => {
+    konusulanRef.current = konusulan;
+  }, [konusulan]);
 
   useEffect(() => {
     return () => {

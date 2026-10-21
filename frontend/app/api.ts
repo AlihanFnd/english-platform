@@ -1,4 +1,14 @@
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001') + '/api';
+function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+      return envUrl.replace(/\/+$/, '') + '/api';
+    }
+    return `http://${host}:5001/api`;
+  }
+  return (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001').replace(/\/+$/, '') + '/api';
+}
 
 export interface User {
   id: number;
@@ -10,9 +20,15 @@ export interface User {
 export interface ReadingProgress {
   bookId: number;
   bookTitle: string;
+  coverColor?: string;
+  level?: string;
+  category?: string;
   progressPercent: number;
   currentChapter: number;
   lastRead: string;
+  hasPages?: boolean;
+  totalChapters?: number;
+  totalPages?: number;
 }
 
 export interface Book {
@@ -89,6 +105,10 @@ export interface WordItem {
   translation: string;
   context: string;
   addedAt: string;
+  /** Leitner kutusu (0–7). */
+  kutu: number;
+  /** Sunucu hesaplar — eşik özetteki ogrenildiEsigi ile aynı. İstemci kendi eşiğini yazmaz. */
+  ogrenildi: boolean;
 }
 
 /** Çalışma seansındaki tek bir kart. */
@@ -99,6 +119,8 @@ export interface CalismaKarti {
   context: string;
   /** Üst üste kaç kez doğru bilindi. */
   dogruSeri: number;
+  kutu: number;
+  sonrakiTekrarAt?: string | null;
   ogrenildi: boolean;
 }
 
@@ -108,7 +130,36 @@ export interface KelimeOzeti {
   ogrenildi: number;
   calisiliyor: number;
   hicCalisilmadi: number;
+  bugunTekrar: number;
+  yarinTekrar: number;
+  kutuDagilimi: number[];
   /** Öğrenildi sayılmak için gereken üst üste doğru sayısı — sunucudan gelir. */
+  ogrenildiEsigi: number;
+}
+
+export interface CumleItem {
+  id: number;
+  cumle: string;
+  ceviri: string;
+  baglam: string;
+  addedAt: string;
+  dogruSayisi: number;
+  yanlisSayisi: number;
+  dogruSeri: number;
+  kutu: number;
+  sonrakiTekrarAt?: string | null;
+  sonCalismaAt?: string | null;
+  ogrenildi: boolean;
+}
+
+export interface CumleOzeti {
+  toplam: number;
+  ogrenildi: number;
+  calisiliyor: number;
+  hicCalisilmadi: number;
+  bugunTekrar: number;
+  yarinTekrar: number;
+  kutuDagilimi: number[];
   ogrenildiEsigi: number;
 }
 
@@ -136,6 +187,72 @@ export interface OcrRecord {
  * KURAL-05 — Taksonomi (seviye/kategori/dil) tek kaynaktan gelir.
  * Bu listeler backend'deki IzinliDegerler whitelist'inin ta kendisidir.
  */
+export interface EnvanterKalemi {
+  tablo: string;
+  alan: string;
+  sinif: string;
+  sebep: string;
+  saklama: string;
+  disaAktarilir: boolean;
+}
+
+export interface KirilimOzeti {
+  okuma: number;
+  kelime: number;
+  calisma: number;
+  quiz: number;
+  cumle: number;
+}
+
+export interface BugunOzeti {
+  gun: string;
+  xp: number;
+  hedefXp: number;
+  hedefTamamlandi: boolean;
+  kirilim: KirilimOzeti;
+}
+
+export interface SonGunOzeti {
+  gun: string;
+  xp: number;
+  hedefTamamlandi: boolean;
+}
+
+export interface PuanTablosuKalemi {
+  tur: string;
+  xp: number;
+  gunlukTavan: number;
+}
+
+export interface SeriOzeti {
+  mevcutSeri: number;
+  enUzunSeri: number;
+  bugunAktif: boolean;
+  seriRiskte: boolean;
+  bugun: BugunOzeti;
+  sonGunler: SonGunOzeti[];
+  gunlukHedefXp: number;
+  saatDilimi: string;
+  hedefSecenekleri: number[];
+  puanTablosu: PuanTablosuKalemi[];
+  seviye?: string | null;
+  ilkAcilisTamamlandi?: boolean;
+}
+
+export interface KelimeCevirisi {
+  translation: string;
+  type: string;
+  generalMeaning?: string;
+  contextualMeaning?: string;
+  synonyms?: string;
+}
+
+export interface AnalizKelimesi {
+  word: string;
+  translation: string;
+  type: string;
+}
+
 export interface Taxonomy {
   levels: string[];
   categories: string[];
@@ -158,7 +275,7 @@ async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -306,8 +423,8 @@ export const api = {
    * Böylece 200 kelimelik listede her seans farklı kartlar gelir ama
    * liste bitmeden hiçbiri iki kez çıkmaz.
    */
-  getCalismaSeansi: (adet: number) =>
-    apiRequest<CalismaKarti[]>(`/books/words/calisma?adet=${adet}`),
+  getCalismaSeansi: (adet: number = 10, mod?: 'tekrar' | 'serbest') =>
+    apiRequest<CalismaKarti[]>(`/books/words/calisma?adet=${adet}${mod ? `&mod=${mod}` : ''}`),
 
   getKelimeOzeti: () =>
     apiRequest<KelimeOzeti>('/books/words/ozet'),
@@ -423,4 +540,36 @@ export const api = {
   // KURAL-05: seviye/kategori listeleri artık istemcide kopyalanmaz.
   getTaxonomy: () =>
     apiRequest<Taxonomy>('/books/taxonomy'),
+
+  /* Cümlelerim (YH-05) */
+  getSentences: () => apiRequest<CumleItem[]>('/cumleler'),
+
+  getCumleOzeti: () => apiRequest<CumleOzeti>('/cumleler/ozet'),
+
+  addSentence: (cumle: string, ceviri?: string, baglam?: string) =>
+    apiRequest<CumleItem>('/cumleler', 'POST', { cumle, ceviri, baglam }),
+
+  updateSentence: (id: number, cumle: string, ceviri?: string, baglam?: string) =>
+    apiRequest<CumleItem>(`/cumleler/${id}`, 'PUT', { cumle, ceviri, baglam }),
+
+  deleteSentence: (id: number) => apiRequest<{ success: boolean }>(`/cumleler/${id}`, 'DELETE'),
+
+  topluCumleEkle: (cumleler: Array<{ cumle: string; ceviri?: string; baglam?: string }>) =>
+    apiRequest<{ eklenen: number; atlanan: number }>('/cumleler/toplu', 'POST', { cumleler }),
+
+  getCalismaCumleleri: (adet: number = 10, mod?: 'tekrar' | 'serbest') =>
+    apiRequest<CumleItem[]>(`/cumleler/calisma?adet=${adet}${mod ? `&mod=${mod}` : ''}`),
+
+  kaydetCumleCalismaSonucu: (cumleId: number, bildim: boolean) =>
+    apiRequest<{ success: boolean }>('/cumleler/calisma-sonucu', 'POST', { cumleId, bildim }),
+
+  /* Günlük seri ve hedef (YH-04) */
+  getSeri: () => apiRequest<SeriOzeti>('/seri'),
+
+  seriAyarlariniGuncelle: (ayarlar: {
+    gunlukHedefXp?: number;
+    saatDilimi?: string;
+    seviye?: string;
+    ilkAcilisTamamlandi?: boolean;
+  }) => apiRequest<SeriOzeti>('/seri/ayarlar', 'PUT', ayarlar),
 };

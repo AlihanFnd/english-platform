@@ -38,18 +38,14 @@ public class KisiselVeriTests
     [Trait("Category", "KisiselVeri")]
     public void Kisisel_veri_tasiyan_her_kolon_ENVANTERDE()
     {
-        // UserId taşıyan tipler = kişiye bağlı veri taşıyan tipler.
-        var kisiyeBagliTipler = new[]
-        {
-            (typeof(User), "Users"),
-            (typeof(OcrRecord), "OcrRecords"),
-            (typeof(UserActivityLog), "UserActivityLogs"),
-            (typeof(ReadingProgress), "ReadingProgresses"),
-            (typeof(WordListItem), "WordListItems"),
-            (typeof(QuizResult), "QuizResults"),
-            (typeof(Feedback), "Feedbacks"),
-            (typeof(SifreSifirlamaJetonu), "SifreSifirlamaJetonlari"),
-        };
+        using var kapsam = _fabrika.Services.CreateScope();
+        var db = kapsam.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // UserId taşıyan tipler = kişiye bağlı veri taşıyan tipler (+ User).
+        var kisiyeBagliTipler = db.Model.GetEntityTypes()
+            .Where(e => e.ClrType == typeof(User) || e.ClrType.GetProperty("UserId") is not null)
+            .Select(e => (Tip: e.ClrType, Tablo: e.GetTableName()!))
+            .ToList();
 
         var ihlaller = new List<string>();
 

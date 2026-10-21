@@ -12,8 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Buton, EkranZemini, IlerlemeCubugu, Kart, Metin } from '@/components/ui';
 import { useRenk } from '@/context/ThemeContext';
-import { KelimeOzeti, WordItem } from '@/lib/api';
-import { CumleOzeti, SentenceItem } from '@/lib/cumleDeposu';
+import { CumleItem, CumleOzeti, KelimeOzeti, WordItem } from '@/lib/api';
 import { alpha } from '@/theme/palette';
 import { Bosluk, Yaricap } from '@/theme/tokens';
 
@@ -23,7 +22,7 @@ interface IlerlemeRaporuModalProps {
   tur: 'kelime' | 'cumle';
   kelimeler: WordItem[];
   kelimeOzeti: KelimeOzeti | null;
-  cumleler: SentenceItem[];
+  cumleler: CumleItem[];
   cumleOzeti: CumleOzeti | null;
 }
 
@@ -78,7 +77,13 @@ export function IlerlemeRaporuModal({
                 {isKelime ? 'Kelime İlerleme Durumu' : 'Cümle İlerleme Durumu'}
               </Metin>
             </View>
-            <Pressable onPress={kapat} hitSlop={10} style={{ padding: 4 }}>
+            <Pressable
+              onPress={kapat}
+              hitSlop={10}
+              style={{ padding: 4 }}
+              accessibilityLabel="Kapat"
+              accessibilityRole="button"
+            >
               <X size={22} color={palet.onSurfaceVariant} />
             </Pressable>
           </View>
@@ -181,6 +186,54 @@ export function IlerlemeRaporuModal({
                 <Metin tur="baslik">{hicCalisilmadi}</Metin>
               </View>
             </View>
+
+            {/* Leitner Kutu Dağılımı Çubuk Grafiği */}
+            {(isKelime ? kelimeOzeti?.kutuDagilimi : cumleOzeti?.kutuDagilimi) ? (
+              <Kart style={{ gap: Bosluk.sm }}>
+                <Metin tur="etiket" ikincil>
+                  Leitner Hafıza Kutuları (0 - 7)
+                </Metin>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-end',
+                    height: 70,
+                    paddingTop: 8,
+                  }}
+                >
+                  {(isKelime ? kelimeOzeti?.kutuDagilimi : cumleOzeti?.kutuDagilimi)?.map((sayi, index) => {
+                    const dagilim = isKelime ? kelimeOzeti?.kutuDagilimi! : cumleOzeti?.kutuDagilimi!;
+                    const enBüyük = Math.max(...dagilim, 1);
+                    const yuzdeYukseklik = Math.round((sayi / enBüyük) * 100);
+                    return (
+                      <View key={index} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+                        <Metin tur="minik" style={{ fontSize: 9 }}>{sayi}</Metin>
+                        <View
+                          style={{
+                            width: 14,
+                            height: 38,
+                            backgroundColor: palet.surfaceContainerHighest,
+                            borderRadius: 3,
+                            justifyContent: 'flex-end',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: '100%',
+                              height: `${Math.max(yuzdeYukseklik, sayi > 0 ? 10 : 2)}%`,
+                              backgroundColor: index >= 4 ? palet.success : palet.primary,
+                            }}
+                          />
+                        </View>
+                        <Metin tur="minik" ikincil style={{ fontSize: 9 }}>K{index}</Metin>
+                      </View>
+                    );
+                  })}
+                </View>
+              </Kart>
+            ) : null}
 
             <Buton baslik="Tamam" tur="ikincil" onPress={kapat} />
           </ScrollView>
