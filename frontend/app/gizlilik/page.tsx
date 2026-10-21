@@ -85,19 +85,25 @@ export default function GizlilikSayfasi() {
       )}
 
       {/* ── Yasal metinler ────────────────────────────────────────
-          KURAL-19 ihlal 5: metinler HUKUKİ, kod yazamaz. Bağlantılar
-          buraya bağlanacak; metin gelene kadar durum açıkça yazılı —
-          "hazırlanıyor" demek, olmayan bir metni varmış gibi
-          göstermekten dürüsttür. */}
+          Herkese açık, giriş gerektirmeyen tam metinler: /gizlilik-politikasi
+          ve /kullanim-kosullari. Bu sayfa (oturum gerektiren "verilerim"
+          ekranı) onlara bağlantı verir, metni tekrarlamaz. */}
       <section className="rounded-xl border border-outline-variant p-5 space-y-2">
         <h2 className="font-semibold flex items-center gap-2">
           <FileText className="h-4 w-4" /> Aydınlatma metni ve gizlilik politikası
         </h2>
         <p className="text-sm text-on-surface-variant">
-          Bu metinler hazırlanma aşamasındadır. Hazır olduğunda bu bölümden
-          erişebileceksin. Sorularını{' '}
-          <a href="mailto:destek@linguza.example" className="text-primary underline">
-            destek@linguza.example
+          Tam metni{' '}
+          <a href="/gizlilik-politikasi" className="text-primary underline">
+            Gizlilik Politikası
+          </a>{' '}
+          ve{' '}
+          <a href="/kullanim-kosullari" className="text-primary underline">
+            Kullanım Koşulları
+          </a>{' '}
+          sayfalarında okuyabilirsin. Sorularını{' '}
+          <a href="mailto:alihanfnd35@gmail.com" className="text-primary underline">
+            alihanfnd35@gmail.com
           </a>{' '}
           adresine iletebilirsin.
         </p>

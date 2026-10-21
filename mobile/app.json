@@ -12,7 +12,7 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/00000000-0000-0000-0000-000000000000"
+      "url": "https://u.expo.dev/86bb2d21-dbfc-411e-bc8b-b78154c07fc3"
     },
     "ios": {
       "supportsTablet": true,
@@ -64,6 +64,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "86bb2d21-dbfc-411e-bc8b-b78154c07fc3"
+      }
+    },
+    "owner": "alihan.findikci"
   }
 }

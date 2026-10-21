@@ -34,9 +34,23 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [showWelcome, setShowWelcome] = React.useState(false);
   const [showFeedbackTooltip, setShowFeedbackTooltip] = React.useState(false);
+  const [seriOzeti, setSeriOzeti] = React.useState<any>(null);
+
+  // Giriş gerektirmeyen sayfalar: auth ekranları + herkese açık yasal metinler
+  // (Apple/Google mağaza incelemesi ve anonim ziyaretçiler bunları görebilmeli).
+  const isPublicPage =
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname === '/gizlilik-politikasi' ||
+    pathname === '/kullanim-kosullari';
 
   // Initialize background activity tracking
   useActivityTracker();
+
+  // NOT: Aşağıdaki üç useEffect KOŞULSUZ çağrılır (React'ın Hooks kuralı —
+  // bir bileşen her render'da AYNI SAYIDA ve AYNI SIRADA hook çağırmalı).
+  // Koşullu mantık hook'un İÇİNDE kalır; erken return'ler bütün hook'lar
+  // çağrıldıktan SONRA, fonksiyonun en altındadır.
 
   React.useEffect(() => {
     if (user && !loading) {
@@ -47,13 +61,23 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     }
   }, [user, loading]);
 
+  React.useEffect(() => {
+    if (!loading && !user && !isPublicPage) {
+      router.replace('/login');
+    }
+  }, [loading, user, isPublicPage, router]);
+
+  React.useEffect(() => {
+    if (user && !loading) {
+      api.getSeri().then(setSeriOzeti).catch(() => {});
+    }
+  }, [user, loading, pathname]);
+
   const handleCloseWelcome = () => {
     localStorage.setItem('welcome_tour_seen', 'true');
     setShowWelcome(false);
     setShowFeedbackTooltip(true);
   };
-
-  const isAuthPage = pathname === '/login' || pathname === '/register';
 
   if (loading) {
     return (
@@ -66,16 +90,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     );
   }
 
-  // If on login or register, render children directly without dashboard shell
-  if (isAuthPage) {
+  // Auth ekranları ve herkese açık yasal metinler: dashboard kabuğu olmadan,
+  // oturum beklemeden doğrudan render edilir.
+  if (isPublicPage) {
     return <>{children}</>;
   }
-
-  React.useEffect(() => {
-    if (!loading && !user && !isAuthPage) {
-      router.replace('/login');
-    }
-  }, [loading, user, isAuthPage, router]);
 
   // If unauthenticated on a protected route, do NOT mount children (prevents 401 API calls while redirecting)
   if (!user) {
@@ -91,14 +110,6 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       </div>
     );
   }
-
-  const [seriOzeti, setSeriOzeti] = React.useState<any>(null);
-
-  React.useEffect(() => {
-    if (user && !loading) {
-      api.getSeri().then(setSeriOzeti).catch(() => {});
-    }
-  }, [user, loading, pathname]);
 
   const navItems = [
     { name: 'Panel', href: '/', icon: LayoutDashboard },
