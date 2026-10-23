@@ -15,7 +15,12 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://english-platform-ytuw.onrender.com",
+        "EXPO_PUBLIC_GIZLILIK_URL": "https://english-platform-mu.vercel.app/gizlilik-politikasi",
+        "EXPO_PUBLIC_KOSULLAR_URL": "https://english-platform-mu.vercel.app/kullanim-kosullari"
+      }
     }
   },
   "submit": {

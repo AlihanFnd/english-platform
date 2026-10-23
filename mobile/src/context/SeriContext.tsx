@@ -72,8 +72,9 @@ export function SeriProvider({ children }: { children: React.ReactNode }) {
 
       await kutlamaKontrolEt(yeniOzet, eskiOzet);
       await syncHatirlatmalar(yeniOzet);
-    } catch {
-      // Hata durumunda var olan özet korunur
+    } catch (e) {
+      // Hata durumunda var olan özet korunur, ama sessizce yutulmaz.
+      console.warn('[SeriContext] getSeri başarısız:', e);
     }
   }, [kullanici, kutlamaKontrolEt]);
 
