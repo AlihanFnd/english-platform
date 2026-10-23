@@ -484,10 +484,14 @@ tohum hesabını geçersiz kılar — bağlı verisi yoksa siler, varsa yalnızc
 |---|---|---|---|
 | 1 | The Adventures of Tom Sawyer | Mark Twain | A1-A2 |
 | 2 | Alice in Wonderland | Lewis Carroll | A2 |
-| 3 | The Old Man and the Sea | Ernest Hemingway | B1 |
 
-**Bölümler:** 4 adet (Id 1–2 → Kitap 1, Id 3 → Kitap 2, Id 4 → Kitap 3).
+**Bölümler:** 3 adet (Id 1–2 → Kitap 1, Id 3 → Kitap 2).
 Hepsi bölüm modundadır, dolayısıyla açıldıklarında **her seferinde yeniden analiz edilirler**.
+
+> ✅ **Kaldırıldı (`RemoveCopyrightedSeedBook`, 2026-10-23):** Eski Kitap 3 —
+> "The Old Man and the Sea" (Hemingway, 1952) — kamu malı değildi ve telif
+> koruması altındayken seed verisine gömülmüştü. Migration hem yeni
+> kurulumlardan hem mevcut ortamlardan (production dahil) satırları siler.
 
 > ✅ **Çözüldü (KURAL-05, `20260824082727`):** Seed'deki `Book.CreatedAt` eskiden
 > `DateTime.UtcNow` idi ve her `migrations add` çalıştırmasında sahte bir "model

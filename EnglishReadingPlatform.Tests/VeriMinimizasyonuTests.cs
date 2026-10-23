@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net.Http.Json;
 using System.Text.Json;
 using EnglishReadingPlatform.Tests.Infrastructure;
@@ -243,14 +244,16 @@ public class VeriMinimizasyonuTests
         // TUZAK: tohum kitap kimliğine (bookId = 3) güvenmek. Tohum değişirse test
         // sessizce anlamsızlaşır. Kitaplar uçtan okunur ve iki FARKLI başlık olduğu
         // doğrulanır — aksi hâlde "içermemeli" iddiası kendiliğinden geçerdi.
+        // /api/books sıralama vermiyor; paylaşılan test veritabanında bölümsüz
+        // (BookPage tabanlı) kitaplar da birikebildiğinden ilk iki öğeyi körlemesine
+        // almak yerine bölümü OLAN iki kitap açıkça seçilir.
         var kitaplar = await sahipClient.GetFromJsonAsync<List<KitapDto>>("/api/books");
         kitaplar.Should().NotBeNull();
-        kitaplar!.Count.Should().BeGreaterThanOrEqualTo(2, "test iki ayrı kitap gerektirir");
-        var atanan = kitaplar[0];
-        var atanmayan = kitaplar[1];
+        var bolumluKitaplar = kitaplar!.Where(k => k.ChaptersCount > 0).Take(2).ToList();
+        bolumluKitaplar.Count.Should().Be(2, "test bölümlü iki ayrı kitap gerektirir");
+        var atanan = bolumluKitaplar[0];
+        var atanmayan = bolumluKitaplar[1];
         atanan.Title.Should().NotBe(atanmayan.Title);
-        atanan.ChaptersCount.Should().BeGreaterThan(0);
-        atanmayan.ChaptersCount.Should().BeGreaterThan(0);
 
         return (sahipClient, uyeClient, grup.Id, atanan, atanmayan);
     }

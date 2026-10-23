@@ -94,18 +94,6 @@ namespace EnglishReadingPlatform.Migrations
                             Language = "en",
                             Level = "A2",
                             Title = "Alice in Wonderland"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            Author = "Ernest Hemingway",
-                            Category = "story",
-                            CoverColor = "#0ea5e9",
-                            CreatedAt = new DateTime(2026, 7, 16, 17, 11, 41, 0, DateTimeKind.Utc),
-                            Description = "An aging Cuban fisherman struggles with a giant marlin.",
-                            Language = "en",
-                            Level = "B1",
-                            Title = "The Old Man and the Sea"
                         });
                 });
 
@@ -192,14 +180,6 @@ namespace EnglishReadingPlatform.Migrations
                             ChapterNumber = 1,
                             Content = "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, and what is the use of a book, thought Alice, without pictures or conversations? So she was considering in her own mind (as well as she could, for the hot day made her feel very sleepy and stupid), whether the pleasure of making a daisy-chain would be worth the trouble of getting up and picking the daisies, when suddenly a White Rabbit with pink eyes ran close by her. There was nothing so very remarkable in that; nor did Alice think it so very much out of the way to hear the Rabbit say to itself, Oh dear! Oh dear! I shall be too late! (when she thought it over afterwards, it occurred to her that she ought to have wondered at this, but at the time it all seemed quite natural); but when the Rabbit actually took a watch out of its waistcoat-pocket, and looked at it, and then hurried on, Alice started to her feet, for it flashed across her mind that she had never before seen a rabbit with either a waistcoat-pocket, or a watch to take out of it, and burning with curiosity, she ran across the field after it, and fortunately was just in time to see it pop down a large rabbit-hole under the hedge.",
                             Title = "Down the Rabbit Hole"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            BookId = 3,
-                            ChapterNumber = 1,
-                            Content = "He was an old man who fished alone in a skiff in the Gulf Stream and he had gone eighty-four days now without taking a fish. In the first forty days a boy had been with him. But after forty days without a fish the boy's parents had told him that the old man was now definitely and finally salao, which is the worst form of unlucky, and the boy had gone at their orders in another boat which caught three good fish the first week. It made the boy sad to see the old man come in each day with his skiff empty and he always went down to help him carry either the coiled lines or the gaff and harpoon and the sail that was furled around the mast. The sail was patched with flour sacks and, furled, it looked like the flag of permanent defeat. The old man was thin and gaunt with deep wrinkles in the back of his neck. The brown blotches of the benevolent skin cancer the sun brings from its reflection on the tropic sea were on his cheeks. The blotches ran well down the sides of his face and his hands had the deep-creased scars from handling heavy fish on the cords.",
-                            Title = "The Old Man"
                         });
                 });
 
