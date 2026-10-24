@@ -411,8 +411,6 @@ export default function PanelEkrani() {
                 </Metin>
               </View>
             </Kart>
-
-            <SeriKarti />
           </Animated.View>
 
           {suanki && veri && veri.recentProgress.length > 1 ? (
